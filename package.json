@@ -1,0 +1,25 @@
+{
+  "name": "coordage",
+  "private": true,
+  "workspaces": [
+    "admin-app",
+    "backend",
+    "user-app",
+    "tracking/server"
+  ],
+  "scripts": {
+    "seed": "node seed.js",
+    "dev": "concurrently -n ADMIN,USER -c blue,magenta \"npm run dev --workspace=admin-app\" \"npm run dev --workspace=user-app\"",
+    "dev:admin": "npm run dev --workspace=admin-app",
+    "dev:user": "npm run dev --workspace=user-app",
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev:tracking": "npm run dev --workspace=tracking/server",
+    "dev:all": "concurrently -n ADMIN,USER,API,TRACK -c blue,magenta,green,yellow \"npm run dev --workspace=admin-app\" \"npm run dev --workspace=user-app\" \"npm run dev --workspace=backend\" \"npm run dev --workspace=tracking/server\""
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}

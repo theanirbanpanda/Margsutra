@@ -1,0 +1,2989 @@
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import UserTrackingWidget from "./UserTrackingWidget";
+import { useLocationTracking } from "./useLocationTracking";
+import { subscribeToSafetyProtocols, getTripByCode } from "./services/firebase";
+
+
+/* ════════════════════════════════════════════════
+   DESIGN TOKENS  (mirror admin panel exactly)
+════════════════════════════════════════════════ */
+const C = {
+  bg:"#080f1a", sidebar:"#0b1422", panel:"rgba(11,20,34,0.95)",
+  card:"rgba(255,255,255,0.04)", border:"rgba(80,140,220,0.14)",
+  border2:"rgba(80,140,220,0.28)", accent:"#3b82f6", accent2:"#1d4ed8",
+  green:"#22c55e", amber:"#f59e0b", red:"#ef4444", purple:"#a78bfa",
+  teal:"#14b8a6", text:"#e2e8f0", muted:"rgba(180,210,245,0.5)",
+  muted2:"rgba(180,210,245,0.28)",
+};
+
+/* ════════════════════════════════════════════════
+   STATIC MOCK DATA
+════════════════════════════════════════════════ */
+/* ════════════════════════════════════════════════════════════════════════
+   DEMO DATA — not production logic.
+   CURRENT_USER and DEFAULT_LOGIN below exist so the app works end-to-end
+   with zero backend running (a demo-mode fallback), and so a recruiter/
+   interviewer can log in without a real account. They are NOT used when a
+   real backend login succeeds — see handleLogin/the login fetch above.
+   Remove or gate behind an env flag before any real deployment.
+════════════════════════════════════════════════════════════════════════ */
+const CURRENT_USER = {
+  id:"U001", name:"Anirban Panda", email:"anirban@coordage.app",
+  role:"Field Guide", status:"active", avatar:"AP",
+  color:["#E6F1FB","#0C447C"], blood:"B+", medical:"None",
+  lat:18.5196, lon:73.8554, city:"Mulshi, Maharashtra",
+  phone:"+91 98765 43210", joined:"Jan 2025", trips:12, devices:3,
+  ec1Name:"Meera Rao", ec1Rel:"Sister", ec1Ph:"+91 99887 76655",
+  ec2Name:"Sunil Rao", ec2Rel:"Father", ec2Ph:"+91 98001 23456",
+};
+
+const DEFAULT_LOGIN = {
+  email: "anirban@coordage.app",
+  pass: "user123",
+};
+
+const USER_PROFILE_KEY = "coordage_user_profile";
+const USER_CREDENTIALS_KEY = "coordage_user_credentials";
+const USER_SESSION_KEY = "coordage_user_session";
+const USER_TOKEN_KEY = "coordage_auth_token";
+
+// Attaches the stored JWT (if any) to a fetch call — used for every request
+// to a route that now requires authentication on the backend.
+const authFetch = (url, options = {}) => {
+  const token = localStorage.getItem(USER_TOKEN_KEY);
+  return fetch(url, {
+    ...options,
+    headers: { ...(options.headers || {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  });
+};
+const AUTH_API_URL = import.meta.env.VITE_AUTH_API_URL || "http://localhost:5050/api";
+
+const decodeJwtPayload = (token) => {
+  try {
+    const payloadPart = token.split(".")[1];
+    if (!payloadPart) return null;
+    const base64 = payloadPart.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    return JSON.parse(atob(padded));
+  } catch {
+    return null;
+  }
+};
+
+const isUsableTrackingToken = (token, user) => {
+  const payload = decodeJwtPayload(token);
+  if (!payload) return false;
+  if (typeof payload.exp === "number" && Date.now() >= payload.exp * 1000 - 30_000) {
+    return false;
+  }
+  if (user?.id && payload.userId && payload.userId !== user.id) return false;
+  if (user?.name && payload.name && payload.name !== user.name) return false;
+  return true;
+};
+
+const buildUserProfile = (form) => {
+  const nameParts = (form.name || "Explorer User").trim().split(/\s+/);
+  const initials = nameParts.slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "EU";
+  return {
+    id: `U-${Date.now()}`,
+    name: form.name,
+    email: form.email,
+    role: form.role || "Field Guide",
+    status: "active",
+    avatar: initials,
+    color: ["#E6F1FB", "#0C447C"],
+    blood: form.blood,
+    medical: form.medical,
+    city: form.city,
+    phone: form.phone,
+    trips: 0,
+    devices: 1,
+    lat: CURRENT_USER.lat,
+    lon: CURRENT_USER.lon,
+    ec1Name: form.ec1Name,
+    ec1Rel: form.ec1Rel,
+    ec1Ph: form.ec1Ph,
+    ec2Name: form.ec2Name,
+    ec2Rel: form.ec2Rel,
+    ec2Ph: form.ec2Ph,
+  };
+};
+
+const TRACKING_SERVER_URL = import.meta.env.VITE_TRACKING_SERVER_URL || "http://localhost:4000";
+
+const FALLBACK_SAFETY_PROTOCOLS = [
+  {id:"P001",title:"Arrival & check-in protocol",   icon:"📋",status:"published",updated:"Apr 10, 2026",
+   body:"Upon arriving at the trek base, register at the check-in kiosk. Confirm your emergency contacts and ensure your device GPS is active. Admin will verify your profile before granting trail access."},
+  {id:"P002",title:"Daily check-in rules",           icon:"✅",status:"published",updated:"Apr 8, 2026",
+   body:"Send a live-status ping every 4 hours during active trekking. If no ping is received within 6 hours, the system triggers an automatic welfare check. Always acknowledge system check-in prompts."},
+  {id:"P003",title:"Offline & no-signal zones",      icon:"📵",status:"published",updated:"Apr 11, 2026",
+   body:"Carry a LoRa-enabled satellite communicator when entering zones marked orange on your map. Pre-download offline maps before departure. Inform admin 2 hrs prior to entering a no-signal zone."},
+  {id:"P004",title:"SOS trigger procedure",          icon:"🚨",status:"published",updated:"Mar 28, 2026",
+   body:"Press and hold the SOS button for 3 seconds to prevent accidental triggers. The system broadcasts your GPS coordinates and medical profile to the nearest rescue team. Stay in place unless immediate danger requires movement."},
+  {id:"P005",title:"Medical emergency guidelines",   icon:"⚕️",status:"published",updated:"Apr 9, 2026",
+   body:"Your blood group and medical conditions are auto-shared with any dispatched rescue team. In case of allergy or diabetic emergency, use the medical alert shortcut on your dashboard before triggering SOS."},
+];
+
+const deriveProtocolIcon = (title = "") => {
+  const normalized = title.toLowerCase();
+  if (normalized.includes("sos")) return "🚨";
+  if (normalized.includes("medical")) return "⚕️";
+  if (normalized.includes("offline") || normalized.includes("signal")) return "📵";
+  if (normalized.includes("check-in") || normalized.includes("check in")) return "📋";
+  return "🛡️";
+};
+
+const MY_DEVICES = [
+  {id:"DEV001",name:"iPhone 15 Pro",      type:"phone",    battery:78,signal:"strong",gps:true, sos:true, connected:true, mac:"A4:C1:38:1F:22:B5",lat:18.52,lon:73.85},
+  {id:"DEV002",name:"Garmin Instinct 2",  type:"watch",    battery:92,signal:"strong",gps:true, sos:true, connected:true, mac:"F0:23:B9:7A:01:C3",lat:18.52,lon:73.85},
+  {id:"DEV003",name:"SPOT Gen4 Beacon",   type:"satellite",battery:65,signal:"medium",gps:true, sos:true, connected:false,mac:"7C:64:56:D8:3A:F1",lat:null,lon:null},
+];
+
+const NEARBY_DEVICES = [
+  {id:"N001",name:"Garmin inReach Mini 2",mac:"B8:27:EB:5A:3C:11",rssi:-48,type:"satellite",paired:false},
+  {id:"N002",name:"Apple Watch Ultra 2",  mac:"DC:A9:04:B1:77:3E",rssi:-55,type:"watch",    paired:false},
+  {id:"N003",name:"Tile Pro 2024",        mac:"00:1A:7D:DA:71:13",rssi:-70,type:"tracker",  paired:false},
+  {id:"N004",name:"Polar Grit X2 Pro",    mac:"E4:5F:01:38:92:AB",rssi:-62,type:"watch",    paired:false},
+];
+
+const RESCUE_TEAMS = [
+  {id:"T001",name:"Team Alpha",lat:18.5650,lon:73.9100,status:"deployed",eta:"12 min",vehicle:"Ambulance",lead:"Vikram Rao"},
+];
+
+const TURN_BY_TURN_USER = [
+  {dist:"0.0 km",icon:"↑",instr:"Head north from Mulshi Base Camp",road:"NH-48"},
+  {dist:"1.4 km",icon:"↗",instr:"Take the forest track right at the ridge fork",road:"Forest Track F-22"},
+  {dist:"3.1 km",icon:"↑",instr:"Continue uphill on the main trail"},
+  {dist:"5.5 km",icon:"↙",instr:"Descend left toward the valley stream"},
+  {dist:"7.2 km",icon:"↑",instr:"Cross the stone bridge and continue east"},
+  {dist:"8.6 km",icon:"⚑",instr:"Arrival at Emergency Rally Point — Mulshi Peak"},
+];
+
+/* ════════════════════════════════════════════════
+   SHARED UI PRIMITIVES
+════════════════════════════════════════════════ */
+const Pill = ({ color, children }) => {
+  const map = {
+    green:{bg:"rgba(34,197,94,0.12)",text:"#86efac"},
+    red:{bg:"rgba(239,68,68,0.12)",text:"#fca5a5"},
+    amber:{bg:"rgba(245,158,11,0.12)",text:"#fcd34d"},
+    blue:{bg:"rgba(59,130,246,0.14)",text:"#93c5fd"},
+    purple:{bg:"rgba(167,139,250,0.12)",text:"#c4b5fd"},
+    teal:{bg:"rgba(20,184,166,0.12)",text:"#5eead4"},
+    gray:{bg:"rgba(255,255,255,0.07)",text:"rgba(180,210,245,0.6)"},
+  };
+  const s = map[color]||map.gray;
+  return <span style={{fontSize:11,padding:"2px 9px",borderRadius:20,fontWeight:500,background:s.bg,color:s.text}}>{children}</span>;
+};
+const Card = ({ children, style }) => (
+  <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px 18px",...style}}>{children}</div>
+);
+const StatCard = ({ label, value, sub, color=C.accent, icon }) => (
+  <Card style={{marginBottom:0}}>
+    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:8}}>
+      <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em"}}>{label}</div>
+      {icon&&<span style={{fontSize:18}}>{icon}</span>}
+    </div>
+    <div style={{fontSize:26,fontWeight:700,color,marginBottom:2}}>{value}</div>
+    {sub&&<div style={{fontSize:11,color:C.muted2}}>{sub}</div>}
+  </Card>
+);
+const Avatar = ({ initials, bg, text, size=32 }) => (
+  <div style={{width:size,height:size,borderRadius:"50%",background:bg||"rgba(59,130,246,0.18)",color:text||C.accent,
+    fontSize:size*0.35,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+    {initials}
+  </div>
+);
+const Toggle = ({ on, onChange }) => (
+  <div onClick={onChange} style={{width:36,height:20,borderRadius:10,background:on?C.accent:"rgba(255,255,255,0.12)",
+    position:"relative",cursor:"pointer",transition:"background 0.25s",flexShrink:0}}>
+    <div style={{position:"absolute",top:3,left:on?19:3,width:14,height:14,borderRadius:"50%",background:"#fff",transition:"left 0.25s"}}/>
+  </div>
+);
+const Input = ({ value, onChange, placeholder, type="text", style:sx }) => (
+  <input type={type} value={value} onChange={onChange} placeholder={placeholder}
+    style={{height:36,width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${C.border}`,
+      borderRadius:8,color:C.text,fontSize:13,padding:"0 12px",fontFamily:"inherit",boxSizing:"border-box",outline:"none",...sx}}/>
+);
+const Btn = ({ children, onClick, variant="default", disabled=false, type="button", style:sx }) => {
+  const v = {
+    primary:{background:C.accent,color:"#fff",border:"none"},
+    danger:{background:C.red,color:"#fff",border:"none"},
+    success:{background:"rgba(34,197,94,0.15)",color:C.green,border:`1px solid rgba(34,197,94,0.3)`},
+    default:{background:"rgba(255,255,255,0.05)",color:C.text,border:`1px solid ${C.border}`},
+    ghost:{background:"transparent",color:C.muted,border:"none"},
+  };
+  return (
+    <button type={type} onClick={disabled?undefined:onClick} disabled={disabled}
+      style={{padding:"7px 16px",borderRadius:8,fontSize:12,fontWeight:500,cursor:disabled?"not-allowed":"pointer",
+        fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:6,opacity:disabled?0.5:1,...v[variant],...sx}}>
+      {children}
+    </button>
+  );
+};
+const PageHeader = ({ title, sub, right }) => (
+  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:22}}>
+    <div>
+      <h1 style={{fontSize:20,fontWeight:600,color:C.text,margin:0}}>{title}</h1>
+      {sub&&<div style={{fontSize:12,color:C.muted,marginTop:3}}>{sub}</div>}
+    </div>
+    {right}
+  </div>
+);
+const FieldRow = ({ label, children }) => (
+  <div style={{marginBottom:14}}>
+    <div style={{fontSize:11,color:C.muted,marginBottom:5,letterSpacing:"0.04em"}}>{label}</div>
+    {children}
+  </div>
+);
+const Select = ({ value, onChange, children, style:sx }) => (
+  <select value={value} onChange={onChange}
+    style={{height:36,width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${C.border}`,
+      borderRadius:8,color:C.text,fontSize:13,padding:"0 12px",fontFamily:"inherit",outline:"none",
+      cursor:"pointer", boxSizing:"border-box",...sx}}>
+    {children}
+  </select>
+);
+
+/* ════════════════════════════════════════════════
+   LEAFLET ENGINE  (shared singleton — same as admin)
+════════════════════════════════════════════════ */
+const LEAFLET_CSS_ID = "leaflet-css-v194";
+const LEAFLET_JS_ID  = "leaflet-js-v194";
+
+const ensureLeaflet = (onReady) => {
+  if (window.L) { onReady(); return; }
+  if (!document.getElementById(LEAFLET_CSS_ID)) {
+    const css = document.createElement("link");
+    css.id = LEAFLET_CSS_ID; css.rel = "stylesheet";
+    css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+    document.head.appendChild(css);
+  }
+  if (!document.getElementById(LEAFLET_JS_ID)) {
+    const js = document.createElement("script");
+    js.id  = LEAFLET_JS_ID;
+    js.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+    document.head.appendChild(js);
+  }
+  const poll = setInterval(() => { if (window.L) { clearInterval(poll); onReady(); } }, 80);
+};
+
+const injectLeafletStyles = (() => {
+  let done = false;
+  return () => {
+    if (done) return; done = true;
+    const s = document.createElement("style");
+    s.textContent = `
+      @keyframes ud-pulse {
+        0%   { transform:translate(-50%,-50%) scale(.4); opacity:.9; }
+        100% { transform:translate(-50%,-50%) scale(2.8); opacity:0; }
+      }
+      @keyframes ud-sos-blink { 0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.7)} 50%{box-shadow:0 0 0 18px rgba(239,68,68,0)} }
+      @keyframes ud-spin { to{transform:rotate(360deg)} }
+      .leaflet-container   { background:#08101e !important; }
+      .leaflet-tile-pane   { filter:saturate(.85) brightness(.9); }
+      .leaflet-popup-content-wrapper {
+        background:#0b1422; color:#e2e8f0;
+        border:1px solid rgba(80,140,220,0.25);
+        border-radius:10px; box-shadow:0 4px 20px rgba(0,0,0,.7);
+      }
+      .leaflet-popup-content { margin:10px 14px; font-family:sans-serif; font-size:12px; line-height:1.6; }
+      .leaflet-popup-tip { background:#0b1422; }
+      .leaflet-popup-close-button { color:#94a3b8 !important; }
+      .leaflet-control-zoom { border:1px solid rgba(80,140,220,0.25) !important; border-radius:8px !important; overflow:hidden; }
+      .leaflet-control-zoom a { background:rgba(11,20,34,0.95) !important; color:#e2e8f0 !important;
+        border-bottom:1px solid rgba(80,140,220,0.2) !important; font-size:16px !important; }
+      .leaflet-control-zoom a:hover { background:rgba(59,130,246,0.18) !important; }
+      .leaflet-control-attribution { background:rgba(8,15,26,0.7) !important; color:#64748b !important; font-size:9px !important; }
+      .ud-geofence-circle { stroke:#f59e0b !important; stroke-dasharray:8 5; stroke-width:2 !important; fill-opacity:0.07 !important; }
+    `;
+    document.head.appendChild(s);
+  };
+})();
+
+const makeDotIcon = (L, color, size=12, pulse=false) => L.divIcon({
+  className:"",
+  html:`<div style="position:relative;width:${size+18}px;height:${size+18}px;">
+    ${pulse?`<div style="position:absolute;top:50%;left:50%;width:${size+10}px;height:${size+10}px;
+      border-radius:50%;border:2.5px solid ${color};animation:ud-pulse 1.8s ease-out infinite;"></div>`:""}
+    <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+      width:${size}px;height:${size}px;border-radius:50%;background:${color};
+      border:2.5px solid #fff;box-shadow:0 0 0 4px ${color}44,0 2px 8px rgba(0,0,0,.5);z-index:1;"></div>
+  </div>`,
+  iconSize:[size+18,size+18], iconAnchor:[(size+18)/2,(size+18)/2], popupAnchor:[0,-(size/2+10)],
+});
+
+const makeTeamIcon = (L, name) => L.divIcon({
+  className:"",
+  html:`<div style="background:#f59e0b;border-radius:7px;padding:3px 9px;font-size:10px;
+    font-weight:800;color:#000;white-space:nowrap;box-shadow:0 2px 10px #f59e0b88;
+    border:1.5px solid rgba(255,255,255,0.3);">${name.replace("Team ","")}</div>`,
+  iconSize:null, iconAnchor:[22,13], popupAnchor:[0,-16],
+});
+
+/* ════════════════════════════════════════════════
+   TILE LAYERS (same as admin)
+════════════════════════════════════════════════ */
+const TILE_LAYERS = {
+  road:      {url:"https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",      attr:"© OpenStreetMap contributors"},
+  satellite: {url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",attr:"© Esri World Imagery"},
+  terrain:   {url:"https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",        attr:"© OpenTopoMap contributors"},
+};
+
+/* ════════════════════════════════════════════════
+   WEATHER HELPERS
+════════════════════════════════════════════════ */
+const WX_CODES = {
+  0:["☀️","Clear sky"],1:["🌤️","Mainly clear"],2:["⛅","Partly cloudy"],3:["☁️","Overcast"],
+  45:["🌫️","Fog"],48:["🌫️","Rime fog"],51:["🌦️","Light drizzle"],53:["🌦️","Drizzle"],
+  55:["🌧️","Heavy drizzle"],61:["🌧️","Light rain"],63:["🌧️","Moderate rain"],65:["⛈️","Heavy rain"],
+  71:["🌨️","Light snow"],73:["❄️","Snow"],75:["🌨️","Heavy snow"],80:["🌦️","Rain showers"],
+  81:["🌧️","Showers"],82:["⛈️","Violent showers"],95:["⛈️","Thunderstorm"],99:["⛈️","Thunderstorm+hail"],
+};
+const windDirLabel = (d) => ["N","NE","E","SE","S","SW","W","NW"][Math.round(d/45)%8];
+const feelsLike = (t,h) => +(t-0.55*(1-h/100)*(t-14.5)).toFixed(1);
+
+/* ════════════════════════════════════════════════
+   PAGE: AUTHENTICATION (LOG IN & CREATE ACCOUNT)
+   High-aesthetic glassmorphism with blurred ambient lighting
+════════════════════════════════════════════════ */
+const PageAuth = ({ onLogin, initialTab = "login" }) => {
+  const [tab, setTab] = useState(initialTab); // "login" | "register"
+  const [themeConfig, setThemeConfig] = useState(null);
+
+  // Fetch mountain theme configuration stored in Firebase Firestore
+  useEffect(() => {
+    let active = true;
+    fetch(`${AUTH_API_URL}/config/theme`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (active && data) setThemeConfig(data);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const mountainBackdropUrl =
+    themeConfig?.backdropUrl ||
+    "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=2400&q=85";
+
+  // Login form state
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPass, setLoginPass] = useState("");
+  const [showLoginPass, setShowLoginPass] = useState(false);
+  const [loginErr, setLoginErr] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+
+  // Register form state
+  const [regStep, setRegStep] = useState(1);
+  const [regForm, setRegForm] = useState({
+    name: "",
+    email: "",
+    pass: "",
+    confirmPass: "",
+    phone: "",
+    city: "",
+    blood: "B+",
+    medical: "None",
+    ec1Name: "",
+    ec1Rel: "Family",
+    ec1Ph: "",
+    ec2Name: "",
+    ec2Rel: "",
+    ec2Ph: "",
+  });
+  const [showRegPass, setShowRegPass] = useState(false);
+  const [regErr, setRegErr] = useState("");
+  const [regLoading, setRegLoading] = useState(false);
+  const [regSuccess, setRegSuccess] = useState(false);
+
+  const updReg = (k, v) => setRegForm((f) => ({ ...f, [k]: v }));
+
+  // Handle Login
+  const handleLoginSubmit = async (e) => {
+    e.preventDefault();
+    setLoginErr("");
+
+    const trimmedEmail = loginEmail.trim().toLowerCase();
+    if (!trimmedEmail || !loginPass) {
+      setLoginErr("Please enter both email and password.");
+      return;
+    }
+
+    setLoginLoading(true);
+    try {
+      const response = await fetch(`${AUTH_API_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: trimmedEmail, password: loginPass }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (response.ok && data?.user) {
+        if (data.token) {
+          localStorage.setItem(USER_TOKEN_KEY, data.token);
+        }
+        localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(data.user));
+        localStorage.setItem(
+          USER_SESSION_KEY,
+          JSON.stringify({ userId: data.user.id, email: data.user.email })
+        );
+        onLogin(data.user);
+        return;
+      }
+
+      setLoginErr(data.error || "Invalid email or password. Please try again.");
+    } catch {
+      setLoginErr("Unable to connect right now. Please check your network connection.");
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  // Validate Register Step 1
+  const validateRegStep1 = () => {
+    if (!regForm.name.trim()) return "Please enter your full name.";
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(regForm.email.trim())) return "Please enter a valid email address.";
+    if (!regForm.phone.trim()) return "Please enter your contact phone number.";
+    if (regForm.pass.length < 6) return "Password must be at least 6 characters.";
+    if (regForm.pass !== regForm.confirmPass) return "Passwords do not match.";
+    return null;
+  };
+
+  // Validate Register Step 2
+  const validateRegStep2 = () => {
+    if (!regForm.ec1Name.trim() || !regForm.ec1Ph.trim()) {
+      return "Please provide at least one primary emergency contact name and phone number.";
+    }
+    return null;
+  };
+
+  const handleNextStep = () => {
+    setRegErr("");
+    const err = validateRegStep1();
+    if (err) {
+      setRegErr(err);
+      return;
+    }
+    setRegStep(2);
+  };
+
+  // Handle Register Submit
+  const handleRegisterSubmit = async (e) => {
+    e.preventDefault();
+    setRegErr("");
+
+    const err = validateRegStep2();
+    if (err) {
+      setRegErr(err);
+      return;
+    }
+
+    setRegLoading(true);
+    try {
+      const response = await fetch(`${AUTH_API_URL}/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: regForm.name.trim(),
+          email: regForm.email.trim().toLowerCase(),
+          password: regForm.pass,
+          phone: regForm.phone.trim(),
+          city: regForm.city.trim() || "Western Ghats Region",
+          role: "Trekker",
+          blood: regForm.blood,
+          medical: regForm.medical.trim() || "None",
+          ec1Name: regForm.ec1Name.trim(),
+          ec1Rel: regForm.ec1Rel.trim() || "Family",
+          ec1Ph: regForm.ec1Ph.trim(),
+          ec2Name: regForm.ec2Name.trim(),
+          ec2Rel: regForm.ec2Rel.trim(),
+          ec2Ph: regForm.ec2Ph.trim(),
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (response.ok && data?.user) {
+        if (data.token) {
+          localStorage.setItem(USER_TOKEN_KEY, data.token);
+        }
+        localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(data.user));
+        localStorage.setItem(
+          USER_SESSION_KEY,
+          JSON.stringify({ userId: data.user.id, email: data.user.email })
+        );
+        setRegSuccess(true);
+        setTimeout(() => {
+          onLogin(data.user);
+        }, 1500);
+        return;
+      }
+
+      setRegErr(data.error || "Unable to complete registration. Please try again.");
+    } catch {
+      setRegErr("Unable to connect right now. Please check your network connection.");
+    } finally {
+      setRegLoading(false);
+    }
+  };
+
+  const bloodOptions = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
+
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        position: "relative",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+        padding: "36px 16px 54px",
+        background: "#050b14",
+        boxSizing: "border-box",
+      }}
+    >
+      {/* ── Photographic Mountain Backdrop ── */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          backgroundImage: `url("${mountainBackdropUrl}")`,
+          backgroundPosition: "center 38%",
+          backgroundSize: "cover",
+          backgroundRepeat: "no-repeat",
+          filter: "brightness(0.55) contrast(1.1) saturate(1.15)",
+          transform: "scale(1.02)",
+          transition: "background-image 0.8s ease-in-out",
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* ── Atmospheric Radial Fog & Dark Vignette ── */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "radial-gradient(ellipse at 50% 40%, rgba(5, 11, 24, 0.45) 0%, rgba(4, 9, 18, 0.78) 55%, rgba(2, 6, 12, 0.94) 100%)",
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* ── Fine Horizon Sky Wash ── */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "linear-gradient(180deg, rgba(3, 7, 16, 0.65) 0%, transparent 25%, transparent 68%, rgba(2, 6, 12, 0.94) 100%)",
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* ── Glassmorphism Card Container ── */}
+      <div
+        style={{
+          width: "100%",
+          maxWidth: tab === "register" ? 560 : 430,
+          background: "rgba(10, 18, 32, 0.76)",
+          backdropFilter: "blur(28px) saturate(190%)",
+          WebkitBackdropFilter: "blur(28px) saturate(190%)",
+          borderRadius: 24,
+          border: "1px solid rgba(255, 255, 255, 0.12)",
+          boxShadow:
+            "0 30px 80px -15px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.04)",
+          padding: "36px 32px",
+          position: "relative",
+          zIndex: 2,
+          transition: "max-width 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
+          boxSizing: "border-box",
+        }}
+      >
+        {/* Brand Header */}
+        <div style={{ textAlign: "center", marginBottom: 24 }}>
+          <div
+            style={{
+              width: 54,
+              height: 54,
+              borderRadius: 18,
+              background: "linear-gradient(135deg, rgba(59, 130, 246, 0.28), rgba(16, 185, 129, 0.18))",
+              border: "1px solid rgba(255, 255, 255, 0.18)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 12px",
+              boxShadow: "0 10px 25px rgba(0, 0, 0, 0.45), 0 0 18px rgba(59, 130, 246, 0.25)",
+            }}
+          >
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m8 3 4 8 5-5 5 15H2L8 3z" />
+              <path d="M4.14 15h15.72" />
+            </svg>
+          </div>
+
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "4px 10px",
+              borderRadius: 20,
+              background: "rgba(16, 185, 129, 0.12)",
+              border: "1px solid rgba(16, 185, 129, 0.28)",
+              color: "#34d399",
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: "0.08em",
+              marginBottom: 8,
+              textTransform: "uppercase",
+            }}
+          >
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                background: "#10b981",
+                display: "inline-block",
+                boxShadow: "0 0 8px #10b981",
+              }}
+            />
+            Duty-of-Care & Mountain Safety
+          </div>
+
+          <div style={{ fontSize: 26, fontWeight: 800, color: "#f8fafc", letterSpacing: "-0.03em" }}>
+            Coordage
+          </div>
+          <div style={{ fontSize: 13, color: "rgba(180, 210, 245, 0.65)", marginTop: 4 }}>
+            Trip Safety & Emergency Response Platform
+          </div>
+        </div>
+
+        {/* ── Segmented Tab Switcher ── */}
+        <div
+          style={{
+            display: "flex",
+            background: "rgba(0, 0, 0, 0.32)",
+            borderRadius: 14,
+            padding: 4,
+            border: "1px solid rgba(255, 255, 255, 0.08)",
+            marginBottom: 24,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setTab("login");
+              setLoginErr("");
+              setRegErr("");
+            }}
+            style={{
+              flex: 1,
+              padding: "9px 0",
+              borderRadius: 10,
+              border: tab === "login" ? "1px solid rgba(59, 130, 246, 0.45)" : "1px solid transparent",
+              background:
+                tab === "login"
+                  ? "linear-gradient(135deg, rgba(59, 130, 246, 0.35), rgba(37, 99, 235, 0.45))"
+                  : "transparent",
+              color: tab === "login" ? "#ffffff" : "rgba(180, 210, 245, 0.65)",
+              fontSize: 13,
+              fontWeight: tab === "login" ? 600 : 500,
+              cursor: "pointer",
+              transition: "all 0.2s ease",
+              boxShadow: tab === "login" ? "0 4px 12px rgba(0, 0, 0, 0.25)" : "none",
+            }}
+          >
+            Log In
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setTab("register");
+              setLoginErr("");
+              setRegErr("");
+            }}
+            style={{
+              flex: 1,
+              padding: "9px 0",
+              borderRadius: 10,
+              border: tab === "register" ? "1px solid rgba(59, 130, 246, 0.45)" : "1px solid transparent",
+              background:
+                tab === "register"
+                  ? "linear-gradient(135deg, rgba(59, 130, 246, 0.35), rgba(37, 99, 235, 0.45))"
+                  : "transparent",
+              color: tab === "register" ? "#ffffff" : "rgba(180, 210, 245, 0.65)",
+              fontSize: 13,
+              fontWeight: tab === "register" ? 600 : 500,
+              cursor: "pointer",
+              transition: "all 0.2s ease",
+              boxShadow: tab === "register" ? "0 4px 12px rgba(0, 0, 0, 0.25)" : "none",
+            }}
+          >
+            Create Account
+          </button>
+        </div>
+
+        {/* ── TAB 1: LOG IN ── */}
+        {tab === "login" && (
+          <form onSubmit={handleLoginSubmit}>
+            <div style={{ marginBottom: 16 }}>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: "rgba(180, 210, 245, 0.72)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                  marginBottom: 6,
+                }}
+              >
+                Email Address
+              </label>
+              <input
+                type="email"
+                value={loginEmail}
+                onChange={(e) => setLoginEmail(e.target.value)}
+                placeholder="you@example.com"
+                autoComplete="email"
+                style={{
+                  width: "100%",
+                  height: 44,
+                  background: "rgba(255, 255, 255, 0.05)",
+                  border: "1px solid rgba(255, 255, 255, 0.11)",
+                  borderRadius: 12,
+                  color: "#f8fafc",
+                  fontSize: 14,
+                  padding: "0 14px",
+                  boxSizing: "border-box",
+                  outline: "none",
+                  transition: "border-color 0.2s ease, box-shadow 0.2s ease",
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <label
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: "rgba(180, 210, 245, 0.72)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                  }}
+                >
+                  Password
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowLoginPass(!showLoginPass)}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "#60a5fa",
+                    fontSize: 11,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                    padding: 0,
+                  }}
+                >
+                  {showLoginPass ? "Hide" : "Show"}
+                </button>
+              </div>
+              <input
+                type={showLoginPass ? "text" : "password"}
+                value={loginPass}
+                onChange={(e) => setLoginPass(e.target.value)}
+                placeholder="••••••••"
+                autoComplete="current-password"
+                style={{
+                  width: "100%",
+                  height: 44,
+                  background: "rgba(255, 255, 255, 0.05)",
+                  border: "1px solid rgba(255, 255, 255, 0.11)",
+                  borderRadius: 12,
+                  color: "#f8fafc",
+                  fontSize: 14,
+                  padding: "0 14px",
+                  boxSizing: "border-box",
+                  outline: "none",
+                  transition: "border-color 0.2s ease, box-shadow 0.2s ease",
+                }}
+              />
+            </div>
+
+            {loginErr && (
+              <div
+                style={{
+                  background: "rgba(239, 68, 68, 0.14)",
+                  border: "1px solid rgba(239, 68, 68, 0.35)",
+                  borderRadius: 12,
+                  padding: "11px 14px",
+                  fontSize: 12.5,
+                  color: "#fca5a5",
+                  marginBottom: 18,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <span>⚠️</span>
+                <span>{loginErr}</span>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loginLoading}
+              style={{
+                width: "100%",
+                height: 46,
+                background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
+                border: "1px solid rgba(255, 255, 255, 0.15)",
+                borderRadius: 12,
+                color: "#ffffff",
+                fontSize: 14.5,
+                fontWeight: 600,
+                cursor: loginLoading ? "not-allowed" : "pointer",
+                boxShadow: "0 4px 20px rgba(37, 99, 235, 0.4)",
+                opacity: loginLoading ? 0.75 : 1,
+                transition: "transform 0.15s ease, box-shadow 0.15s ease",
+              }}
+            >
+              {loginLoading ? "Authenticating…" : "Log In"}
+            </button>
+
+            <div style={{ textAlign: "center", marginTop: 20 }}>
+              <span style={{ fontSize: 13, color: "rgba(180, 210, 245, 0.6)" }}>
+                Don't have an account?{" "}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setTab("register");
+                  setLoginErr("");
+                }}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#60a5fa",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  padding: 0,
+                  textDecoration: "underline",
+                }}
+              >
+                Create an Account →
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* ── TAB 2: CREATE ACCOUNT ── */}
+        {tab === "register" && (
+          <div>
+            {regSuccess ? (
+              <div style={{ textAlign: "center", padding: "24px 0 16px" }}>
+                <div
+                  style={{
+                    width: 62,
+                    height: 62,
+                    borderRadius: "50%",
+                    background: "rgba(16, 185, 129, 0.16)",
+                    border: "2px solid #10b981",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    margin: "0 auto 16px",
+                    fontSize: 28,
+                    color: "#34d399",
+                    boxShadow: "0 0 28px rgba(16, 185, 129, 0.45)",
+                  }}
+                >
+                  ✓
+                </div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: "#f8fafc", marginBottom: 6 }}>
+                  Account Created Successfully!
+                </div>
+                <div style={{ fontSize: 13.5, color: "rgba(180, 210, 245, 0.75)", lineHeight: 1.55 }}>
+                  Welcome to Coordage. Your duty-of-care profile is now active. Launching your expedition console…
+                </div>
+              </div>
+            ) : (
+              <div>
+                {/* Stepper Progress */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
+                  <div
+                    style={{
+                      flex: 1,
+                      height: 4,
+                      borderRadius: 2,
+                      background: regStep >= 1 ? "#3b82f6" : "rgba(255, 255, 255, 0.1)",
+                    }}
+                  />
+                  <div
+                    style={{
+                      flex: 1,
+                      height: 4,
+                      borderRadius: 2,
+                      background: regStep === 2 ? "#3b82f6" : "rgba(255, 255, 255, 0.1)",
+                    }}
+                  />
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: "#60a5fa",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                    marginBottom: 14,
+                  }}
+                >
+                  {regStep === 1
+                    ? "Step 1 of 2: Profile & Credentials"
+                    : "Step 2 of 2: Duty-of-Care & Safety Information"}
+                </div>
+
+                {regErr && (
+                  <div
+                    style={{
+                      background: "rgba(239, 68, 68, 0.14)",
+                      border: "1px solid rgba(239, 68, 68, 0.35)",
+                      borderRadius: 12,
+                      padding: "11px 14px",
+                      fontSize: 12.5,
+                      color: "#fca5a5",
+                      marginBottom: 16,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <span>⚠️</span>
+                    <span>{regErr}</span>
+                  </div>
+                )}
+
+                {/* ── STEP 1: Personal Profile & Credentials ── */}
+                {regStep === 1 && (
+                  <div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+                      <div>
+                        <label
+                          style={{
+                            display: "block",
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: "rgba(180, 210, 245, 0.72)",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.05em",
+                            marginBottom: 5,
+                          }}
+                        >
+                          Full Name *
+                        </label>
+                        <input
+                          type="text"
+                          value={regForm.name}
+                          onChange={(e) => updReg("name", e.target.value)}
+                          placeholder="Your name"
+                          style={{
+                            width: "100%",
+                            height: 42,
+                            background: "rgba(255, 255, 255, 0.05)",
+                            border: "1px solid rgba(255, 255, 255, 0.11)",
+                            borderRadius: 10,
+                            color: "#f8fafc",
+                            fontSize: 13.5,
+                            padding: "0 12px",
+                            boxSizing: "border-box",
+                            outline: "none",
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label
+                          style={{
+                            display: "block",
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: "rgba(180, 210, 245, 0.72)",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.05em",
+                            marginBottom: 5,
+                          }}
+                        >
+                          City / Region
+                        </label>
+                        <input
+                          type="text"
+                          value={regForm.city}
+                          onChange={(e) => updReg("city", e.target.value)}
+                          placeholder="e.g. Pune, Mumbai"
+                          style={{
+                            width: "100%",
+                            height: 42,
+                            background: "rgba(255, 255, 255, 0.05)",
+                            border: "1px solid rgba(255, 255, 255, 0.11)",
+                            borderRadius: 10,
+                            color: "#f8fafc",
+                            fontSize: 13.5,
+                            padding: "0 12px",
+                            boxSizing: "border-box",
+                            outline: "none",
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ marginBottom: 14 }}>
+                      <label
+                        style={{
+                          display: "block",
+                          fontSize: 11,
+                          fontWeight: 600,
+                          color: "rgba(180, 210, 245, 0.72)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.05em",
+                          marginBottom: 5,
+                        }}
+                      >
+                        Email Address *
+                      </label>
+                      <input
+                        type="email"
+                        value={regForm.email}
+                        onChange={(e) => updReg("email", e.target.value)}
+                        placeholder="you@example.com"
+                        style={{
+                          width: "100%",
+                          height: 42,
+                          background: "rgba(255, 255, 255, 0.05)",
+                          border: "1px solid rgba(255, 255, 255, 0.11)",
+                          borderRadius: 10,
+                          color: "#f8fafc",
+                          fontSize: 13.5,
+                          padding: "0 12px",
+                          boxSizing: "border-box",
+                          outline: "none",
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ marginBottom: 14 }}>
+                      <label
+                        style={{
+                          display: "block",
+                          fontSize: 11,
+                          fontWeight: 600,
+                          color: "rgba(180, 210, 245, 0.72)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.05em",
+                          marginBottom: 5,
+                        }}
+                      >
+                        Contact Phone Number *
+                      </label>
+                      <input
+                        type="tel"
+                        value={regForm.phone}
+                        onChange={(e) => updReg("phone", e.target.value)}
+                        placeholder="+91 98765 43210"
+                        style={{
+                          width: "100%",
+                          height: 42,
+                          background: "rgba(255, 255, 255, 0.05)",
+                          border: "1px solid rgba(255, 255, 255, 0.11)",
+                          borderRadius: 10,
+                          color: "#f8fafc",
+                          fontSize: 13.5,
+                          padding: "0 12px",
+                          boxSizing: "border-box",
+                          outline: "none",
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+                      <div>
+                        <label
+                          style={{
+                            display: "block",
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: "rgba(180, 210, 245, 0.72)",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.05em",
+                            marginBottom: 5,
+                          }}
+                        >
+                          Password * (min 6)
+                        </label>
+                        <input
+                          type={showRegPass ? "text" : "password"}
+                          value={regForm.pass}
+                          onChange={(e) => updReg("pass", e.target.value)}
+                          placeholder="Create password"
+                          style={{
+                            width: "100%",
+                            height: 42,
+                            background: "rgba(255, 255, 255, 0.05)",
+                            border: "1px solid rgba(255, 255, 255, 0.11)",
+                            borderRadius: 10,
+                            color: "#f8fafc",
+                            fontSize: 13.5,
+                            padding: "0 12px",
+                            boxSizing: "border-box",
+                            outline: "none",
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label
+                          style={{
+                            display: "block",
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: "rgba(180, 210, 245, 0.72)",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.05em",
+                            marginBottom: 5,
+                          }}
+                        >
+                          Confirm Password *
+                        </label>
+                        <input
+                          type={showRegPass ? "text" : "password"}
+                          value={regForm.confirmPass}
+                          onChange={(e) => updReg("confirmPass", e.target.value)}
+                          placeholder="Repeat password"
+                          style={{
+                            width: "100%",
+                            height: 42,
+                            background: "rgba(255, 255, 255, 0.05)",
+                            border: "1px solid rgba(255, 255, 255, 0.11)",
+                            borderRadius: 10,
+                            color: "#f8fafc",
+                            fontSize: 13.5,
+                            padding: "0 12px",
+                            boxSizing: "border-box",
+                            outline: "none",
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 18 }}>
+                      <button
+                        type="button"
+                        onClick={() => setShowRegPass(!showRegPass)}
+                        style={{
+                          background: "transparent",
+                          border: "none",
+                          color: "#60a5fa",
+                          fontSize: 11.5,
+                          cursor: "pointer",
+                          padding: 0,
+                        }}
+                      >
+                        {showRegPass ? "Hide Passwords" : "Show Passwords"}
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleNextStep}
+                      style={{
+                        width: "100%",
+                        height: 46,
+                        background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
+                        border: "1px solid rgba(255, 255, 255, 0.15)",
+                        borderRadius: 12,
+                        color: "#ffffff",
+                        fontSize: 14.5,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        boxShadow: "0 4px 20px rgba(37, 99, 235, 0.35)",
+                      }}
+                    >
+                      Next: Safety & Medical Info →
+                    </button>
+                  </div>
+                )}
+
+                {/* ── STEP 2: Duty-of-Care & Safety Information ── */}
+                {regStep === 2 && (
+                  <form onSubmit={handleRegisterSubmit}>
+                    <div
+                      style={{
+                        background: "rgba(59, 130, 246, 0.1)",
+                        border: "1px solid rgba(59, 130, 246, 0.28)",
+                        borderRadius: 12,
+                        padding: "12px 14px",
+                        marginBottom: 16,
+                        fontSize: 12,
+                        color: "rgba(226, 232, 240, 0.88)",
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      🛡️ <strong style={{ color: "#ffffff" }}>Protected Safety Protocol:</strong> Emergency contacts and medical notes are encrypted and accessible exclusively by certified expedition leaders and search-and-rescue teams during active trips.
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+                      <div>
+                        <label
+                          style={{
+                            display: "block",
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: "rgba(180, 210, 245, 0.72)",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.05em",
+                            marginBottom: 5,
+                          }}
+                        >
+                          Blood Group *
+                        </label>
+                        <select
+                          value={regForm.blood}
+                          onChange={(e) => updReg("blood", e.target.value)}
+                          style={{
+                            width: "100%",
+                            height: 42,
+                            background: "rgba(11, 20, 34, 0.95)",
+                            border: "1px solid rgba(255, 255, 255, 0.12)",
+                            borderRadius: 10,
+                            color: "#f8fafc",
+                            fontSize: 13.5,
+                            padding: "0 12px",
+                            outline: "none",
+                            cursor: "pointer",
+                            boxSizing: "border-box",
+                          }}
+                        >
+                          {bloodOptions.map((b) => (
+                            <option key={b} value={b} style={{ background: "#0b1422" }}>
+                              {b}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label
+                          style={{
+                            display: "block",
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: "rgba(180, 210, 245, 0.72)",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.05em",
+                            marginBottom: 5,
+                          }}
+                        >
+                          Medical Conditions
+                        </label>
+                        <input
+                          type="text"
+                          value={regForm.medical}
+                          onChange={(e) => updReg("medical", e.target.value)}
+                          placeholder="e.g. Asthma, Allergies, None"
+                          style={{
+                            width: "100%",
+                            height: 42,
+                            background: "rgba(255, 255, 255, 0.05)",
+                            border: "1px solid rgba(255, 255, 255, 0.11)",
+                            borderRadius: 10,
+                            color: "#f8fafc",
+                            fontSize: 13.5,
+                            padding: "0 12px",
+                            boxSizing: "border-box",
+                            outline: "none",
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        color: "#60a5fa",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.06em",
+                        marginBottom: 8,
+                      }}
+                    >
+                      Primary Emergency Contact *
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1.2fr", gap: 8, marginBottom: 14 }}>
+                      <input
+                        type="text"
+                        value={regForm.ec1Name}
+                        onChange={(e) => updReg("ec1Name", e.target.value)}
+                        placeholder="Contact Name *"
+                        style={{
+                          height: 40,
+                          background: "rgba(255, 255, 255, 0.05)",
+                          border: "1px solid rgba(255, 255, 255, 0.11)",
+                          borderRadius: 8,
+                          color: "#f8fafc",
+                          fontSize: 13,
+                          padding: "0 10px",
+                          boxSizing: "border-box",
+                        }}
+                      />
+                      <input
+                        type="text"
+                        value={regForm.ec1Rel}
+                        onChange={(e) => updReg("ec1Rel", e.target.value)}
+                        placeholder="Relation"
+                        style={{
+                          height: 40,
+                          background: "rgba(255, 255, 255, 0.05)",
+                          border: "1px solid rgba(255, 255, 255, 0.11)",
+                          borderRadius: 8,
+                          color: "#f8fafc",
+                          fontSize: 13,
+                          padding: "0 10px",
+                          boxSizing: "border-box",
+                        }}
+                      />
+                      <input
+                        type="tel"
+                        value={regForm.ec1Ph}
+                        onChange={(e) => updReg("ec1Ph", e.target.value)}
+                        placeholder="Phone *"
+                        style={{
+                          height: 40,
+                          background: "rgba(255, 255, 255, 0.05)",
+                          border: "1px solid rgba(255, 255, 255, 0.11)",
+                          borderRadius: 8,
+                          color: "#f8fafc",
+                          fontSize: 13,
+                          padding: "0 10px",
+                          boxSizing: "border-box",
+                        }}
+                      />
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        color: "rgba(180, 210, 245, 0.72)",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.06em",
+                        marginBottom: 8,
+                      }}
+                    >
+                      Secondary Emergency Contact (Optional)
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1.2fr", gap: 8, marginBottom: 20 }}>
+                      <input
+                        type="text"
+                        value={regForm.ec2Name}
+                        onChange={(e) => updReg("ec2Name", e.target.value)}
+                        placeholder="Contact Name"
+                        style={{
+                          height: 40,
+                          background: "rgba(255, 255, 255, 0.05)",
+                          border: "1px solid rgba(255, 255, 255, 0.11)",
+                          borderRadius: 8,
+                          color: "#f8fafc",
+                          fontSize: 13,
+                          padding: "0 10px",
+                          boxSizing: "border-box",
+                        }}
+                      />
+                      <input
+                        type="text"
+                        value={regForm.ec2Rel}
+                        onChange={(e) => updReg("ec2Rel", e.target.value)}
+                        placeholder="Relation"
+                        style={{
+                          height: 40,
+                          background: "rgba(255, 255, 255, 0.05)",
+                          border: "1px solid rgba(255, 255, 255, 0.11)",
+                          borderRadius: 8,
+                          color: "#f8fafc",
+                          fontSize: 13,
+                          padding: "0 10px",
+                          boxSizing: "border-box",
+                        }}
+                      />
+                      <input
+                        type="tel"
+                        value={regForm.ec2Ph}
+                        onChange={(e) => updReg("ec2Ph", e.target.value)}
+                        placeholder="Phone"
+                        style={{
+                          height: 40,
+                          background: "rgba(255, 255, 255, 0.05)",
+                          border: "1px solid rgba(255, 255, 255, 0.11)",
+                          borderRadius: 8,
+                          color: "#f8fafc",
+                          fontSize: 13,
+                          padding: "0 10px",
+                          boxSizing: "border-box",
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <button
+                        type="button"
+                        onClick={() => setRegStep(1)}
+                        style={{
+                          padding: "0 18px",
+                          height: 46,
+                          background: "rgba(255, 255, 255, 0.06)",
+                          border: "1px solid rgba(255, 255, 255, 0.12)",
+                          borderRadius: 12,
+                          color: "#f8fafc",
+                          fontSize: 13.5,
+                          fontWeight: 500,
+                          cursor: "pointer",
+                        }}
+                      >
+                        ← Back
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={regLoading}
+                        style={{
+                          flex: 1,
+                          height: 46,
+                          background: "linear-gradient(135deg, #10b981, #059669)",
+                          border: "1px solid rgba(255, 255, 255, 0.15)",
+                          borderRadius: 12,
+                          color: "#ffffff",
+                          fontSize: 14.5,
+                          fontWeight: 600,
+                          cursor: regLoading ? "not-allowed" : "pointer",
+                          boxShadow: "0 4px 20px rgba(16, 185, 129, 0.35)",
+                          opacity: regLoading ? 0.75 : 1,
+                        }}
+                      >
+                        {regLoading ? "Creating your profile…" : "Complete Registration"}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            )}
+
+            <div style={{ textAlign: "center", marginTop: 20 }}>
+              <span style={{ fontSize: 13, color: "rgba(180, 210, 245, 0.6)" }}>
+                Already registered?{" "}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setTab("login");
+                  setRegErr("");
+                }}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#60a5fa",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  padding: 0,
+                  textDecoration: "underline",
+                }}
+              >
+                Log In instead →
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ════════════════════════════════════════════════
+   PAGE: DASHBOARD
+════════════════════════════════════════════════ */
+const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
+  const [wx, setWx] = useState(null);
+  const [wxLoading, setWxLoading] = useState(true);
+  const [sensor, setSensor] = useState({
+    temp:27.4, humidity:68, pressure:1013.2, windSpeed:9.8, windDir:210,
+    uvIndex:5.8, rainfall:0.0, aqi:52,
+  });
+  const [pressureHistory, setPressureHistory] = useState([1013,1013,1012,1012,1011,1011,1010]);
+  const [sosConfirm, setSosConfirm] = useState(false);
+  const [sosActive, setSosActive] = useState(activeSOS);
+  const [expandProtocol, setExpandProtocol] = useState(null);
+  const [safetyProtocols, setSafetyProtocols] = useState(FALLBACK_SAFETY_PROTOCOLS);
+
+  /* Fetch Open-Meteo weather */
+  useEffect(()=>{
+    const go = async () => {
+      try {
+        const r = await fetch(
+          "https://api.open-meteo.com/v1/forecast?latitude=18.5196&longitude=73.8554" +
+          "&current=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m," +
+          "wind_direction_10m,cloud_cover,pressure_msl,uv_index,weather_code" +
+          "&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weather_code" +
+          "&timezone=Asia%2FKolkata&forecast_days=3"
+        );
+        const d = await r.json();
+        setWx(d);
+        if (d.current) {
+          setSensor(p=>({...p,
+            temp:d.current.temperature_2m, humidity:d.current.relative_humidity_2m,
+            pressure:d.current.pressure_msl, windSpeed:d.current.wind_speed_10m,
+            windDir:d.current.wind_direction_10m, uvIndex:d.current.uv_index??p.uvIndex,
+            rainfall:d.current.precipitation,
+          }));
+          setPressureHistory(h=>[...h.slice(1), Math.round(d.current.pressure_msl)]);
+        }
+        setWxLoading(false);
+      } catch { setWxLoading(false); }
+    };
+    go();
+    const t = setInterval(go, 300_000);
+    return ()=>clearInterval(t);
+  },[]);
+
+  /* Sensor micro-drift */
+  useEffect(()=>{
+    const t = setInterval(()=>{
+      setSensor(p=>({...p,
+        temp:+(p.temp+(Math.random()-.5)*.15).toFixed(1),
+        windSpeed:+Math.max(0,(p.windSpeed+(Math.random()-.5)*1.2)).toFixed(1),
+        aqi:Math.min(200,Math.max(10,Math.round(p.aqi+(Math.random()-.5)*2))),
+      }));
+      setPressureHistory(h=>{
+        const last = h[h.length-1];
+        const next = +(last+(Math.random()-.5)*0.3).toFixed(1);
+        return [...h.slice(1), next];
+      });
+    }, 3000);
+    return ()=>clearInterval(t);
+  },[]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToSafetyProtocols((protocols) => {
+      if (!protocols.length) return;
+      const publishedProtocols = protocols
+        .map((protocol) => ({
+          ...protocol,
+          icon: protocol.icon || deriveProtocolIcon(protocol.title),
+          status: protocol.status || "draft",
+          updated:
+            protocol.updated ||
+            (protocol.updatedAt
+              ? new Date(protocol.updatedAt).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })
+              : "Recently"),
+        }))
+        .filter((protocol) => protocol.status === "published");
+
+      if (publishedProtocols.length > 0) {
+        setSafetyProtocols(publishedProtocols);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const wxCode = wx?.current?.weather_code??0;
+  const [wxIcon, wxDesc] = WX_CODES[wxCode]??["🌤️","—"];
+  const pressureTrend = pressureHistory[pressureHistory.length-1] - pressureHistory[0];
+  const safetyStatus  = pressureTrend < -2 ? "unsafe" : pressureTrend < -0.5 ? "caution" : "safe";
+  const statusColor   = {safe:C.green, caution:C.amber, unsafe:C.red};
+  const statusLabel   = {safe:"Safe to Trek ✓", caution:"Use Caution ⚠️", unsafe:"Unsafe Conditions ✗"};
+
+  const handleSOSTrigger = () => {
+    if (!sosConfirm) { setSosConfirm(true); return; }
+    setSosActive(true); setSosConfirm(false); onSOS(true);
+  };
+  const cancelSOS = () => { setSosActive(false); setSosConfirm(false); onSOS(false); };
+
+  return (
+    <div>
+      <PageHeader title="My Dashboard"
+        sub={`Welcome back, ${user.name} · ${new Date().toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}`}
+        right={<div style={{display:"flex",gap:8}}>
+          <Pill color={safetyStatus==="safe"?"green":safetyStatus==="caution"?"amber":"red"}>
+            {statusLabel[safetyStatus]}
+          </Pill>
+          <Pill color="green">● Live</Pill>
+        </div>}/>
+
+      {/* SOS Active Banner */}
+      {sosActive&&(
+        <div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.4)",
+          borderRadius:12,padding:"14px 18px",marginBottom:18,display:"flex",alignItems:"center",gap:14}}>
+          <div style={{width:14,height:14,borderRadius:"50%",background:C.red,
+            animation:"ud-sos-blink 1.2s infinite",flexShrink:0}}/>
+          <div style={{flex:1}}>
+            <div style={{fontSize:14,fontWeight:700,color:C.red}}>🚨 SOS ACTIVE — Emergency Broadcast Sent</div>
+            <div style={{fontSize:12,color:C.muted,marginTop:2}}>
+              Rescue Team Alpha is en route · ETA 12 min · Your GPS is being tracked live
+            </div>
+          </div>
+          <Btn variant="danger" onClick={cancelSOS}>✕ Cancel SOS</Btn>
+          <Btn onClick={()=>onNavigate("sos-nav")}>Navigate →</Btn>
+        </div>
+      )}
+
+      <div style={{display:"grid",gridTemplateColumns:"300px 1fr",gap:16,marginBottom:16}}>
+        {/* Left: Profile Card */}
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <Card style={{background:"linear-gradient(135deg,rgba(59,130,246,0.10),rgba(11,20,34,0.95))"}}>
+            <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
+              <Avatar initials={user.avatar} bg={user.color[0]} text={user.color[1]} size={50}/>
+              <div>
+                <div style={{fontSize:16,fontWeight:700,color:C.text}}>{user.name}</div>
+                <div style={{fontSize:11,color:C.muted}}>{user.email}</div>
+                <div style={{marginTop:4}}><Pill color="blue">{user.role}</Pill></div>
+              </div>
+            </div>
+            {[
+              ["📍 Location",  user.city],
+              ["🩸 Blood",     user.blood],
+              ["⚕️ Medical",   user.medical||"None"],
+              ["📱 Devices",   `${user.devices} linked`],
+              ["🥾 Treks",     `${user.trips} completed`],
+            ].map(([k,v])=>(
+              <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:12,
+                padding:"5px 0",borderBottom:`1px solid ${C.border}`}}>
+                <span style={{color:C.muted2}}>{k}</span>
+                <span style={{color:C.text,fontWeight:500}}>{v}</span>
+              </div>
+            ))}
+            <div style={{marginTop:12,display:"flex",gap:8}}>
+              <Btn style={{flex:1,justifyContent:"center",fontSize:11}} onClick={()=>onNavigate("join-trip")}>🔑 Join Trip</Btn>
+            </div>
+          </Card>
+
+          {/* My Trip */}
+          <Card>
+            <div style={{fontSize:12,fontWeight:600,color:C.text,marginBottom:10}}>My Trip</div>
+            {joinedTrip ? (
+              <div>
+                <div style={{fontSize:13,fontWeight:500,color:C.text}}>{joinedTrip.name}</div>
+                <div style={{fontSize:11,color:C.muted,marginTop:2}}>{joinedTrip.date} · {joinedTrip.location}</div>
+              </div>
+            ) : (
+              <div>
+                <div style={{fontSize:12,color:C.muted,marginBottom:10}}>You haven't joined a trip yet.</div>
+                <Btn variant="primary" style={{justifyContent:"center",fontSize:12}} onClick={()=>onNavigate("join-trip")}>🔑 Join with a code</Btn>
+              </div>
+            )}
+          </Card>
+
+          {/* Emergency Contacts */}
+          <Card>
+            <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>Emergency Contacts</div>
+            {[{name:user.ec1Name,rel:user.ec1Rel,ph:user.ec1Ph},{name:user.ec2Name,rel:user.ec2Rel,ph:user.ec2Ph}].map((ec,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:i===0?`1px solid ${C.border}`:"none"}}>
+                <div style={{width:30,height:30,borderRadius:"50%",background:"rgba(59,130,246,0.1)",
+                  display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0}}>
+                  {i===0?"👩":"👨"}
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:12,fontWeight:500,color:C.text}}>{ec.name}</div>
+                  <div style={{fontSize:10,color:C.muted}}>{ec.rel} · {ec.ph}</div>
+                </div>
+                <a href={`tel:${ec.ph}`} style={{padding:"3px 10px",borderRadius:7,
+                  background:"rgba(34,197,94,0.1)",border:`1px solid rgba(34,197,94,0.25)`,
+                  color:C.green,fontSize:10,textDecoration:"none",fontWeight:500}}>📞</a>
+              </div>
+            ))}
+          </Card>
+        </div>
+
+        {/* Right: weather + SOS button + safety */}
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {/* Quick weather strip */}
+          <Card style={{background:"linear-gradient(135deg,rgba(20,50,110,0.55),rgba(11,20,34,0.92))"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
+              <div style={{display:"flex",alignItems:"center",gap:14}}>
+                <div style={{fontSize:50}}>{wxIcon}</div>
+                <div>
+                  <div style={{fontSize:44,fontWeight:700,color:C.text,lineHeight:1}}>
+                    {sensor.temp}<span style={{fontSize:22,color:C.muted}}>°C</span>
+                  </div>
+                  <div style={{fontSize:13,color:C.muted}}>{wxDesc}</div>
+                  <div style={{fontSize:11,color:C.muted2}}>Feels like {feelsLike(sensor.temp,sensor.humidity)}°C</div>
+                </div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                {[
+                  ["💧","Humidity",`${sensor.humidity}%`],
+                  ["🌬️","Wind",`${sensor.windSpeed} km/h ${windDirLabel(sensor.windDir)}`],
+                  ["🌀","Pressure",`${sensor.pressure?.toFixed(0)} hPa`],
+                  ["☀️","UV Index",`${sensor.uvIndex}`],
+                ].map(([ic,k,v])=>(
+                  <div key={k} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,
+                    borderRadius:9,padding:"7px 11px",minWidth:110}}>
+                    <div style={{fontSize:10,color:C.muted2,marginBottom:1}}>{ic} {k}</div>
+                    <div style={{fontSize:14,fontWeight:600,color:C.text}}>{v}</div>
+                  </div>
+                ))}
+              </div>
+              <div>
+                {/* Safety status pill */}
+                <div style={{background:`rgba(${safetyStatus==="safe"?"34,197,94":safetyStatus==="caution"?"245,158,11":"239,68,68"},0.12)`,
+                  border:`1px solid rgba(${safetyStatus==="safe"?"34,197,94":safetyStatus==="caution"?"245,158,11":"239,68,68"},0.35)`,
+                  borderRadius:10,padding:"10px 16px",textAlign:"center",minWidth:130}}>
+                  <div style={{fontSize:11,color:C.muted,marginBottom:3}}>Trail Safety Status</div>
+                  <div style={{fontSize:14,fontWeight:700,color:statusColor[safetyStatus]}}>{statusLabel[safetyStatus]}</div>
+                  <div style={{fontSize:10,color:C.muted2,marginTop:3}}>
+                    {pressureTrend>0?"↑ Pressure rising":"↓ Pressure dropping"} {Math.abs(pressureTrend).toFixed(1)} hPa
+                  </div>
+                </div>
+                <button onClick={()=>onNavigate("weather")}
+                  style={{marginTop:8,width:"100%",padding:"6px",background:"transparent",border:`1px solid ${C.border}`,
+                    borderRadius:8,color:C.muted,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
+                  View full weather →
+                </button>
+              </div>
+            </div>
+          </Card>
+
+          {/* SOS Button — hero */}
+          <Card style={{background:"rgba(239,68,68,0.04)",border:`1px solid rgba(239,68,68,0.2)`,padding:"22px 24px"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:16}}>
+              <div>
+                <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:4}}>🚨 Emergency SOS</div>
+                <div style={{fontSize:12,color:C.muted,maxWidth:360,lineHeight:1.5}}>
+                  One tap broadcasts your GPS coordinates, blood group, medical profile, and emergency contacts
+                  to the nearest rescue team. <strong style={{color:"#fca5a5"}}>Use only in genuine emergencies.</strong>
+                </div>
+                {sosConfirm&&(
+                  <div style={{marginTop:10,padding:"8px 12px",background:"rgba(239,68,68,0.1)",
+                    border:"1px solid rgba(239,68,68,0.3)",borderRadius:8,fontSize:12,color:"#fca5a5",fontWeight:500}}>
+                    ⚠️ Are you sure? Tap SOS again to confirm broadcast.
+                  </div>
+                )}
+              </div>
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
+                <button onClick={sosActive?cancelSOS:handleSOSTrigger}
+                  style={{
+                    width:100,height:100,borderRadius:"50%",border:"none",cursor:"pointer",
+                    background:sosActive
+                      ? `radial-gradient(circle,rgba(239,68,68,0.9),rgba(185,28,28,1))`
+                      : sosConfirm
+                        ? `radial-gradient(circle,rgba(245,158,11,0.9),rgba(180,100,0,1))`
+                        : `radial-gradient(circle,rgba(239,68,68,0.75),rgba(185,28,28,0.9))`,
+                    boxShadow: sosActive
+                      ? "0 0 0 8px rgba(239,68,68,0.2),0 0 0 18px rgba(239,68,68,0.08),0 0 40px rgba(239,68,68,0.4)"
+                      : "0 0 0 6px rgba(239,68,68,0.15),0 4px 24px rgba(239,68,68,0.3)",
+                    fontFamily:"inherit", animation: sosActive?"ud-sos-blink 1.2s infinite":undefined,
+                  }}>
+                  <div style={{fontSize:28,lineHeight:1}}>🆘</div>
+                  <div style={{fontSize:11,fontWeight:800,color:"#fff",letterSpacing:"0.1em",marginTop:4}}>
+                    {sosActive?"ACTIVE":sosConfirm?"CONFIRM":"SOS"}
+                  </div>
+                </button>
+                {(sosActive||sosConfirm)&&(
+                  <button onClick={()=>{setSosConfirm(false);setSosActive(false);onSOS(false);}}
+                    style={{padding:"5px 14px",background:"transparent",border:`1px solid ${C.border}`,
+                      borderRadius:8,color:C.muted,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </div>
+          </Card>
+
+        </div>
+      </div>
+
+      {/* Safety Protocols */}
+      <div style={{marginTop:4}}>
+        <div style={{fontSize:13,fontWeight:600,color:C.text,marginBottom:12}}>📋 Safety Protocols</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          {safetyProtocols.map(p=>(
+            <Card key={p.id} style={{cursor:"pointer",transition:"border-color 0.2s",
+              borderColor:expandProtocol===p.id?"rgba(59,130,246,0.4)":C.border}}
+              onClick={()=>setExpandProtocol(expandProtocol===p.id?null:p.id)}>
+              <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
+                <div style={{fontSize:20,flexShrink:0,marginTop:2}}>{p.icon}</div>
+                <div style={{flex:1}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                    <div style={{fontSize:13,fontWeight:500,color:C.text}}>{p.title}</div>
+                    <span style={{fontSize:12,color:C.muted,transition:"transform 0.2s",
+                      display:"inline-block",transform:expandProtocol===p.id?"rotate(180deg)":"none"}}>▾</span>
+                  </div>
+                  <div style={{fontSize:10,color:C.muted2,marginTop:2}}>Updated {p.updated}</div>
+                  {expandProtocol===p.id&&(
+                    <div style={{fontSize:12,color:C.muted,marginTop:10,lineHeight:1.7,
+                      paddingTop:10,borderTop:`1px solid ${C.border}`}}>
+                      {p.body}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const PageLiveTracking = ({ user, activeSOS, onSOS }) => {
+  const [trackingToken, setTrackingToken] = useState(() => localStorage.getItem("coordage_tracking_token") || "");
+  const [tokenState, setTokenState] = useState(trackingToken ? "ready" : "loading");
+  const [tokenError, setTokenError] = useState("");
+
+  const issueToken = async () => {
+    setTokenState("loading");
+    setTokenError("");
+    try {
+      const response = await fetch(`${TRACKING_SERVER_URL}/auth/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, name: user.name, role: "user" }),
+      });
+      if (!response.ok) {
+        throw new Error(`Token request failed (${response.status})`);
+      }
+      const data = await response.json();
+      if (data.token) {
+        localStorage.setItem("coordage_tracking_token", data.token);
+        setTrackingToken(data.token);
+        setTokenState("ready");
+      } else {
+        throw new Error("Token missing in response");
+      }
+    } catch (error) {
+      setTokenError(error.message || "Unable to obtain tracking token");
+      setTokenState("manual");
+    }
+  };
+
+  useEffect(() => {
+    const cached = localStorage.getItem("coordage_tracking_token");
+    if (cached && isUsableTrackingToken(cached, user)) {
+      setTrackingToken(cached);
+      setTokenState("ready");
+      return;
+    }
+
+    if (cached) {
+      localStorage.removeItem("coordage_tracking_token");
+      setTrackingToken("");
+    }
+
+    issueToken();
+    return;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.id, user.name]);
+
+  return (
+    <div>
+      <PageHeader
+        title="Live Tracking"
+        sub="Real-time GPS sharing for your current trip"
+        right={
+          <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+            <Pill color={tokenState === "ready" ? "green" : tokenState === "loading" ? "amber" : "red"}>
+              {tokenState === "ready" ? "JWT Ready" : tokenState === "loading" ? "Issuing token" : "Token missing"}
+            </Pill>
+            <Pill color={activeSOS ? "red" : "gray"}>{activeSOS ? "SOS Active" : "Tracking Ready"}</Pill>
+          </div>
+        }
+      />
+
+      {tokenError && (
+        <Card style={{marginBottom:16,borderColor:"rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.04)"}}>
+          <div style={{fontSize:12,color:"#fca5a5",marginBottom:10}}>
+            Tracking token could not be issued automatically: {tokenError}. Start the tracking server or seed localStorage with a valid JWT.
+          </div>
+          <Btn onClick={issueToken} disabled={tokenState === "loading"}>
+            {tokenState === "loading" ? "Retrying..." : "Retry Token Request"}
+          </Btn>
+        </Card>
+      )}
+
+      <UserTrackingWidget
+        user={user}
+        serverUrl={TRACKING_SERVER_URL}
+        token={trackingToken}
+        activeSOS={activeSOS}
+        onSOS={onSOS}
+        onTokenExpired={issueToken}
+      />
+    </div>
+  );
+};
+
+/* ════════════════════════════════════════════════
+   PAGE: JOIN TRIP
+════════════════════════════════════════════════ */
+const PageJoinTrip = ({ onJoin, error }) => {
+  const [code, setCode] = useState("");
+  return (
+    <div style={{padding:16,maxWidth:360,margin:"0 auto"}}>
+      <div style={{fontSize:16,fontWeight:600,color:"#fff",marginBottom:6}}>Join a trip</div>
+      <div style={{fontSize:12,color:"rgba(255,255,255,0.5)",marginBottom:16}}>
+        Your trek leader shares this code over WhatsApp or in person before the trip starts.
+      </div>
+      <input value={code} onChange={e=>setCode(e.target.value)} placeholder="Enter trip code"
+        style={{width:"100%",height:44,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",
+          borderRadius:8,color:"#fff",fontSize:16,letterSpacing:2,textAlign:"center",padding:"0 12px",
+          fontFamily:"inherit",boxSizing:"border-box",outline:"none",marginBottom:10,textTransform:"uppercase"}}/>
+      {error && <div style={{fontSize:12,color:"#f87171",marginBottom:10}}>{error}</div>}
+      <button onClick={()=>onJoin(code)} style={{width:"100%",height:40,background:"#0C447C",border:"none",
+        borderRadius:8,color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+        Join trip
+      </button>
+    </div>
+  );
+};
+
+/* ════════════════════════════════════════════════
+   PAGE: WEATHER MAPS (mirrors admin exactly)
+════════════════════════════════════════════════ */
+const PageWeatherMaps = () => {
+  const [tab, setTab]           = useState("live");
+  const [mapType, setMapType]   = useState("terrain");
+  const [perspective, setPerspective] = useState(false);
+  const [wx, setWx]             = useState(null);
+  const [loading, setLoading]   = useState(true);
+  const [sensor, setSensor]     = useState({
+    temp:27.4, humidity:68, pressure:1013.2, windSpeed:9.8, windDir:210,
+    uvIndex:5.8, rainfall:0.0, altitude:580, co2:415, aqi:52,
+    lastSync:new Date().toLocaleTimeString("en-IN"),
+  });
+
+  useEffect(()=>{
+    const go = async () => {
+      try {
+        const r = await fetch(
+          "https://api.open-meteo.com/v1/forecast?latitude=18.5196&longitude=73.8554" +
+          "&current=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m," +
+          "wind_direction_10m,cloud_cover,pressure_msl,uv_index,weather_code" +
+          "&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weather_code,wind_speed_10m_max" +
+          "&hourly=temperature_2m,precipitation_probability" +
+          "&timezone=Asia%2FKolkata&forecast_days=7"
+        );
+        const d = await r.json();
+        setWx(d);
+        if(d.current) setSensor(p=>({...p,
+          temp:d.current.temperature_2m, humidity:d.current.relative_humidity_2m,
+          pressure:d.current.pressure_msl, windSpeed:d.current.wind_speed_10m,
+          windDir:d.current.wind_direction_10m, uvIndex:d.current.uv_index??p.uvIndex,
+          rainfall:d.current.precipitation, lastSync:new Date().toLocaleTimeString("en-IN"),
+        }));
+        setLoading(false);
+      } catch { setLoading(false); }
+    };
+    go(); const t = setInterval(go,300_000); return()=>clearInterval(t);
+  },[]);
+
+  useEffect(()=>{
+    const t = setInterval(()=>setSensor(p=>({...p,
+      temp:+(p.temp+(Math.random()-.5)*.18).toFixed(1),
+      windSpeed:+Math.max(0,(p.windSpeed+(Math.random()-.5)*1.4)).toFixed(1),
+      co2:Math.round(p.co2+(Math.random()-.5)*3),
+      aqi:Math.min(200,Math.max(10,Math.round(p.aqi+(Math.random()-.5)*2))),
+      lastSync:new Date().toLocaleTimeString("en-IN"),
+    })),2000);
+    return()=>clearInterval(t);
+  },[]);
+
+  /* Leaflet with geofence layer */
+  const LeafletWeatherMap = ({ height, tileType, perspective:tilted, extraMarkers=[] }) => {
+    const ref = useRef(null);
+    const mapRef2 = useRef(null);
+    const [rdy, setRdy] = useState(!!window.L);
+    useEffect(()=>{ injectLeafletStyles(); ensureLeaflet(()=>setRdy(true)); },[]);
+    useEffect(()=>{
+      if(!rdy||!ref.current) return;
+      const L = window.L;
+      if(mapRef2.current){mapRef2.current.remove();mapRef2.current=null;}
+      const map = L.map(ref.current,{center:[18.5196,73.8554],zoom:12,zoomControl:true});
+      const {url,attr} = TILE_LAYERS[tileType]||TILE_LAYERS.road;
+      L.tileLayer(url,{attribution:attr,maxZoom:19}).addTo(map);
+      const mkI = (color) => L.divIcon({className:"",
+        html:`<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 0 0 5px ${color}44;"></div>`,
+        iconSize:[14,14],iconAnchor:[7,7],popupAnchor:[0,-10]});
+      L.marker([18.5196,73.8554],{icon:mkI("#3b82f6")}).addTo(map)
+        .bindPopup("<b>📡 Weather Station</b><br><small>Mulshi, Maharashtra<br>18.52°N · 73.85°E · 580m ASL</small>");
+      extraMarkers.forEach(m=>{
+        const mk = L.marker([m.lat,m.lon],{icon:mkI(m.color||"#ef4444")}).addTo(map);
+        if(m.popup) mk.bindPopup(m.popup);
+      });
+      mapRef2.current = map;
+      return()=>{if(mapRef2.current){mapRef2.current.remove();mapRef2.current=null;}};
+    },[rdy,tileType]);
+    return (
+      <div style={{borderRadius:12,overflow:"hidden",border:`1px solid ${C.border}`,boxShadow:"0 4px 24px rgba(0,0,0,.4)",
+        ...(tilted?{transform:"perspective(900px) rotateX(28deg)",transformOrigin:"top center"}:{})}}>
+        {!rdy&&<div style={{height,background:"#080f1a",display:"flex",alignItems:"center",justifyContent:"center",color:C.muted,fontSize:13}}>⏳ Loading map…</div>}
+        <div ref={ref} style={{height,display:rdy?"block":"none"}}/>
+      </div>
+    );
+  };
+
+  const wxCode = wx?.current?.weather_code??0;
+  const [wxIcon,wxDesc] = WX_CODES[wxCode]??["🌤️","—"];
+  const cur = wx?.current;
+  const TABS = [
+    {id:"live",icon:"🌡️",label:"Live Weather"},
+    {id:"map",icon:"🗺️",label:"Live Map"},
+    {id:"forecast",icon:"📅",label:"7-Day Forecast"},
+  ];
+
+  return (
+    <div>
+      <PageHeader title="Weather & Maps"
+        sub={`Live · Mulshi, Maharashtra · ${loading?"Loading…":"Updated "+sensor.lastSync}`}
+        right={<Pill color="green">● Live Data</Pill>}/>
+
+      <div style={{display:"flex",gap:6,marginBottom:16}}>
+        {TABS.map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{padding:"7px 14px",borderRadius:9,
+            border:`1px solid ${tab===t.id?C.accent:C.border}`,
+            background:tab===t.id?"rgba(59,130,246,0.12)":"transparent",
+            color:tab===t.id?C.accent:C.muted,fontSize:12,cursor:"pointer",fontFamily:"inherit",
+            display:"flex",alignItems:"center",gap:6}}>{t.icon} {t.label}</button>
+        ))}
+      </div>
+
+      {tab==="live"&&<div>
+        <Card style={{marginBottom:14,background:"linear-gradient(135deg,rgba(20,50,110,0.55),rgba(11,20,34,0.92))"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:16}}>
+            <div>
+              <div style={{fontSize:11,color:C.muted,marginBottom:6}}>📍 Mulshi, Maharashtra · Hinjawadi</div>
+              <div style={{display:"flex",alignItems:"center",gap:14}}>
+                <div style={{fontSize:60}}>{wxIcon}</div>
+                <div>
+                  <div style={{fontSize:50,fontWeight:700,color:C.text,lineHeight:1}}>{sensor.temp}<span style={{fontSize:24,color:C.muted}}>°C</span></div>
+                  <div style={{fontSize:14,color:C.muted,marginTop:2}}>{wxDesc}</div>
+                  <div style={{fontSize:11,color:C.muted2,marginTop:2}}>Feels like {feelsLike(sensor.temp,sensor.humidity)}°C</div>
+                </div>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              {[["💧","Humidity",`${sensor.humidity}%`],["🌬️","Wind",`${sensor.windSpeed} km/h ${windDirLabel(sensor.windDir)}`],
+               ["🌀","Pressure",`${sensor.pressure?.toFixed(0)} hPa`],["🌂","Rainfall",`${sensor.rainfall} mm`],
+               ["☀️","UV Index",`${sensor.uvIndex}`],["☁️","Cloud",`${cur?.cloud_cover??"—"}%`]].map(([ic,k,v])=>(
+                <div key={k} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"8px 12px",minWidth:110}}>
+                  <div style={{fontSize:10,color:C.muted2,marginBottom:2}}>{ic} {k}</div>
+                  <div style={{fontSize:15,fontWeight:600,color:C.text}}>{v}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{marginTop:12,paddingTop:10,borderTop:`1px solid ${C.border}`,fontSize:10,color:C.muted2,display:"flex",gap:16,flexWrap:"wrap"}}>
+            <span>⚡ Open-Meteo API</span><span>🔄 Last sync: {sensor.lastSync}</span>
+            <span>📡 Protocol: MQTT / LoRa Gateway</span>
+          </div>
+        </Card>
+        {wx?.hourly&&(
+          <Card style={{marginBottom:14}}>
+            <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>Hourly Temperature (next 24h)</div>
+            <div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:4}}>
+              {wx.hourly.time.slice(0,24).map((t,i)=>{
+                const hr=t.split("T")[1]?.substring(0,5);
+                const tmp=wx.hourly.temperature_2m[i];
+                const pp=wx.hourly.precipitation_probability?.[i]??0;
+                return (
+                  <div key={i} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,
+                    flexShrink:0,minWidth:44,padding:"6px 4px",borderRadius:8,
+                    background:i===0?"rgba(59,130,246,0.1)":"transparent"}}>
+                    <div style={{fontSize:9,color:C.muted2}}>{hr}</div>
+                    <div style={{fontSize:13,fontWeight:600,color:tmp>35?C.red:tmp>30?C.amber:tmp>25?C.accent:C.teal}}>{tmp}°</div>
+                    {pp>20&&<div style={{fontSize:9,color:C.teal}}>💧{pp}%</div>}
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        )}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <Card>
+            <div style={{fontSize:12,fontWeight:500,color:C.text,marginBottom:10}}>⚠️ Active Alerts</div>
+            {[{col:"amber",title:"Heat advisory",desc:`Temp ${sensor.temp>30?"above":"near"} 30°C. Stay hydrated during treks.`},
+              {col:"blue",title:"Wind advisory",desc:`${sensor.windSpeed>20?"Moderate":"Low"} winds from ${windDirLabel(sensor.windDir)}. Check trail conditions.`}].map(a=>(
+              <div key={a.title} style={{background:"rgba(255,255,255,0.03)",
+                border:`1px solid ${a.col==="amber"?"rgba(245,158,11,0.3)":"rgba(59,130,246,0.2)"}`,
+                borderRadius:9,padding:"9px 12px",marginBottom:7}}>
+                <div style={{fontSize:12,fontWeight:500,color:C.text,marginBottom:2}}>{a.title}</div>
+                <div style={{fontSize:11,color:C.muted}}>{a.desc}</div>
+              </div>
+            ))}
+          </Card>
+          <Card>
+            <div style={{fontSize:12,fontWeight:500,color:C.text,marginBottom:10}}>📊 Air Quality</div>
+            {[["AQI",sensor.aqi,200,sensor.aqi<50?C.green:sensor.aqi<100?C.amber:C.red],
+              ["CO₂",sensor.co2-350,200,sensor.co2<450?C.green:C.amber],
+              ["Humidity",sensor.humidity,100,C.teal]].map(([label,val,max,col])=>(
+              <div key={label} style={{marginBottom:10}}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:3}}>
+                  <span style={{color:C.muted}}>{label}</span>
+                  <span style={{color:col,fontWeight:600}}>{label==="CO₂"?sensor.co2+" ppm":label==="AQI"?sensor.aqi:sensor.humidity+"%"}</span>
+                </div>
+                <div style={{height:5,borderRadius:4,background:"rgba(255,255,255,0.07)"}}>
+                  <div style={{height:"100%",width:`${Math.min(100,(val/max)*100)}%`,borderRadius:4,background:col,transition:"width 0.5s"}}/>
+                </div>
+              </div>
+            ))}
+          </Card>
+        </div>
+      </div>}
+
+      {tab==="map"&&<div>
+        <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center",flexWrap:"wrap"}}>
+          {[["road","🗺️ Road"],["satellite","🛰️ Satellite"],["terrain","🏔️ Terrain"]].map(([v,label])=>(
+            <button key={v} onClick={()=>setMapType(v)} style={{padding:"6px 14px",borderRadius:8,
+              border:`1px solid ${mapType===v?C.accent:C.border}`,
+              background:mapType===v?"rgba(59,130,246,0.12)":"transparent",
+              color:mapType===v?C.accent:C.muted,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>
+          ))}
+          <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:12,color:C.muted}}>3D tilt</span>
+            <Toggle on={perspective} onChange={()=>setPerspective(x=>!x)}/>
+          </div>
+        </div>
+        <LeafletWeatherMap height={480} tileType={mapType} perspective={perspective}
+          extraMarkers={[{lat:18.52,lon:73.85,color:"#22c55e",popup:"<b>📍 My Location</b><br>Mulshi, Maharashtra"}]}/>
+        <div style={{marginTop:10,display:"flex",gap:16,fontSize:11,color:C.muted2,flexWrap:"wrap"}}>
+          <span>📍 18.52°N, 73.85°E</span>
+          <span>🗺️ Mulshi Reservoir — Western Ghats</span>
+          <span>🏔️ Alt: {sensor.altitude}m ASL</span>
+          <span>🌐 OpenStreetMap / ESRI · Free tiles</span>
+        </div>
+      </div>}
+
+      {tab==="forecast"&&<div>
+        {wx?.daily?(
+          <>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:10,marginBottom:14}}>
+              {wx.daily.time.map((d,i)=>{
+                const dt=new Date(d);
+                const dstr=dt.toLocaleDateString("en-IN",{weekday:"short",day:"numeric"});
+                const [ic]=WX_CODES[wx.daily.weather_code[i]]??["🌤️"];
+                return (
+                  <Card key={d} style={{textAlign:"center",marginBottom:0,padding:"14px 8px"}}>
+                    <div style={{fontSize:10,color:C.muted,marginBottom:4}}>{dstr}</div>
+                    <div style={{fontSize:28,marginBottom:4}}>{ic}</div>
+                    <div style={{fontSize:15,fontWeight:700,color:C.red}}>{wx.daily.temperature_2m_max[i]}°</div>
+                    <div style={{fontSize:12,color:C.muted}}>{wx.daily.temperature_2m_min[i]}°</div>
+                    <div style={{fontSize:10,color:C.teal,marginTop:2}}>💧{wx.daily.precipitation_sum[i]}mm</div>
+                    <div style={{fontSize:10,color:C.muted2,marginTop:1}}>💨{wx.daily.wind_speed_10m_max[i]}km/h</div>
+                  </Card>
+                );
+              })}
+            </div>
+            <Card>
+              <div style={{fontSize:12,fontWeight:500,color:C.text,marginBottom:12}}>Weekly Summary</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
+                {[["Avg High",`${(wx.daily.temperature_2m_max.reduce((a,b)=>a+b,0)/7).toFixed(1)}°C`,C.red],
+                  ["Avg Low",`${(wx.daily.temperature_2m_min.reduce((a,b)=>a+b,0)/7).toFixed(1)}°C`,C.teal],
+                  ["Total Rain",`${wx.daily.precipitation_sum.reduce((a,b)=>a+b,0).toFixed(1)} mm`,C.accent],
+                  ["Max Wind",`${Math.max(...wx.daily.wind_speed_10m_max).toFixed(0)} km/h`,C.amber],
+                ].map(([k,v,col])=>(
+                  <div key={k} style={{background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"10px 12px",border:`1px solid ${C.border}`}}>
+                    <div style={{fontSize:10,color:C.muted2,marginBottom:4}}>{k}</div>
+                    <div style={{fontSize:20,fontWeight:700,color:col}}>{v}</div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </>
+        ):<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:200,color:C.muted2}}>
+          {loading?"⏳ Loading forecast…":"⚠️ Forecast unavailable"}
+        </div>}
+      </div>}
+    </div>
+  );
+};
+
+/* ════════════════════════════════════════════════
+   PAGE: SOS NAVIGATION  (user view)
+════════════════════════════════════════════════ */
+const PageSOSNav = ({ user, activeSOS }) => {
+  const [currentStep, setCurrentStep] = useState(0);
+  const [elapsed, setElapsed]         = useState(0);
+  const [teamPos, setTeamPos]         = useState({lat:RESCUE_TEAMS[0].lat,lon:RESCUE_TEAMS[0].lon});
+  const [navMode, setNavMode]         = useState(false);
+  const [trackingToken, setTrackingToken] = useState(() => localStorage.getItem("coordage_tracking_token") || "");
+  const [tokenState, setTokenState] = useState(trackingToken ? "ready" : "loading");
+
+  const issueToken = useCallback(async () => {
+    setTokenState("loading");
+    try {
+      const response = await fetch(`${TRACKING_SERVER_URL}/auth/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, name: user.name, role: "user" }),
+      });
+      if (!response.ok) throw new Error(`Token request failed (${response.status})`);
+      const data = await response.json();
+      if (!data.token) throw new Error("Token missing in response");
+      localStorage.setItem("coordage_tracking_token", data.token);
+      setTrackingToken(data.token);
+      setTokenState("ready");
+    } catch {
+      setTokenState("manual");
+    }
+  }, [user.id, user.name]);
+
+  useEffect(() => {
+    const cached = localStorage.getItem("coordage_tracking_token");
+    if (cached) {
+      setTrackingToken(cached);
+      setTokenState("ready");
+      return;
+    }
+    issueToken();
+  }, [issueToken]);
+
+  const tracking = useLocationTracking({
+    userId: user.id,
+    name: user.name,
+    token: trackingToken,
+    serverUrl: TRACKING_SERVER_URL,
+  });
+
+  const { position, startTracking, stopTracking } = tracking;
+
+  const steps    = TURN_BY_TURN_USER;
+  const myPos    = position || { lat: user?.lat || 18.5196, lon: user?.lon || 73.8554 };
+  const team     = RESCUE_TEAMS[0];
+  const etaMin   = Math.max(0, 12 - Math.floor(elapsed/60));
+  const step     = steps[currentStep];
+  const pct      = (currentStep/(steps.length-1))*100;
+  const liveDistanceKm = Math.sqrt(
+    Math.pow((teamPos.lat - myPos.lat) * 111, 2) +
+    Math.pow((teamPos.lon - myPos.lon) * 111, 2)
+  ).toFixed(1);
+
+  useEffect(() => {
+    if (!activeSOS || tokenState !== "ready") {
+      stopTracking();
+      return;
+    }
+    startTracking();
+    return () => stopTracking();
+  }, [activeSOS, tokenState, startTracking, stopTracking]);
+
+  /* Animate team toward user */
+  useEffect(()=>{
+    if(!activeSOS) return;
+    const t = setInterval(()=>{
+      setTeamPos(p=>({
+        lat: p.lat + (myPos.lat - p.lat)*0.012,
+        lon: p.lon + (myPos.lon - p.lon)*0.012,
+      }));
+      setElapsed(e=>e+4);
+    },1000);
+    return()=>clearInterval(t);
+  },[activeSOS]);
+
+  useEffect(()=>{
+    if(!navMode) return;
+    const t = setInterval(()=>setCurrentStep(s=>Math.min(s+1,steps.length-1)),7000);
+    return()=>clearInterval(t);
+  },[navMode]);
+
+  /* Leaflet SOS nav map */
+  const SOSMap = ({ height }) => {
+    const ref = useRef(null);
+    const mapRef2 = useRef(null);
+    const [rdy,setRdy] = useState(!!window.L);
+    useEffect(()=>{ injectLeafletStyles(); ensureLeaflet(()=>setRdy(true)); },[]);
+    const teamKey = JSON.stringify(teamPos);
+    useEffect(()=>{
+      if(!rdy||!ref.current) return;
+      const L = window.L;
+      if(mapRef2.current){mapRef2.current.remove();mapRef2.current=null;}
+      const map = L.map(ref.current,{center:[myPos.lat,myPos.lon],zoom:10,zoomControl:true});
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
+        attribution:"© OpenStreetMap",maxZoom:19}).addTo(map);
+      // User marker
+      L.marker([myPos.lat,myPos.lon],{icon:makeDotIcon(L,"#ef4444",14,true)}).addTo(map)
+        .bindPopup(`<b>📍 My Location</b><br>${user.name}<br>${myPos.lat.toFixed(5)}°N · ${myPos.lon.toFixed(5)}°E`);
+      // Team marker
+      L.marker([teamPos.lat,teamPos.lon],{icon:makeTeamIcon(L,"Team Alpha")}).addTo(map)
+        .bindPopup(`<b>🚑 ${team.name}</b><br>${team.vehicle} · ETA ${etaMin} min`);
+      // Route line
+      const shadow = L.polyline([[teamPos.lat,teamPos.lon],[myPos.lat,myPos.lon]],{color:"#f59e0b",weight:6,opacity:0.18}).addTo(map);
+      L.polyline([[teamPos.lat,teamPos.lon],[myPos.lat,myPos.lon]],{color:"#f59e0b",weight:3,opacity:0.9,dashArray:"14 10"}).addTo(map);
+      map.fitBounds([[teamPos.lat,teamPos.lon],[myPos.lat,myPos.lon]],{padding:[40,40],maxZoom:11});
+      mapRef2.current = map;
+      return()=>{if(mapRef2.current){mapRef2.current.remove();mapRef2.current=null;}};
+    },[rdy,teamKey]);
+    return (
+      <div style={{borderRadius:12,overflow:"hidden",border:`1px solid ${C.border}`}}>
+        {!rdy&&<div style={{height,background:"#08101e",display:"flex",alignItems:"center",justifyContent:"center",color:C.muted,fontSize:13}}>⏳ Loading map…</div>}
+        <div ref={ref} style={{height,display:rdy?"block":"none"}}/>
+      </div>
+    );
+  };
+
+  if (!activeSOS) return (
+    <div>
+      <PageHeader title="SOS Navigation" sub="Real-time routing when an emergency is active"/>
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+        height:380,color:C.muted,textAlign:"center"}}>
+        <div style={{fontSize:48,marginBottom:16}}>🗺️</div>
+        <div style={{fontSize:16,fontWeight:600,color:C.text,marginBottom:6}}>No Active SOS</div>
+        <div style={{fontSize:13,color:C.muted,maxWidth:360,lineHeight:1.6}}>
+          This page becomes active when you trigger an SOS. It shows real-time routing of
+          your rescue team to your location with live ETA and turn-by-turn instructions.
+        </div>
+      </div>
+    </div>
+  );
+
+  if (navMode) return (
+    <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 60px)",background:C.bg}}>
+      <div style={{background:"rgba(239,68,68,0.1)",borderBottom:`1px solid rgba(239,68,68,0.3)`,
+        padding:"10px 20px",display:"flex",alignItems:"center",gap:12}}>
+        <div style={{width:10,height:10,borderRadius:"50%",background:C.red,animation:"ud-sos-blink 1.2s infinite",flexShrink:0}}/>
+        <span style={{fontSize:14,fontWeight:600,color:C.text}}>LIVE SOS NAVIGATION</span>
+        <Pill color="red">🚨 ACTIVE</Pill>
+        <div style={{flex:1}}/>
+        <Btn onClick={()=>{setNavMode(false);setCurrentStep(0);}}>✕ Exit</Btn>
+      </div>
+      <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 340px",overflow:"hidden"}}>
+        <div style={{position:"relative"}}>
+          <SOSMap height={500}/>
+          <div style={{position:"absolute",bottom:20,left:20,background:"rgba(8,15,26,0.92)",
+            border:`1px solid ${C.border}`,borderRadius:12,padding:"10px 18px",textAlign:"center"}}>
+            <div style={{fontSize:26,fontWeight:800,color:C.text}}>45</div>
+            <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em"}}>KM/H</div>
+          </div>
+        </div>
+        <div style={{background:"#0b1422",borderLeft:`1px solid ${C.border}`,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+          <div style={{background:"linear-gradient(135deg,rgba(239,68,68,0.15),rgba(239,68,68,0.05))",
+            borderBottom:`1px solid ${C.border}`,padding:"20px 18px"}}>
+            <div style={{fontSize:46,textAlign:"center",marginBottom:10,lineHeight:1}}>{step?.icon}</div>
+            <div style={{fontSize:15,fontWeight:700,textAlign:"center",marginBottom:4,color:C.text}}>{step?.instr}</div>
+            {step?.road&&<div style={{fontSize:12,color:C.muted,textAlign:"center"}}>{step.road}</div>}
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:1,background:C.border}}>
+            {[["ETA",`${etaMin} min`,C.green],["Distance",`${liveDistanceKm} km`,C.accent]].map(([l,v,col])=>(
+              <div key={l} style={{background:"#0b1422",padding:"14px 18px",textAlign:"center"}}>
+                <div style={{fontSize:22,fontWeight:800,color:col}}>{v}</div>
+                <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginTop:2}}>{l}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{padding:"10px 18px",borderBottom:`1px solid ${C.border}`}}>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:C.muted,marginBottom:5}}>
+              <span>Step {currentStep+1} of {steps.length}</span>
+              <span>{Math.round(pct)}% complete</span>
+            </div>
+            <div style={{height:4,background:"rgba(255,255,255,0.07)",borderRadius:4}}>
+              <div style={{height:"100%",borderRadius:4,background:`linear-gradient(90deg,${C.accent},${C.green})`,
+                width:`${pct}%`,transition:"width 0.5s"}}/>
+            </div>
+          </div>
+          <div style={{flex:1,overflowY:"auto",padding:"10px 0"}}>
+            {steps.map((s,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"flex-start",gap:12,padding:"10px 18px",
+                background:i===currentStep?"rgba(59,130,246,0.1)":"transparent",
+                borderLeft:`3px solid ${i===currentStep?C.accent:"transparent"}`,transition:"background 0.3s"}}>
+                <div style={{width:26,height:26,borderRadius:"50%",
+                  background:i===currentStep?"rgba(59,130,246,0.25)":i<currentStep?"rgba(34,197,94,0.15)":"rgba(255,255,255,0.05)",
+                  border:`1px solid ${i===currentStep?C.accent:i<currentStep?C.green:C.border}`,
+                  display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,flexShrink:0,
+                  color:i<currentStep?C.green:C.text}}>
+                  {i<currentStep?"✓":s.icon}
+                </div>
+                <div><div style={{fontSize:12,color:i===currentStep?C.text:C.muted,fontWeight:i===currentStep?600:400}}>{s.instr}</div>
+                  <div style={{fontSize:10,color:C.muted2,marginTop:2}}>{s.dist}</div></div>
+              </div>
+            ))}
+          </div>
+          <div style={{background:"rgba(239,68,68,0.08)",borderTop:`1px solid rgba(239,68,68,0.2)`,padding:"12px 18px"}}>
+            <div style={{fontSize:10,color:"#fca5a5",letterSpacing:"0.1em",marginBottom:4}}>RESCUE TEAM</div>
+            <div style={{fontSize:13,fontWeight:600}}>{team.name} · {team.vehicle}</div>
+            <div style={{fontSize:11,color:C.muted,marginTop:2}}>Lead: {team.lead} · {team.members||4} members</div>
+          </div>
+        </div>
+      </div>
+      <div style={{background:"rgba(0,0,0,0.7)",backdropFilter:"blur(8px)",padding:"10px 20px",
+        borderTop:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:12}}>
+        <Btn onClick={()=>setCurrentStep(s=>Math.max(0,s-1))}>← Prev</Btn>
+        <Btn variant="primary" onClick={()=>setCurrentStep(s=>Math.min(steps.length-1,s+1))}>Next →</Btn>
+        <div style={{flex:1}}/>
+        <div style={{fontSize:11,color:C.muted}}>{team.name} · {team.vehicle}</div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div>
+      <PageHeader title="SOS Navigation"
+        sub="Rescue team en route — live tracking"
+        right={<div style={{display:"flex",gap:8}}><Pill color="red">🚨 SOS Active</Pill><Pill color="green">● Live</Pill></div>}/>
+
+      <div style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.35)",
+        borderRadius:12,padding:"14px 18px",marginBottom:16,display:"flex",alignItems:"center",gap:14}}>
+        <div style={{width:12,height:12,borderRadius:"50%",background:C.red,animation:"ud-sos-blink 1.2s infinite",flexShrink:0}}/>
+        <div>
+          <div style={{fontSize:14,fontWeight:700,color:C.red}}>Emergency broadcast active — Team Alpha dispatched</div>
+          <div style={{fontSize:12,color:C.muted,marginTop:2}}>Your blood group, medical profile and GPS shared with rescue team</div>
+        </div>
+        <Pill color="amber" style={{marginLeft:"auto"}}>ETA {etaMin} min</Pill>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 280px",gap:14}}>
+        <div>
+          <SOSMap height={380}/>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginTop:12}}>
+            <StatCard label="ETA" value={`${etaMin} min`} sub="Rescue team" color={C.green} icon="⏱"/>
+            <StatCard label="Distance" value={`${liveDistanceKm} km`} sub="Team to you" color={C.accent} icon="📏"/>
+            <StatCard label="Team Speed" value="45 km/h" sub="Current" color={C.amber} icon="🚑"/>
+            <StatCard label="GPS Acc." value="±6m" sub="Real-time" color={C.purple} icon="🛰"/>
+          </div>
+          <button onClick={()=>{setNavMode(true);setCurrentStep(0);}}
+            style={{marginTop:14,width:"100%",padding:"14px",
+              background:`linear-gradient(135deg,${C.red},${C.accent2})`,
+              border:"none",borderRadius:12,color:"#fff",fontSize:14,fontWeight:700,
+              cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
+            🗺️ VIEW LIVE NAVIGATION
+          </button>
+        </div>
+        <div>
+          <Card style={{marginBottom:12,borderColor:"rgba(245,158,11,0.3)"}}>
+            <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>Rescue Team Info</div>
+            {[["Team",team.name],["Vehicle",team.vehicle],["Lead",team.lead],["ETA",`${etaMin} min`],
+              ["Status","En route to you"],["Contact","+91 100"]].map(([k,v])=>(
+              <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"5px 0",borderBottom:`1px solid ${C.border}`}}>
+                <span style={{color:C.muted2}}>{k}</span>
+                <span style={{color:C.text,fontWeight:500}}>{v}</span>
+              </div>
+            ))}
+          </Card>
+          <Card style={{borderColor:"rgba(239,68,68,0.25)"}}>
+            <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>Your Profile Shared</div>
+            {[["Name",user?.name || "Trekker"],["Blood",user?.blood || "—"],
+              ["Medical",user?.medical||"None"],["Phone",user?.phone || "—"],
+              ["EC",user?.ec1Name ? `${user.ec1Name} · ${user.ec1Rel || "Contact"}` : "None"]].map(([k,v])=>(
+              <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"5px 0",borderBottom:`1px solid ${C.border}`}}>
+                <span style={{color:C.muted2}}>{k}</span>
+                <span style={{color:C.text,fontWeight:500,maxWidth:170,textAlign:"right"}}>{v}</span>
+              </div>
+            ))}
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ════════════════════════════════════════════════
+   PAGE: GEOFENCING
+════════════════════════════════════════════════ */
+const PageGeofencing = ({ user }) => {
+  const [radius, setRadius]         = useState(2000);   // metres
+  const [fence, setFence]           = useState({lat:18.5196,lon:73.8554}); // geofence center
+  const [userPos, setUserPos]       = useState({lat:18.5196,lon:73.8554});
+  const [alerts, setAlerts]         = useState(true);
+  const [vibrate, setVibrate]       = useState(true);
+  const [fenceActive, setFenceActive] = useState(true);
+  const [editing, setEditing]       = useState(false);
+  const [editLat, setEditLat]       = useState("18.5196");
+  const [editLon, setEditLon]       = useState("73.8554");
+  const [trackingToken, setTrackingToken] = useState(() => localStorage.getItem("coordage_tracking_token") || "");
+  const [tokenState, setTokenState] = useState(trackingToken ? "ready" : "loading");
+  const [history, setHistory]       = useState([
+    {time:"14:22",event:"Entered geofence zone",inside:true},
+    {time:"09:45",event:"Exited geofence zone",inside:false},
+    {time:"08:10",event:"Geofence zone entered",inside:true},
+  ]);
+
+  /* Issue tracking token if needed */
+  useEffect(() => {
+    if (trackingToken) return;
+    const fetchToken = async () => {
+      try {
+        const response = await fetch(`${TRACKING_SERVER_URL}/auth/token`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: user.id, name: user.name, role: "user" }),
+        });
+        if (!response.ok) throw new Error(`Token request failed (${response.status})`);
+        const data = await response.json();
+        if (!data.token) throw new Error("Token missing in response");
+        localStorage.setItem("coordage_tracking_token", data.token);
+        setTrackingToken(data.token);
+        setTokenState("ready");
+      } catch {
+        setTokenState("manual");
+      }
+    };
+    fetchToken();
+  }, []);
+
+  /* Use live location tracking */
+  const tracking = useLocationTracking({
+    userId: user.id,
+    name: user.name,
+    token: trackingToken,
+    serverUrl: TRACKING_SERVER_URL,
+  });
+  const { position, startTracking, stopTracking } = tracking;
+
+  /* Update position from live tracking */
+  useEffect(() => {
+    if (position) {
+      setUserPos({ lat: position.lat, lon: position.lon });
+    }
+  }, [position]);
+
+  /* Start/stop tracking based on fence active state */
+  useEffect(() => {
+    if (!fenceActive || tokenState !== "ready") {
+      stopTracking();
+      return;
+    }
+    startTracking();
+    return () => stopTracking();
+  }, [fenceActive, tokenState, startTracking, stopTracking]);
+
+  /* Check inside/outside */
+  const dist = (a,b) => {
+    const R=6371000;
+    const dLat=(b.lat-a.lat)*Math.PI/180;
+    const dLon=(b.lon-a.lon)*Math.PI/180;
+    const x=Math.sin(dLat/2)**2+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLon/2)**2;
+    return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+  };
+  const distToCenter = dist(userPos,fence);
+  const inside = distToCenter <= radius;
+
+  /* Geofence Leaflet map with circle */
+  const GeoMap = ({ height }) => {
+    const ref    = useRef(null);
+    const mapRef2= useRef(null);
+    const [rdy,setRdy] = useState(!!window.L);
+    useEffect(()=>{ injectLeafletStyles(); ensureLeaflet(()=>setRdy(true)); },[]);
+    const key = JSON.stringify({userPos,fence,radius,fenceActive});
+    useEffect(()=>{
+      if(!rdy||!ref.current) return;
+      const L = window.L;
+      if(mapRef2.current){mapRef2.current.remove();mapRef2.current=null;}
+      const map = L.map(ref.current,{center:[fence.lat,fence.lon],zoom:13,zoomControl:true});
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
+        attribution:"© OpenStreetMap",maxZoom:19}).addTo(map);
+
+      /* Geofence circle */
+      if(fenceActive){
+        L.circle([fence.lat,fence.lon],{
+          radius,
+          className:"ud-geofence-circle",
+          color:"#f59e0b", weight:2.5, opacity:0.85,
+          fill:true, fillColor:"#f59e0b", fillOpacity:0.07,
+          dashArray:"9 6",
+        }).addTo(map)
+          .bindPopup(`<b>🔶 Geofence Zone</b><br>Radius: ${(radius/1000).toFixed(1)} km<br>Center: ${fence.lat.toFixed(4)}°N ${fence.lon.toFixed(4)}°E`);
+
+        /* Fence center cross */
+        L.marker([fence.lat,fence.lon],{
+          icon: L.divIcon({className:"",
+            html:`<div style="font-size:18px;line-height:1;text-shadow:0 0 8px rgba(245,158,11,0.8)">⊕</div>`,
+            iconSize:[18,18],iconAnchor:[9,9]})
+        }).addTo(map).bindPopup("<b>Geofence Center</b>");
+      }
+
+      /* User position */
+      L.marker([userPos.lat,userPos.lon],{icon:makeDotIcon(L,inside?"#22c55e":"#ef4444",12,true)})
+        .addTo(map)
+        .bindPopup(`<b>📍 ${user?.name || "Trekker"}</b><br>
+          ${inside?"✅ Inside geofence":"⚠️ Outside geofence"}<br>
+          Distance to center: ${distToCenter.toFixed(0)}m`);
+
+      map.fitBounds([[fence.lat-radius/111000-0.005,fence.lon-radius/111000-0.005],
+                     [fence.lat+radius/111000+0.005,fence.lon+radius/111000+0.005]]);
+      mapRef2.current = map;
+      return()=>{if(mapRef2.current){mapRef2.current.remove();mapRef2.current=null;}};
+    },[rdy,key]);
+    return (
+      <div style={{borderRadius:12,overflow:"hidden",border:`1px solid ${C.border}`}}>
+        {!rdy&&<div style={{height,background:"#08101e",display:"flex",alignItems:"center",justifyContent:"center",color:C.muted,fontSize:13}}>⏳ Loading map…</div>}
+        <div ref={ref} style={{height,display:rdy?"block":"none"}}/>
+      </div>
+    );
+  };
+
+  const radiusOptions = [500,1000,2000,5050,10000];
+  const saveEdit = () => {
+    const la=parseFloat(editLat), lo=parseFloat(editLon);
+    if(!isNaN(la)&&!isNaN(lo)){setFence({lat:la,lon:lo});}
+    setEditing(false);
+  };
+
+  return (
+    <div>
+      <PageHeader title="Geofencing"
+        sub="Define a safety zone — admin can track if you exit the boundary"
+        right={<div style={{display:"flex",gap:8}}>
+          <Pill color={inside?"green":"red"}>{inside?"● Inside Zone":"⚠️ Outside Zone"}</Pill>
+          <Pill color={fenceActive?"amber":"gray"}>{fenceActive?"Fence Active":"Fence Off"}</Pill>
+        </div>}/>
+
+      {/* Status banner */}
+      <div style={{background:inside?"rgba(34,197,94,0.08)":"rgba(239,68,68,0.1)",
+        border:`1px solid ${inside?"rgba(34,197,94,0.3)":"rgba(239,68,68,0.4)"}`,
+        borderRadius:12,padding:"14px 18px",marginBottom:16,display:"flex",alignItems:"center",gap:14}}>
+        <div style={{fontSize:26}}>{inside?"✅":"⚠️"}</div>
+        <div style={{flex:1}}>
+          <div style={{fontSize:14,fontWeight:700,color:inside?C.green:C.red}}>
+            {inside?"You are inside your safety zone":"You have exited your safety zone!"}
+          </div>
+          <div style={{fontSize:12,color:C.muted,marginTop:2}}>
+            Distance from center: <strong style={{color:C.text}}>{distToCenter.toFixed(0)}m</strong>
+            {" · "}Geofence radius: <strong style={{color:C.text}}>{(radius/1000).toFixed(1)} km</strong>
+            {" · "}Remaining: <strong style={{color:inside?C.green:C.red}}>{Math.max(0,radius-distToCenter).toFixed(0)}m</strong>
+          </div>
+        </div>
+        {!inside&&alerts&&<div style={{background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.3)",
+          borderRadius:8,padding:"6px 12px",fontSize:11,color:"#fca5a5",fontWeight:500}}>
+          📢 Admin Alerted
+        </div>}
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 300px",gap:14}}>
+        {/* Map */}
+        <GeoMap height={460}/>
+
+        {/* Controls */}
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {/* Geofence on/off */}
+          <Card>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+              <div style={{fontSize:13,fontWeight:600,color:C.text}}>Geofence Active</div>
+              <Toggle on={fenceActive} onChange={()=>setFenceActive(x=>!x)}/>
+            </div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+              <div style={{fontSize:12,color:C.muted}}>Alert on exit</div>
+              <Toggle on={alerts} onChange={()=>setAlerts(x=>!x)}/>
+            </div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{fontSize:12,color:C.muted}}>Vibrate on breach</div>
+              <Toggle on={vibrate} onChange={()=>setVibrate(x=>!x)}/>
+            </div>
+          </Card>
+
+          {/* Radius selector */}
+          <Card>
+            <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>Geofence Radius</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {radiusOptions.map(r=>(
+                <button key={r} onClick={()=>setRadius(r)}
+                  style={{padding:"5px 12px",borderRadius:8,border:`1px solid ${radius===r?C.amber:C.border}`,
+                    background:radius===r?"rgba(245,158,11,0.12)":"transparent",
+                    color:radius===r?C.amber:C.muted,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
+                  {r<1000?r+"m":(r/1000).toFixed(r===500?0:0)+" km"}
+                </button>
+              ))}
+            </div>
+            <div style={{marginTop:12}}>
+              <div style={{height:6,background:"rgba(255,255,255,0.06)",borderRadius:4}}>
+                <div style={{height:"100%",borderRadius:4,background:`linear-gradient(90deg,${C.teal},${C.amber})`,
+                  width:`${(radius/10000)*100}%`,transition:"width 0.4s"}}/>
+              </div>
+              <div style={{fontSize:10,color:C.muted2,marginTop:4,textAlign:"right"}}>
+                {(radius/1000).toFixed(1)} km selected
+              </div>
+            </div>
+          </Card>
+
+          {/* Center coordinates */}
+          <Card>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+              <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em"}}>Zone Center</div>
+              <Btn onClick={()=>{setEditing(!editing);setEditLat(fence.lat.toFixed(4));setEditLon(fence.lon.toFixed(4));}} style={{fontSize:10,padding:"3px 9px"}}>
+                {editing?"Cancel":"Edit"}
+              </Btn>
+            </div>
+            {editing?(
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                <div><div style={{fontSize:10,color:C.muted2,marginBottom:3}}>Latitude</div>
+                  <Input value={editLat} onChange={e=>setEditLat(e.target.value)} placeholder="18.5196"/></div>
+                <div><div style={{fontSize:10,color:C.muted2,marginBottom:3}}>Longitude</div>
+                  <Input value={editLon} onChange={e=>setEditLon(e.target.value)} placeholder="73.8554"/></div>
+                <Btn variant="primary" onClick={saveEdit} style={{width:"100%",justifyContent:"center"}}>Save Center</Btn>
+              </div>
+            ):(
+              <div>
+                {[["Latitude",`${fence.lat.toFixed(4)}°N`],["Longitude",`${fence.lon.toFixed(4)}°E`],
+                  ["Zone name","Mulshi Base Area"],["Last updated","Today 14:22"]].map(([k,v])=>(
+                  <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:12,
+                    padding:"5px 0",borderBottom:`1px solid ${C.border}`}}>
+                    <span style={{color:C.muted2}}>{k}</span>
+                    <span style={{color:C.text,fontFamily:k.includes("tit")||k.includes("upd")?"inherit":"monospace",fontWeight:500}}>{v}</span>
+                  </div>
+                ))}
+                <Btn onClick={()=>setFence({lat:userPos.lat,lon:userPos.lon})}
+                  style={{marginTop:10,width:"100%",justifyContent:"center",fontSize:11}}>
+                  📍 Set Center to My Location
+                </Btn>
+              </div>
+            )}
+          </Card>
+
+          {/* Admin visibility info */}
+          <Card style={{background:"rgba(59,130,246,0.04)",borderColor:"rgba(59,130,246,0.2)"}}>
+            <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>Admin Visibility</div>
+            {[
+              ["Real-time GPS","Shared"],
+              ["Geofence status",inside?"Inside":"Outside"],
+              ["Zone radius",`${(radius/1000).toFixed(1)} km`],
+              ["Last update","Live"],
+              ["Alert on breach",alerts?"Enabled":"Disabled"],
+            ].map(([k,v])=>(
+              <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"4px 0",borderBottom:`1px solid ${C.border}`}}>
+                <span style={{color:C.muted2}}>{k}</span>
+                <span style={{color:C.text,fontWeight:500}}>{v}</span>
+              </div>
+            ))}
+          </Card>
+        </div>
+      </div>
+
+      {/* Event log */}
+      <div style={{marginTop:16}}>
+        <div style={{fontSize:12,fontWeight:600,color:C.text,marginBottom:10}}>Geofence Event Log</div>
+        <Card style={{padding:0}}>
+          <table style={{width:"100%",borderCollapse:"collapse"}}>
+            <thead>
+              <tr>
+                {["Time","Event","Status","Location"].map(h=>(
+                  <th key={h} style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",
+                    padding:"10px 14px",textAlign:"left",borderBottom:`1px solid ${C.border}`,fontWeight:500}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((h,i)=>(
+                <tr key={i}>
+                  <td style={{fontSize:12,padding:"10px 14px",color:C.muted,borderBottom:`1px solid ${C.border}`,fontFamily:"monospace"}}>{h.time}</td>
+                  <td style={{fontSize:13,padding:"10px 14px",color:C.text,borderBottom:`1px solid ${C.border}`}}>{h.event}</td>
+                  <td style={{padding:"10px 14px",borderBottom:`1px solid ${C.border}`}}>
+                    <Pill color={h.inside?"green":"red"}>{h.inside?"Inside":"Outside"}</Pill>
+                  </td>
+                  <td style={{fontSize:11,padding:"10px 14px",color:C.muted,borderBottom:`1px solid ${C.border}`,fontFamily:"monospace"}}>
+                    {fence.lat.toFixed(4)}°N {fence.lon.toFixed(4)}°E
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      </div>
+    </div>
+  );
+};
+
+/* ════════════════════════════════════════════════
+   SIDEBAR NAVIGATION
+════════════════════════════════════════════════ */
+const NAV = [
+  {section:"Home",items:[
+    {id:"dashboard",label:"My Dashboard",icon:"⊞"},
+  ]},
+  {section:"Safety",items:[
+    {id:"sos-nav",label:"SOS Navigation",icon:"🚨",highlight:true},
+    {id:"geofencing",label:"Geofencing",icon:"🔶"},
+  ]},
+  {section:"Tracking",items:[
+    {id:"live-tracking",label:"Live Tracking",icon:"📡"},
+  ]},
+  {section:"Exploration",items:[
+    {id:"forts",label:"Forts Explorer",icon:"🏰"},
+  ]},
+  {section:"Weather",items:[
+    {id:"weather",label:"Weather & Maps",icon:"🌤️"},
+  ]},
+];
+
+/* ════════════════════════════════════════════════
+   ROOT COMPONENT
+════════════════════════════════════════════════ */
+export default function UserDashboard() {
+  const clearAuthData = () => {
+    localStorage.removeItem(USER_TOKEN_KEY);
+    localStorage.removeItem(USER_SESSION_KEY);
+    localStorage.removeItem(USER_PROFILE_KEY);
+    localStorage.removeItem(USER_CREDENTIALS_KEY);
+    localStorage.removeItem("coordage_tracking_token");
+  };
+
+  const [page, setPage] = useState("dashboard");
+  const [activeSOS, setActiveSOS] = useState(false);
+  const [joinedTrip, setJoinedTrip] = useState(null);
+  const [joinError, setJoinError] = useState("");
+
+  // Demo fallback — only used if the real Firestore lookup is unreachable,
+  // so the join flow still works during a demo with no network/misconfigured rules.
+  const DEMO_TRIP_CODES = {
+    "RAJM26": { name: "Rajmachi Weekend Trek — Batch 12", date: "May 3–4, 2026", location: "Rajmachi, Maharashtra" },
+  };
+
+  const handleJoinTrip = async (code) => {
+    const result = await getTripByCode(code);
+    if (result.success) {
+      setJoinedTrip(result.trip);
+      setJoinError("");
+      setPage("dashboard");
+      return;
+    }
+    if (result.error === "unreachable") {
+      const demoTrip = DEMO_TRIP_CODES[code.trim().toUpperCase()];
+      if (demoTrip) {
+        setJoinedTrip(demoTrip);
+        setJoinError("");
+        setPage("dashboard");
+        return;
+      }
+    }
+    setJoinError("That code doesn't match an active trip. Check with your trek leader.");
+  };
+
+  const [user, setUser] = useState(() => {
+    try {
+      const savedProfile = localStorage.getItem(USER_PROFILE_KEY);
+      if (!savedProfile) return null;
+      const p = JSON.parse(savedProfile);
+      if (p.id === "U001" || p.email === "anirban@coordage.app") return null;
+      return p;
+    } catch {
+      return null;
+    }
+  });
+
+  const handleLogin = (profile) => {
+    setUser(profile);
+    localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(profile));
+    localStorage.setItem(USER_SESSION_KEY, JSON.stringify({ userId: profile.id, email: profile.email }));
+    setPage("dashboard");
+  };
+
+  if (!user) {
+    return <PageAuth onLogin={handleLogin} initialTab="login" />;
+  }
+
+  const navigate = (p) => setPage(p);
+
+  const PAGES = {
+    "dashboard": <PageDashboard user={user} onNavigate={navigate} activeSOS={activeSOS} joinedTrip={joinedTrip} onSOS={v=>{ setActiveSOS(v); if(v) setPage("sos-nav"); }}/>,
+    "sos-nav":   <PageSOSNav user={user} activeSOS={activeSOS}/>,
+    "geofencing":<PageGeofencing user={user}/>,
+    "live-tracking": <PageLiveTracking user={user} activeSOS={activeSOS} onSOS={v=>{ setActiveSOS(v); if(v) setPage("sos-nav"); }}/>,
+    "weather":   <PageWeatherMaps/>,
+    "join-trip": <PageJoinTrip onJoin={handleJoinTrip} error={joinError}/>,
+  };
+
+  const signOut = () => {
+    clearAuthData();
+    setUser(null);
+    setActiveSOS(false);
+    setPage("dashboard");
+  };
+
+  return (
+    <div style={{display:"grid",gridTemplateColumns:"220px 1fr",minHeight:"780px",
+      background:C.bg,fontFamily:"system-ui,-apple-system,sans-serif",color:C.text}}>
+
+      {/* Sidebar */}
+      <aside style={{background:C.sidebar,display:"flex",flexDirection:"column",borderRight:`1px solid ${C.border}`}}>
+        {/* Brand */}
+        <div style={{padding:"18px 16px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:32,height:32,borderRadius:"50%",background:"rgba(59,130,246,0.12)",
+            border:"1px solid rgba(59,130,246,0.28)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🏔️</div>
+          <div>
+            <div style={{fontSize:14,fontWeight:700,color:C.text}}>Coordage</div>
+            <div style={{fontSize:10,color:C.muted2}}>Trip Safety Portal</div>
+          </div>
+        </div>
+
+        {/* User info */}
+        <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:10}}>
+          <Avatar initials={user?.avatar || (user?.name || "T").slice(0, 2).toUpperCase()} bg={user?.color?.[0] || "#E6F1FB"} text={user?.color?.[1] || "#0C447C"} size={34}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:12,fontWeight:500,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user?.name || "Trekker"}</div>
+            <div style={{fontSize:10,color:C.muted2}}>{user?.role || "Trekker"} · {user?.blood || "—"}</div>
+          </div>
+          {activeSOS&&(
+            <div style={{width:22,height:22,background:"rgba(239,68,68,0.18)",border:"1px solid rgba(239,68,68,0.4)",
+              borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:C.red,fontWeight:700}}>!</div>
+          )}
+        </div>
+
+        {/* Nav */}
+        <nav style={{flex:1,overflowY:"auto",padding:"10px 0"}}>
+          {NAV.map(({section,items})=>(
+            <div key={section}>
+              <div style={{fontSize:9,color:C.muted2,padding:"10px 16px 4px",letterSpacing:"0.12em",textTransform:"uppercase"}}>{section}</div>
+              {items.map(item=>{
+                const active = page===item.id;
+                const isSOS  = item.id==="sos-nav";
+                return (
+                  <div key={item.id} onClick={()=>setPage(item.id)}
+                    style={{display:"flex",alignItems:"center",gap:10,padding:"8px 16px",cursor:"pointer",
+                      borderLeft:`2px solid ${active?(isSOS?C.red:C.accent):"transparent"}`,
+                      background:active?(isSOS?"rgba(239,68,68,0.1)":"rgba(59,130,246,0.1)"):"transparent",
+                      transition:"background 0.15s"}}>
+                    <span style={{fontSize:15,width:18,textAlign:"center",flexShrink:0}}>{item.icon}</span>
+                    <span style={{fontSize:12,color:active?C.text:isSOS?"rgba(252,165,165,0.8)":C.muted,fontWeight:active?500:400}}>
+                      {item.label}
+                    </span>
+                    {isSOS&&activeSOS&&(
+                      <div style={{marginLeft:"auto",background:"rgba(239,68,68,0.2)",border:"1px solid rgba(239,68,68,0.35)",
+                        borderRadius:10,padding:"1px 7px",fontSize:9,color:C.red,fontWeight:700}}>LIVE</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </nav>
+
+        {/* Quick SOS in sidebar */}
+        <div style={{padding:"12px 16px",borderTop:`1px solid ${C.border}`}}>
+          <button onClick={()=>{ setActiveSOS(true); setPage("sos-nav"); }}
+            style={{width:"100%",padding:"9px",background:"rgba(239,68,68,0.12)",
+              border:"1px solid rgba(239,68,68,0.35)",borderRadius:10,color:C.red,
+              fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+              display:"flex",alignItems:"center",justifyContent:"center",gap:7,
+              animation:activeSOS?"ud-sos-blink 1.2s infinite":undefined}}>
+            🆘 {activeSOS?"SOS ACTIVE":"Quick SOS"}
+          </button>
+          <div style={{marginTop:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontSize:10,color:C.muted2}}>© 2026 Coordage</span>
+            <button onClick={signOut} style={{fontSize:11,color:C.muted,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}}>Sign out</button>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main */}
+      <main style={{overflow:"auto",padding:24}}>
+        {PAGES[page]||<div style={{color:C.muted}}>Page not found.</div>}
+      </main>
+    </div>
+  );
+}
