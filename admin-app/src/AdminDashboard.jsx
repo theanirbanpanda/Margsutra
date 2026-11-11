@@ -2,6 +2,14 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useAdminTracking } from "./hooks/useAdminTracking";
 import {
   adminLogin,
+  registerAdminAccount,
+  fetchPendingAdmins,
+  approveAdmin,
+  rejectAdmin,
+  fetchPendingTripRequests,
+  approveTrekker,
+  removeTrekker,
+  fetchTripRoster,
   createSafetyProtocol,
   deleteSafetyProtocol,
   subscribeToSafetyProtocols,
@@ -734,58 +742,1603 @@ const PageSOSNavigation = ({ users=USERS, sosEvents=[] }) => {
 };
 
 /* ════════════════════════════════════════════════
-   PAGE: LOGIN
+   PAGE: ADMIN AUTH (LOGIN & CLEARANCE REQUEST)
 ════════════════════════════════════════════════ */
-const PageLogin = ({ onLogin }) => {
-  const [email,setEmail]=useState(""); const [pass,setPass]=useState(""); const [err,setErr]=useState(""); const [loading,setLoading]=useState(false);
-  const submit = async ()=>{
-    if(!email||!pass){setErr("Please fill all fields.");return;}
-    setLoading(true);
-    setErr("");
-    try {
-      const res = await adminLogin(email.trim(), pass);
-      if (res.success) {
-        setLoading(false);
-        onLogin();
-        return;
-      }
-    } catch (e) {
-      console.warn("Firebase Auth admin login error:", e);
-    }
-    // Demo fallback for offline / mock testing
-    if (email === "admin@coordage.app" && (pass === "admin123" || pass === "Coordage@123")) {
-      setLoading(false);
-      onLogin();
+const PageAdminAuth = ({ onLogin }) => {
+  const [tab, setTab] = useState("login"); // "login" | "register"
+  const [themeConfig, setThemeConfig] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    fetch(`${AUTH_API_URL}/config/theme`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (active && data) setThemeConfig(data);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const mountainBackdropUrl =
+    themeConfig?.backdropUrl ||
+    "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=2400&q=85";
+
+  // Login form state
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPass, setLoginPass] = useState("");
+  const [showLoginPass, setShowLoginPass] = useState(false);
+  const [loginErr, setLoginErr] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+
+  // Registration / Admin Access Request form state
+  const [regForm, setRegForm] = useState({
+    name: "",
+    email: "",
+    pass: "",
+    confirmPass: "",
+    organization: "Sahyadri Mountain SAR & Trek Operations",
+    roleTitle: "Lead Expedition Guide",
+    phone: "",
+  });
+  const [showRegPass, setShowRegPass] = useState(false);
+  const [regErr, setRegErr] = useState("");
+  const [regLoading, setRegLoading] = useState(false);
+  const [regSuccess, setRegSuccess] = useState(false);
+
+  const updReg = (k, v) => setRegForm((f) => ({ ...f, [k]: v }));
+
+  // Handle Login
+  const handleLoginSubmit = async (e) => {
+    e.preventDefault();
+    setLoginErr("");
+
+    const trimmedEmail = loginEmail.trim().toLowerCase();
+    if (!trimmedEmail || !loginPass) {
+      setLoginErr("Please enter both administrator email and password.");
       return;
     }
-    setLoading(false);
-    setErr("Invalid credentials. Try admin@coordage.app / Coordage@123 or admin123");
+
+    setLoginLoading(true);
+    try {
+      const res = await adminLogin(trimmedEmail, loginPass);
+      if (res.success) {
+        setLoginLoading(false);
+        onLogin(res.userData || { email: trimmedEmail, name: "Admin", role: "admin" });
+        return;
+      }
+      setLoginLoading(false);
+      setLoginErr(res.error || "Invalid administrator credentials. Please check your credentials.");
+    } catch (err) {
+      setLoginLoading(false);
+      setLoginErr(err.message || "Unable to connect to authorization service.");
+    }
   };
+
+  // Handle Register Admin Access Request
+  const handleRegisterSubmit = async (e) => {
+    e.preventDefault();
+    setRegErr("");
+
+    if (!regForm.name.trim()) {
+      setRegErr("Please enter your full name.");
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(regForm.email.trim())) {
+      setRegErr("Please enter a valid official email address.");
+      return;
+    }
+    if (regForm.pass.length < 6) {
+      setRegErr("Security password must be at least 6 characters.");
+      return;
+    }
+    if (regForm.pass !== regForm.confirmPass) {
+      setRegErr("Passwords do not match.");
+      return;
+    }
+    if (!regForm.phone.trim()) {
+      setRegErr("Please provide a contact phone number for dispatch verification.");
+      return;
+    }
+
+    setRegLoading(true);
+    try {
+      const res = await registerAdminAccount({
+        name: regForm.name.trim(),
+        email: regForm.email.trim().toLowerCase(),
+        password: regForm.pass,
+        phone: regForm.phone.trim(),
+        organization: regForm.organization.trim(),
+        roleTitle: regForm.roleTitle.trim(),
+      });
+
+      if (res.success) {
+        setRegSuccess(true);
+        return;
+      }
+      setRegErr(res.error || "Unable to submit administrator application. Please try again.");
+    } catch {
+      setRegErr("Unable to process request right now. Please check your network connection.");
+    } finally {
+      setRegLoading(false);
+    }
+  };
+
+  const isPendingApprovalError = loginErr && (
+    loginErr.toLowerCase().includes("pending approval") ||
+    loginErr.toLowerCase().includes("pending verification") ||
+    loginErr.toLowerCase().includes("authorization")
+  );
+
   return (
-    <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"var(--font-sans)"}}>
-      <div style={{position:"fixed",inset:0,backgroundImage:"radial-gradient(circle at 50% 0%,rgba(59,130,246,0.08) 0%,transparent 60%)",pointerEvents:"none"}}/>
-      <div style={{position:"fixed",inset:0,backgroundImage:"linear-gradient(rgba(80,140,220,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(80,140,220,0.04) 1px,transparent 1px)",backgroundSize:"44px 44px",pointerEvents:"none"}}/>
-      <div style={{width:380,background:C.panel,border:`1px solid ${C.border}`,borderRadius:20,padding:36,position:"relative",backdropFilter:"blur(20px)"}}>
-        <div style={{textAlign:"center",marginBottom:28}}>
-          <div style={{width:52,height:52,borderRadius:"50%",background:"rgba(59,130,246,0.12)",border:`1px solid rgba(59,130,246,0.3)`,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px"}}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke={C.accent} strokeWidth="1.5"/><circle cx="12" cy="12" r="4" stroke={C.accent} strokeWidth="1.5"/><circle cx="12" cy="12" r="1.5" fill={C.accent}/></svg>
+    <div
+      style={{
+        minHeight: "100vh",
+        position: "relative",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+        padding: "36px 16px 54px",
+        background: "#050b14",
+        boxSizing: "border-box",
+      }}
+    >
+      {/* ── Photographic Mountain Backdrop ── */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          backgroundImage: `url("${mountainBackdropUrl}")`,
+          backgroundPosition: "center 38%",
+          backgroundSize: "cover",
+          backgroundRepeat: "no-repeat",
+          filter: "brightness(0.55) contrast(1.1) saturate(1.15)",
+          transform: "scale(1.02)",
+          transition: "background-image 0.8s ease-in-out",
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* ── Atmospheric Radial Fog & Dark Vignette ── */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "radial-gradient(ellipse at 50% 40%, rgba(5, 11, 24, 0.45) 0%, rgba(4, 9, 18, 0.78) 55%, rgba(2, 6, 12, 0.94) 100%)",
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* ── Fine Horizon Sky Wash ── */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "linear-gradient(180deg, rgba(3, 7, 16, 0.65) 0%, transparent 25%, transparent 68%, rgba(2, 6, 12, 0.94) 100%)",
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* ── Glassmorphism Card Container ── */}
+      <div
+        style={{
+          width: "100%",
+          maxWidth: tab === "register" ? 560 : 430,
+          background: "rgba(10, 18, 32, 0.78)",
+          backdropFilter: "blur(28px) saturate(190%)",
+          WebkitBackdropFilter: "blur(28px) saturate(190%)",
+          borderRadius: 24,
+          border: "1px solid rgba(255, 255, 255, 0.11)",
+          boxShadow:
+            "0 30px 80px -15px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.04)",
+          padding: "36px 32px",
+          position: "relative",
+          zIndex: 2,
+          transition: "max-width 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
+          boxSizing: "border-box",
+        }}
+      >
+        {/* Brand Header */}
+        <div style={{ textAlign: "center", marginBottom: 24 }}>
+          <div
+            style={{
+              width: 54,
+              height: 54,
+              borderRadius: 18,
+              background: "linear-gradient(135deg, rgba(59, 130, 246, 0.35), rgba(16, 185, 129, 0.2))",
+              border: "1px solid rgba(255, 255, 255, 0.22)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 12px",
+              boxShadow: "0 10px 25px rgba(0, 0, 0, 0.45), 0 0 20px rgba(59, 130, 246, 0.3)",
+            }}
+          >
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m8 3 4 8 5-5 5 15H2L8 3z" />
+              <path d="M4.14 15h15.72" />
+            </svg>
           </div>
-          <div style={{fontSize:18,fontWeight:700,color:C.text,marginBottom:4}}>Coordage <span style={{color:C.accent}}>Admin</span></div>
-          <div style={{fontSize:12,color:C.muted}}>Know where your group is — even off the grid</div>
+
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "4px 10px",
+              borderRadius: 20,
+              background: "rgba(59, 130, 246, 0.14)",
+              border: "1px solid rgba(59, 130, 246, 0.32)",
+              color: "#60a5fa",
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: "0.08em",
+              marginBottom: 8,
+              textTransform: "uppercase",
+            }}
+          >
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                background: "#3b82f6",
+                display: "inline-block",
+                boxShadow: "0 0 8px #3b82f6",
+              }}
+            />
+            Expedition Command & Admin Portal
+          </div>
+
+          <div style={{ fontSize: 26, fontWeight: 800, color: "#f8fafc", letterSpacing: "-0.03em" }}>
+            Coordage <span style={{ color: "#60a5fa" }}>Admin</span>
+          </div>
+          <div style={{ fontSize: 13, color: "rgba(180, 210, 245, 0.65)", marginTop: 4 }}>
+            Trip Safety & Emergency Response Platform · Operations Console
+          </div>
         </div>
-        <div style={{marginBottom:14}}>
-          <label style={{fontSize:11,color:C.muted,display:"block",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.07em"}}>Email</label>
-          <Input value={email} onChange={e=>setEmail(e.target.value)} placeholder="admin@coordage.app" type="email"/>
+
+        {/* ── Segmented Tab Switcher ── */}
+        <div
+          style={{
+            display: "flex",
+            background: "rgba(0, 0, 0, 0.32)",
+            borderRadius: 14,
+            padding: 4,
+            border: "1px solid rgba(255, 255, 255, 0.08)",
+            marginBottom: 24,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setTab("login");
+              setLoginErr("");
+              setRegErr("");
+            }}
+            style={{
+              flex: 1,
+              padding: "9px 0",
+              borderRadius: 10,
+              border: tab === "login" ? "1px solid rgba(59, 130, 246, 0.45)" : "1px solid transparent",
+              background:
+                tab === "login"
+                  ? "linear-gradient(135deg, rgba(59, 130, 246, 0.35), rgba(37, 99, 235, 0.45))"
+                  : "transparent",
+              color: tab === "login" ? "#ffffff" : "rgba(180, 210, 245, 0.65)",
+              fontSize: 13,
+              fontWeight: tab === "login" ? 600 : 500,
+              cursor: "pointer",
+              transition: "all 0.2s ease",
+              boxShadow: tab === "login" ? "0 4px 12px rgba(0, 0, 0, 0.25)" : "none",
+            }}
+          >
+            Log In
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setTab("register");
+              setLoginErr("");
+              setRegErr("");
+              setRegSuccess(false);
+            }}
+            style={{
+              flex: 1,
+              padding: "9px 0",
+              borderRadius: 10,
+              border: tab === "register" ? "1px solid rgba(59, 130, 246, 0.45)" : "1px solid transparent",
+              background:
+                tab === "register"
+                  ? "linear-gradient(135deg, rgba(59, 130, 246, 0.35), rgba(37, 99, 235, 0.45))"
+                  : "transparent",
+              color: tab === "register" ? "#ffffff" : "rgba(180, 210, 245, 0.65)",
+              fontSize: 13,
+              fontWeight: tab === "register" ? 600 : 500,
+              cursor: "pointer",
+              transition: "all 0.2s ease",
+              boxShadow: tab === "register" ? "0 4px 12px rgba(0, 0, 0, 0.25)" : "none",
+            }}
+          >
+            Request Admin Access
+          </button>
         </div>
-        <div style={{marginBottom:20}}>
-          <label style={{fontSize:11,color:C.muted,display:"block",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.07em"}}>Password</label>
-          <Input value={pass} onChange={e=>setPass(e.target.value)} placeholder="••••••••" type="password"/>
+
+        {/* ── TAB 1: LOG IN ── */}
+        {tab === "login" && (
+          <form onSubmit={handleLoginSubmit}>
+            <div style={{ marginBottom: 16 }}>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: "rgba(180, 210, 245, 0.72)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                  marginBottom: 6,
+                }}
+              >
+                Administrator Email
+              </label>
+              <input
+                type="email"
+                value={loginEmail}
+                onChange={(e) => setLoginEmail(e.target.value)}
+                placeholder="admin@coordage.app"
+                autoComplete="email"
+                style={{
+                  width: "100%",
+                  height: 44,
+                  background: "rgba(255, 255, 255, 0.05)",
+                  border: "1px solid rgba(255, 255, 255, 0.11)",
+                  borderRadius: 12,
+                  padding: "0 14px",
+                  color: "#f8fafc",
+                  fontSize: 14,
+                  boxSizing: "border-box",
+                  outline: "none",
+                  transition: "border-color 0.2s ease, box-shadow 0.2s ease",
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <label
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: "rgba(180, 210, 245, 0.72)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                  }}
+                >
+                  Password
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowLoginPass((v) => !v)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#60a5fa",
+                    fontSize: 11,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                    padding: 0,
+                  }}
+                >
+                  {showLoginPass ? "Hide" : "Show"}
+                </button>
+              </div>
+              <input
+                type={showLoginPass ? "text" : "password"}
+                value={loginPass}
+                onChange={(e) => setLoginPass(e.target.value)}
+                placeholder="••••••••"
+                autoComplete="current-password"
+                style={{
+                  width: "100%",
+                  height: 44,
+                  background: "rgba(255, 255, 255, 0.05)",
+                  border: "1px solid rgba(255, 255, 255, 0.11)",
+                  borderRadius: 12,
+                  padding: "0 14px",
+                  color: "#f8fafc",
+                  fontSize: 14,
+                  boxSizing: "border-box",
+                  outline: "none",
+                  transition: "border-color 0.2s ease, box-shadow 0.2s ease",
+                }}
+              />
+            </div>
+
+            {/* Pending Approval / Error Alert */}
+            {loginErr && (
+              <div
+                style={{
+                  padding: "12px 14px",
+                  borderRadius: 12,
+                  background: isPendingApprovalError
+                    ? "rgba(245, 158, 11, 0.14)"
+                    : "rgba(239, 68, 68, 0.14)",
+                  border: isPendingApprovalError
+                    ? "1px solid rgba(245, 158, 11, 0.35)"
+                    : "1px solid rgba(239, 68, 68, 0.3)",
+                  marginBottom: 18,
+                  fontSize: 12,
+                  lineHeight: 1.5,
+                  color: isPendingApprovalError ? "#fef3c7" : "#fca5a5",
+                }}
+              >
+                {isPendingApprovalError ? (
+                  <div>
+                    <div style={{ fontWeight: 700, color: "#fbbf24", marginBottom: 3, display: "flex", alignItems: "center", gap: 6 }}>
+                      <span>⏳</span>
+                      <span>Clearance Verification Pending</span>
+                    </div>
+                    <div>{loginErr}</div>
+                  </div>
+                ) : (
+                  <div>{loginErr}</div>
+                )}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loginLoading}
+              style={{
+                width: "100%",
+                height: 46,
+                borderRadius: 12,
+                border: "none",
+                background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
+                color: "#ffffff",
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: loginLoading ? "not-allowed" : "pointer",
+                boxShadow: "0 8px 24px rgba(37, 99, 235, 0.45)",
+                transition: "all 0.2s ease",
+                opacity: loginLoading ? 0.7 : 1,
+              }}
+            >
+              {loginLoading ? "Authorizing..." : "Sign in to Coordage"}
+            </button>
+
+            <div style={{ textAlign: "center", marginTop: 18, fontSize: 12, color: "rgba(180, 210, 245, 0.7)" }}>
+              Need administrator access?{" "}
+              <button
+                type="button"
+                onClick={() => {
+                  setTab("register");
+                  setLoginErr("");
+                }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#60a5fa",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  padding: 0,
+                  textDecoration: "underline",
+                }}
+              >
+                Request Admin Access →
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* ── TAB 2: REQUEST ADMIN ACCESS ── */}
+        {tab === "register" && (
+          <div>
+            {regSuccess ? (
+              <div style={{ textAlign: "center", padding: "16px 8px" }}>
+                <div
+                  style={{
+                    width: 54,
+                    height: 54,
+                    borderRadius: "50%",
+                    background: "rgba(16, 185, 129, 0.2)",
+                    border: "1px solid rgba(16, 185, 129, 0.4)",
+                    color: "#34d399",
+                    fontSize: 26,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    margin: "0 auto 16px",
+                  }}
+                >
+                  ✓
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: "#f8fafc", marginBottom: 8 }}>
+                  Clearance Request Submitted
+                </div>
+                <div style={{ fontSize: 13, color: "rgba(180, 210, 245, 0.8)", lineHeight: 1.55, marginBottom: 20 }}>
+                  Your administrator application has been registered in the expedition registry.
+                  <br />
+                  <strong style={{ color: "#fbbf24" }}>An existing active administrator must authorize your account</strong> before you can log in to the command console.
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTab("login");
+                    setRegSuccess(false);
+                  }}
+                  style={{
+                    width: "100%",
+                    height: 44,
+                    borderRadius: 12,
+                    border: "none",
+                    background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
+                    color: "#ffffff",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Return to Log In →
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleRegisterSubmit}>
+                {/* Admin Approval Notice Badge */}
+                <div
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 12,
+                    background: "rgba(245, 158, 11, 0.12)",
+                    border: "1px solid rgba(245, 158, 11, 0.3)",
+                    marginBottom: 16,
+                    fontSize: 11,
+                    lineHeight: 1.5,
+                    color: "#fef3c7",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 8,
+                  }}
+                >
+                  <span style={{ fontSize: 16, flexShrink: 0 }}>🛡️</span>
+                  <div>
+                    <strong style={{ color: "#fbbf24" }}>Administrator Verification Policy:</strong> All admin profiles must be reviewed and approved by an existing system administrator before console access is granted.
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "rgba(180, 210, 245, 0.72)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                      Full Name *
+                    </label>
+                    <input
+                      type="text"
+                      value={regForm.name}
+                      onChange={(e) => updReg("name", e.target.value)}
+                      placeholder="e.g. Vikram Patil"
+                      style={{
+                        width: "100%",
+                        height: 40,
+                        background: "rgba(255, 255, 255, 0.05)",
+                        border: "1px solid rgba(255, 255, 255, 0.11)",
+                        borderRadius: 10,
+                        padding: "0 12px",
+                        color: "#f8fafc",
+                        fontSize: 13,
+                        boxSizing: "border-box",
+                        outline: "none",
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "rgba(180, 210, 245, 0.72)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                      Contact Phone *
+                    </label>
+                    <input
+                      type="tel"
+                      value={regForm.phone}
+                      onChange={(e) => updReg("phone", e.target.value)}
+                      placeholder="+91 98765 43210"
+                      style={{
+                        width: "100%",
+                        height: 40,
+                        background: "rgba(255, 255, 255, 0.05)",
+                        border: "1px solid rgba(255, 255, 255, 0.11)",
+                        borderRadius: 10,
+                        padding: "0 12px",
+                        color: "#f8fafc",
+                        fontSize: 13,
+                        boxSizing: "border-box",
+                        outline: "none",
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "rgba(180, 210, 245, 0.72)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                    Official Email Address *
+                  </label>
+                  <input
+                    type="email"
+                    value={regForm.email}
+                    onChange={(e) => updReg("email", e.target.value)}
+                    placeholder="vikram@coordage.app"
+                    style={{
+                      width: "100%",
+                      height: 40,
+                      background: "rgba(255, 255, 255, 0.05)",
+                      border: "1px solid rgba(255, 255, 255, 0.11)",
+                      borderRadius: 10,
+                      padding: "0 12px",
+                      color: "#f8fafc",
+                      fontSize: 13,
+                      boxSizing: "border-box",
+                      outline: "none",
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "rgba(180, 210, 245, 0.72)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                      Organization / Unit
+                    </label>
+                    <input
+                      type="text"
+                      value={regForm.organization}
+                      onChange={(e) => updReg("organization", e.target.value)}
+                      placeholder="Sahyadri SAR Unit"
+                      style={{
+                        width: "100%",
+                        height: 40,
+                        background: "rgba(255, 255, 255, 0.05)",
+                        border: "1px solid rgba(255, 255, 255, 0.11)",
+                        borderRadius: 10,
+                        padding: "0 12px",
+                        color: "#f8fafc",
+                        fontSize: 13,
+                        boxSizing: "border-box",
+                        outline: "none",
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "rgba(180, 210, 245, 0.72)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                      Dispatch Role / Title
+                    </label>
+                    <input
+                      type="text"
+                      value={regForm.roleTitle}
+                      onChange={(e) => updReg("roleTitle", e.target.value)}
+                      placeholder="Lead Expedition Guide"
+                      style={{
+                        width: "100%",
+                        height: 40,
+                        background: "rgba(255, 255, 255, 0.05)",
+                        border: "1px solid rgba(255, 255, 255, 0.11)",
+                        borderRadius: 10,
+                        padding: "0 12px",
+                        color: "#f8fafc",
+                        fontSize: 13,
+                        boxSizing: "border-box",
+                        outline: "none",
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: "rgba(180, 210, 245, 0.72)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                        Password *
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowRegPass((v) => !v)}
+                        style={{ background: "none", border: "none", color: "#60a5fa", fontSize: 11, cursor: "pointer", padding: 0 }}
+                      >
+                        {showRegPass ? "Hide" : "Show"}
+                      </button>
+                    </div>
+                    <input
+                      type={showRegPass ? "text" : "password"}
+                      value={regForm.pass}
+                      onChange={(e) => updReg("pass", e.target.value)}
+                      placeholder="••••••••"
+                      style={{
+                        width: "100%",
+                        height: 40,
+                        background: "rgba(255, 255, 255, 0.05)",
+                        border: "1px solid rgba(255, 255, 255, 0.11)",
+                        borderRadius: 10,
+                        padding: "0 12px",
+                        color: "#f8fafc",
+                        fontSize: 13,
+                        boxSizing: "border-box",
+                        outline: "none",
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "rgba(180, 210, 245, 0.72)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                      Confirm Password *
+                    </label>
+                    <input
+                      type={showRegPass ? "text" : "password"}
+                      value={regForm.confirmPass}
+                      onChange={(e) => updReg("confirmPass", e.target.value)}
+                      placeholder="••••••••"
+                      style={{
+                        width: "100%",
+                        height: 40,
+                        background: "rgba(255, 255, 255, 0.05)",
+                        border: "1px solid rgba(255, 255, 255, 0.11)",
+                        borderRadius: 10,
+                        padding: "0 12px",
+                        color: "#f8fafc",
+                        fontSize: 13,
+                        boxSizing: "border-box",
+                        outline: "none",
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {regErr && (
+                  <div
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      background: "rgba(239, 68, 68, 0.14)",
+                      border: "1px solid rgba(239, 68, 68, 0.3)",
+                      marginBottom: 16,
+                      fontSize: 12,
+                      color: "#fca5a5",
+                    }}
+                  >
+                    {regErr}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={regLoading}
+                  style={{
+                    width: "100%",
+                    height: 46,
+                    borderRadius: 12,
+                    border: "none",
+                    background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
+                    color: "#ffffff",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: regLoading ? "not-allowed" : "pointer",
+                    boxShadow: "0 8px 24px rgba(37, 99, 235, 0.45)",
+                    transition: "all 0.2s ease",
+                    opacity: regLoading ? 0.7 : 1,
+                  }}
+                >
+                  {regLoading ? "Submitting Application..." : "Submit Admin Access Request"}
+                </button>
+
+                <div style={{ textAlign: "center", marginTop: 14, fontSize: 12, color: "rgba(180, 210, 245, 0.7)" }}>
+                  Already have an authorized admin account?{" "}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTab("login");
+                      setRegErr("");
+                    }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#60a5fa",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      padding: 0,
+                      textDecoration: "underline",
+                    }}
+                  >
+                    Log In →
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Footer Navigation info */}
+      <div
+        style={{
+          marginTop: 22,
+          position: "relative",
+          zIndex: 2,
+          textAlign: "center",
+          fontSize: 12,
+          color: "rgba(180, 210, 245, 0.5)",
+        }}
+      >
+        <span>Coordage Mountain Safety Platform · Incident Command</span>
+        <span style={{ margin: "0 8px" }}>·</span>
+        <a
+          href="http://localhost:5173"
+          target="_blank"
+          rel="noreferrer"
+          style={{ color: "#60a5fa", textDecoration: "none" }}
+        >
+          Open Trekker Portal ↗
+        </a>
+      </div>
+    </div>
+  );
+};
+
+/* ════════════════════════════════════════════════
+   PAGE: ADMIN APPROVALS & CLEARANCE
+════════════════════════════════════════════════ */
+const PageAdminApprovals = ({
+  pendingAdmins = [],
+  onApprove,
+  onReject,
+  approvedAdmins = [],
+  refreshing,
+  onRefresh,
+}) => {
+  const [actingId, setActingId] = useState(null);
+  const [toast, setToast] = useState(null);
+
+  const handleApprove = async (admin) => {
+    setActingId(admin.id);
+    const res = await onApprove(admin.id);
+    setActingId(null);
+    if (res?.success) {
+      setToast({ type: "success", text: `✓ Administrator access authorized for ${admin.name || admin.email}!` });
+      setTimeout(() => setToast(null), 4000);
+    } else {
+      setToast({ type: "error", text: `Failed to approve: ${res?.error || "Unknown error"}` });
+      setTimeout(() => setToast(null), 4000);
+    }
+  };
+
+  const handleReject = async (admin) => {
+    if (!window.confirm(`Decline administrator access request for ${admin.name || admin.email}?`)) return;
+    setActingId(admin.id);
+    const res = await onReject(admin.id);
+    setActingId(null);
+    if (res?.success) {
+      setToast({ type: "info", text: `Clearance request declined for ${admin.name || admin.email}.` });
+      setTimeout(() => setToast(null), 4000);
+    } else {
+      setToast({ type: "error", text: `Failed to decline: ${res?.error || "Unknown error"}` });
+      setTimeout(() => setToast(null), 4000);
+    }
+  };
+
+  return (
+    <div>
+      <PageHeader
+        title="Administrator Clearance & Duty Authorization"
+        sub="Review and authorize administrative clearance requests. Approved personnel obtain expedition command & dispatch privileges."
+        right={
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {pendingAdmins.length > 0 ? (
+              <Pill color="amber">⏳ {pendingAdmins.length} Pending Review</Pill>
+            ) : (
+              <Pill color="green">✓ All Approved</Pill>
+            )}
+            <Btn variant="default" onClick={onRefresh} disabled={refreshing}>
+              {refreshing ? "↻ Refreshing..." : "↻ Refresh Queue"}
+            </Btn>
+          </div>
+        }
+      />
+
+      {toast && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: "10px 16px",
+            borderRadius: 10,
+            background: toast.type === "success" ? "rgba(34,197,94,0.15)" : toast.type === "error" ? "rgba(239,68,68,0.15)" : "rgba(59,130,246,0.15)",
+            border: `1px solid ${toast.type === "success" ? "rgba(34,197,94,0.35)" : toast.type === "error" ? "rgba(239,68,68,0.35)" : "rgba(59,130,246,0.35)"}`,
+            color: toast.type === "success" ? "#86efac" : toast.type === "error" ? "#fca5a5" : "#93c5fd",
+            fontSize: 13,
+            fontWeight: 500,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <span>{toast.text}</span>
         </div>
-        {err&&<div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#fca5a5",marginBottom:14}}>{err}</div>}
-        <button onClick={submit} disabled={loading} style={{width:"100%",padding:"11px",background:`linear-gradient(135deg,${C.accent},${C.accent2})`,border:"none",borderRadius:10,color:"#fff",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit",opacity:loading?0.7:1}}>
-          {loading?"Signing in...":"Sign in to Coordage"}
-        </button>
-        <div style={{textAlign:"center",marginTop:14,fontSize:11,color:C.muted2}}>Demo access: admin@coordage.app · admin123</div>
+      )}
+
+      {/* Pending Authorization Queue */}
+      <div style={{ marginBottom: 28 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: C.text, display: "flex", alignItems: "center", gap: 8 }}>
+            <span>⏳</span>
+            <span>Pending Authorization Requests</span>
+            <span
+              style={{
+                fontSize: 11,
+                padding: "2px 8px",
+                borderRadius: 12,
+                background: pendingAdmins.length > 0 ? "rgba(245,158,11,0.2)" : "rgba(255,255,255,0.08)",
+                color: pendingAdmins.length > 0 ? "#fbbf24" : C.muted,
+                fontWeight: 600,
+              }}
+            >
+              {pendingAdmins.length}
+            </span>
+          </div>
+        </div>
+
+        {pendingAdmins.length === 0 ? (
+          <Card style={{ padding: "32px 20px", textAlign: "center", background: "rgba(255,255,255,0.02)" }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>🛡️</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 4 }}>
+              No Pending Administrator Requests
+            </div>
+            <div style={{ fontSize: 12, color: C.muted, maxWidth: 440, margin: "0 auto" }}>
+              All administrative clearance applications have been processed. When a team member requests administrator access from the portal, their verification card will appear here for command approval.
+            </div>
+          </Card>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {pendingAdmins.map((applicant) => {
+              const initials = (applicant.name || applicant.displayName || "Admin")
+                .split(/\s+/)
+                .slice(0, 2)
+                .map((p) => p[0])
+                .join("")
+                .toUpperCase();
+              const isActing = actingId === applicant.id;
+
+              return (
+                <Card
+                  key={applicant.id}
+                  style={{
+                    background: "rgba(15, 23, 42, 0.7)",
+                    border: "1px solid rgba(245, 158, 11, 0.35)",
+                    boxShadow: "0 4px 20px rgba(0, 0, 0, 0.35)",
+                    padding: "20px 22px",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
+                      <div
+                        style={{
+                          width: 46,
+                          height: 46,
+                          borderRadius: "50%",
+                          background: "rgba(245, 158, 11, 0.18)",
+                          border: "1px solid rgba(245, 158, 11, 0.4)",
+                          color: "#f59e0b",
+                          fontSize: 16,
+                          fontWeight: 700,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          boxShadow: "0 0 14px rgba(245, 158, 11, 0.2)",
+                        }}
+                      >
+                        {initials}
+                      </div>
+
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 16, fontWeight: 700, color: "#f8fafc" }}>
+                            {applicant.name || "Unnamed Applicant"}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 10,
+                              fontWeight: 700,
+                              letterSpacing: "0.06em",
+                              textTransform: "uppercase",
+                              padding: "2px 8px",
+                              borderRadius: 12,
+                              background: "rgba(245, 158, 11, 0.18)",
+                              border: "1px solid rgba(245, 158, 11, 0.35)",
+                              color: "#fcd34d",
+                            }}
+                          >
+                            ⏳ Pending Authorization
+                          </span>
+                        </div>
+
+                        <div style={{ fontSize: 12, color: C.muted, marginTop: 4, display: "flex", gap: 16, flexWrap: "wrap" }}>
+                          <span>✉️ <strong style={{ color: C.text }}>{applicant.email}</strong></span>
+                          {applicant.phone && <span>📞 {applicant.phone}</span>}
+                          {applicant.organization && <span>🏢 {applicant.organization}</span>}
+                          {applicant.roleTitle && <span>🎖️ {applicant.roleTitle}</span>}
+                        </div>
+
+                        <div style={{ fontSize: 11, color: C.muted2, marginTop: 8 }}>
+                          Application registered: {applicant.requestedAt ? new Date(applicant.requestedAt).toLocaleString() : "Recently"}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                      <button
+                        type="button"
+                        onClick={() => handleReject(applicant)}
+                        disabled={isActing}
+                        style={{
+                          padding: "8px 14px",
+                          borderRadius: 8,
+                          background: "rgba(239, 68, 68, 0.12)",
+                          border: "1px solid rgba(239, 68, 68, 0.3)",
+                          color: "#fca5a5",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: isActing ? "not-allowed" : "pointer",
+                          transition: "all 0.2s",
+                        }}
+                      >
+                        ✕ Decline
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleApprove(applicant)}
+                        disabled={isActing}
+                        style={{
+                          padding: "8px 18px",
+                          borderRadius: 8,
+                          background: "linear-gradient(135deg, #10b981, #059669)",
+                          border: "1px solid rgba(16, 185, 129, 0.4)",
+                          color: "#ffffff",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: isActing ? "not-allowed" : "pointer",
+                          boxShadow: "0 4px 14px rgba(16, 185, 129, 0.3)",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          opacity: isActing ? 0.6 : 1,
+                        }}
+                      >
+                        {isActing ? "Authorizing..." : "✓ Authorize Admin Clearance"}
+                      </button>
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Authorized Staff Section */}
+      <div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+          <span>🛡️</span>
+          <span>Authorized Command Staff ({approvedAdmins.length})</span>
+        </div>
+
+        <Card>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <TH>Administrator</TH>
+                <TH>Duty Role & Unit</TH>
+                <TH>Contact</TH>
+                <TH>Clearance Status</TH>
+              </tr>
+            </thead>
+            <tbody>
+              {approvedAdmins.map((admin) => (
+                <tr key={admin.id || admin.email}>
+                  <TD>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: "50%",
+                          background: "rgba(59, 130, 246, 0.18)",
+                          border: "1px solid rgba(59, 130, 246, 0.35)",
+                          color: "#60a5fa",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        {(admin.name || "SA").slice(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
+                          {admin.name || "Administrator"}
+                        </div>
+                        <div style={{ fontSize: 11, color: C.muted }}>{admin.email}</div>
+                      </div>
+                    </div>
+                  </TD>
+                  <TD>
+                    <div style={{ fontSize: 12, color: C.text }}>{admin.roleTitle || "System Administrator"}</div>
+                    <div style={{ fontSize: 11, color: C.muted2 }}>{admin.organization || "Expedition Command Operations"}</div>
+                  </TD>
+                  <TD>
+                    <span style={{ fontSize: 12, color: C.muted }}>{admin.phone || "Command Dispatch"}</span>
+                  </TD>
+                  <TD>
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        padding: "3px 8px",
+                        borderRadius: 12,
+                        background: "rgba(34, 197, 94, 0.15)",
+                        border: "1px solid rgba(34, 197, 94, 0.35)",
+                        color: "#86efac",
+                        letterSpacing: "0.04em",
+                      }}
+                    >
+                      ● ACTIVE CLEARANCE
+                    </span>
+                  </TD>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      </div>
+    </div>
+  );
+};
+
+/* ════════════════════════════════════════════════
+   PAGE: TRIP ROSTERS & EXPEDITION APPROVALS
+════════════════════════════════════════════════ */
+const PageTripRosters = ({
+  pendingTrekkers = [],
+  onApprove,
+  onRemove,
+  refreshing,
+  onRefresh,
+}) => {
+  const [trips, setTrips] = useState(TRIPS);
+  const [actionLoading, setActionLoading] = useState({});
+  const [rosters, setRosters] = useState({});
+  const [loadingRoster, setLoadingRoster] = useState({});
+  const [expandedTrip, setExpandedTrip] = useState(null);
+
+  useEffect(() => {
+    const unsub = subscribeToTrips((liveTrips) => {
+      if (liveTrips && liveTrips.length > 0) {
+        setTrips(liveTrips);
+      }
+    });
+    return () => unsub && unsub();
+  }, []);
+
+  const loadRosterForTrip = async (tripId) => {
+    setLoadingRoster((p) => ({ ...p, [tripId]: true }));
+    try {
+      const list = await fetchTripRoster(tripId);
+      setRosters((p) => ({ ...p, [tripId]: list }));
+    } catch (e) {
+      console.warn("Failed to load roster for trip:", tripId, e);
+    } finally {
+      setLoadingRoster((p) => ({ ...p, [tripId]: false }));
+    }
+  };
+
+  const handleApprove = async (tripId, userId) => {
+    const key = `${tripId}-${userId}`;
+    setActionLoading((p) => ({ ...p, [key]: true }));
+    try {
+      await onApprove(tripId, userId);
+      // Reload roster for this trip
+      const updated = await fetchTripRoster(tripId);
+      setRosters((p) => ({ ...p, [tripId]: updated }));
+    } finally {
+      setActionLoading((p) => ({ ...p, [key]: false }));
+    }
+  };
+
+  const handleRemove = async (tripId, userId) => {
+    const key = `${tripId}-${userId}`;
+    setActionLoading((p) => ({ ...p, [key]: true }));
+    try {
+      await onRemove(tripId, userId);
+      // Reload roster for this trip
+      const updated = await fetchTripRoster(tripId);
+      setRosters((p) => ({ ...p, [tripId]: updated }));
+    } finally {
+      setActionLoading((p) => ({ ...p, [key]: false }));
+    }
+  };
+
+  return (
+    <div>
+      <PageHeader
+        title="Expedition Rosters & Approvals"
+        sub="Review incoming trekker applications, authorize field clearance, and manage active expedition group rosters"
+        right={
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {pendingTrekkers.length > 0 ? (
+              <Pill color="amber">⏳ {pendingTrekkers.length} Pending Approval</Pill>
+            ) : (
+              <Pill color="green">✓ All Trekkers Processed</Pill>
+            )}
+            <Btn variant="default" onClick={onRefresh} disabled={refreshing}>
+              {refreshing ? "↻ Refreshing..." : "↻ Refresh Queue"}
+            </Btn>
+          </div>
+        }
+      />
+
+      {/* SECTION 1: PENDING TREKKER APPLICATIONS QUEUE */}
+      <div style={{ marginBottom: 28 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 16 }}>⏳</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>
+              Pending Trekker Applications
+            </span>
+            <span
+              style={{
+                fontSize: 11,
+                padding: "2px 8px",
+                borderRadius: 12,
+                background: pendingTrekkers.length > 0 ? "rgba(245,158,11,0.2)" : "rgba(255,255,255,0.08)",
+                color: pendingTrekkers.length > 0 ? "#fbbf24" : C.muted,
+                fontWeight: 600,
+              }}
+            >
+              {pendingTrekkers.length}
+            </span>
+          </div>
+        </div>
+
+        {pendingTrekkers.length === 0 ? (
+          <Card style={{ padding: "28px 20px", textAlign: "center", background: "rgba(255,255,255,0.02)" }}>
+            <div style={{ fontSize: 28, marginBottom: 8 }}>🧭</div>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: C.text, marginBottom: 4 }}>
+              No Pending Trekker Applications
+            </div>
+            <div style={{ fontSize: 12, color: C.muted, maxWidth: 500, margin: "0 auto", lineHeight: 1.5 }}>
+              All trekker expedition join requests have been processed. When a user enters a trip code or clicks Join from the user portal, their medical notes and emergency contact details will appear here for your review and clearance.
+            </div>
+          </Card>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {pendingTrekkers.map((applicant) => {
+              const applicantId = applicant.userId || applicant.id;
+              const key = `${applicant.tripId}-${applicantId}`;
+              const isActing = !!actionLoading[key];
+              const initials = (applicant.name || "Trekker")
+                .split(/\s+/)
+                .slice(0, 2)
+                .map((p) => p[0])
+                .join("")
+                .toUpperCase() || "TR";
+
+              return (
+                <Card
+                  key={key}
+                  style={{
+                    border: "1px solid rgba(245, 158, 11, 0.35)",
+                    background: "linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(11, 20, 34, 0.95))",
+                    boxShadow: "0 4px 18px rgba(0, 0, 0, 0.35)",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 14 }}>
+                    <div style={{ display: "flex", gap: 14 }}>
+                      <div
+                        style={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: 12,
+                          background: "rgba(245, 158, 11, 0.18)",
+                          border: "1px solid rgba(245, 158, 11, 0.4)",
+                          color: "#fbbf24",
+                          fontSize: 15,
+                          fontWeight: 700,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {initials}
+                      </div>
+
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>
+                            {applicant.name || "Trekker Applicant"}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 10,
+                              fontWeight: 700,
+                              padding: "2px 8px",
+                              borderRadius: 10,
+                              background: "rgba(245, 158, 11, 0.2)",
+                              border: "1px solid rgba(245, 158, 11, 0.35)",
+                              color: "#fbbf24",
+                            }}
+                          >
+                            ⏳ AWAITING APPROVAL
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 11,
+                              fontWeight: 600,
+                              padding: "2px 8px",
+                              borderRadius: 6,
+                              background: "rgba(59, 130, 246, 0.15)",
+                              border: "1px solid rgba(59, 130, 246, 0.3)",
+                              color: "#60a5fa",
+                            }}
+                          >
+                            Expedition: {applicant.tripName} ({applicant.tripCode})
+                          </span>
+                        </div>
+
+                        <div style={{ fontSize: 12, color: C.muted, display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 8 }}>
+                          <span>✉️ {applicant.email || "No email"}</span>
+                          <span>📞 {applicant.phone || "No phone"}</span>
+                          <span>🩸 Blood: <strong>{applicant.blood || "Not specified"}</strong></span>
+                          <span>🩺 Medical: <strong>{applicant.medical || "None reported"}</strong></span>
+                        </div>
+
+                        <div style={{ fontSize: 11.5, color: "rgba(180, 210, 245, 0.85)", background: "rgba(255,255,255,0.03)", padding: "6px 12px", borderRadius: 8, display: "inline-block" }}>
+                          🆘 <strong>Emergency Contact:</strong> {applicant.ec1Name || "Family"} ({applicant.ec1Rel || "Next of Kin"}) — 📞 {applicant.ec1Ph || "—"}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        onClick={() => handleRemove(applicant.tripId, applicantId)}
+                        disabled={isActing}
+                        style={{
+                          background: "transparent",
+                          border: "1px solid rgba(239, 68, 68, 0.35)",
+                          borderRadius: 8,
+                          color: "#fca5a5",
+                          padding: "8px 14px",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: isActing ? "not-allowed" : "pointer",
+                          opacity: isActing ? 0.6 : 1,
+                          fontFamily: "inherit",
+                        }}
+                      >
+                        ✕ Decline Request
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleApprove(applicant.tripId, applicantId)}
+                        disabled={isActing}
+                        style={{
+                          background: "linear-gradient(135deg, #10b981, #059669)",
+                          border: "none",
+                          borderRadius: 8,
+                          color: "#ffffff",
+                          padding: "8px 16px",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: isActing ? "not-allowed" : "pointer",
+                          boxShadow: "0 4px 14px rgba(16, 185, 129, 0.35)",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          opacity: isActing ? 0.6 : 1,
+                          fontFamily: "inherit",
+                        }}
+                      >
+                        {isActing ? "Authorizing..." : "✓ Approve Trekker"}
+                      </button>
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* SECTION 2: ACTIVE EXPEDITIONS & ROSTER MANAGEMENT */}
+      <div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+          <span>🏔️</span>
+          <span>Active Expeditions & Roster Controls ({trips.length})</span>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {trips.map((trip) => {
+            const tripId = trip.id || trip.tripId;
+            const isExpanded = expandedTrip === tripId;
+            const tripRoster = rosters[tripId] || [];
+            const approvedMembers = tripRoster.filter((m) => m.status === "approved" || !m.status);
+
+            return (
+              <Card key={tripId} style={{ background: "rgba(11, 20, 34, 0.95)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                      <span style={{ background: "rgba(59, 130, 246, 0.15)", border: "1px solid rgba(59, 130, 246, 0.3)", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700, color: "#60a5fa" }}>
+                        {trip.code}
+                      </span>
+                      <Pill color="green">● ACTIVE</Pill>
+                      <span style={{ fontSize: 12, color: C.muted }}>📍 {trip.location}</span>
+                    </div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{trip.name}</div>
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 4, display: "flex", gap: 14, flexWrap: "wrap" }}>
+                      <span>📅 {trip.date}</span>
+                      <span>🏔️ Elevation: {trip.elevation || "829m"}</span>
+                      <span>🧭 Leader: {trip.leader || "Field Guide"}</span>
+                      <span>🔒 Geofence Radius: {trip.geofence?.radius ? (trip.geofence.radius / 1000).toFixed(1) + " km" : "2.5 km"}</span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 11, color: C.muted2 }}>Roster Strength</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: "#60a5fa" }}>
+                        {trip.rosterCount || approvedMembers.length || 0} / {trip.maxRoster || 25} Trekkers
+                      </div>
+                    </div>
+                    <Btn
+                      variant={isExpanded ? "default" : "primary"}
+                      onClick={() => {
+                        if (isExpanded) {
+                          setExpandedTrip(null);
+                        } else {
+                          setExpandedTrip(tripId);
+                          loadRosterForTrip(tripId);
+                        }
+                      }}
+                    >
+                      {isExpanded ? "Hide Roster ▴" : "Manage Roster ▾"}
+                    </Btn>
+                  </div>
+                </div>
+
+                {/* Expanded Roster Members Table */}
+                {isExpanded && (
+                  <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span>Enrolled Trekkers Roster</span>
+                      <button
+                        type="button"
+                        onClick={() => loadRosterForTrip(tripId)}
+                        style={{ background: "transparent", border: "none", color: "#60a5fa", fontSize: 11, cursor: "pointer" }}
+                      >
+                        ↻ Refresh Roster
+                      </button>
+                    </div>
+
+                    {loadingRoster[tripId] ? (
+                      <div style={{ padding: "16px", textAlign: "center", color: C.muted, fontSize: 12 }}>
+                        Loading expedition roster from database...
+                      </div>
+                    ) : approvedMembers.length === 0 ? (
+                      <div style={{ padding: "16px", textAlign: "center", color: C.muted2, fontSize: 12, background: "rgba(255,255,255,0.02)", borderRadius: 8 }}>
+                        No trekkers currently enrolled in this expedition. Trekkers who apply with code <strong>{trip.code}</strong> and get approved will appear here.
+                      </div>
+                    ) : (
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr>
+                            <TH>Trekker</TH>
+                            <TH>Contact & Blood</TH>
+                            <TH>Emergency Contact</TH>
+                            <TH>Status</TH>
+                            <TH>Roster Actions</TH>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {approvedMembers.map((member) => {
+                            const memberKey = `${tripId}-${member.id || member.userId}`;
+                            const isActing = !!actionLoading[memberKey];
+
+                            return (
+                              <tr key={memberKey}>
+                                <TD>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                    <div
+                                      style={{
+                                        width: 30,
+                                        height: 30,
+                                        borderRadius: "50%",
+                                        background: "rgba(59, 130, 246, 0.15)",
+                                        border: "1px solid rgba(59, 130, 246, 0.3)",
+                                        color: "#60a5fa",
+                                        fontSize: 11,
+                                        fontWeight: 700,
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                      }}
+                                    >
+                                      {(member.name || "TR").slice(0, 2).toUpperCase()}
+                                    </div>
+                                    <div>
+                                      <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>
+                                        {member.name || "Trekker"}
+                                      </div>
+                                      <div style={{ fontSize: 11, color: C.muted }}>{member.email || "No email"}</div>
+                                    </div>
+                                  </div>
+                                </TD>
+                                <TD>
+                                  <div style={{ fontSize: 11.5, color: C.text }}>{member.phone || "—"}</div>
+                                  <div style={{ fontSize: 11, color: C.muted2 }}>Blood: {member.blood || "B+"} · Medical: {member.medical || "None"}</div>
+                                </TD>
+                                <TD>
+                                  <div style={{ fontSize: 11.5, color: C.text }}>{member.ec1Name || "Family"} ({member.ec1Rel || "Next of Kin"})</div>
+                                  <div style={{ fontSize: 11, color: C.muted2 }}>📞 {member.ec1Ph || "—"}</div>
+                                </TD>
+                                <TD>
+                                  <span
+                                    style={{
+                                      fontSize: 10,
+                                      fontWeight: 700,
+                                      padding: "2px 7px",
+                                      borderRadius: 10,
+                                      background: "rgba(34, 197, 94, 0.15)",
+                                      border: "1px solid rgba(34, 197, 94, 0.3)",
+                                      color: "#86efac",
+                                    }}
+                                  >
+                                    ● ENROLLED
+                                  </span>
+                                </TD>
+                                <TD>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemove(tripId, member.id || member.userId)}
+                                    disabled={isActing}
+                                    style={{
+                                      background: "transparent",
+                                      border: "1px solid rgba(239, 68, 68, 0.3)",
+                                      borderRadius: 6,
+                                      color: "#fca5a5",
+                                      padding: "4px 10px",
+                                      fontSize: 11,
+                                      fontWeight: 600,
+                                      cursor: isActing ? "not-allowed" : "pointer",
+                                      opacity: isActing ? 0.6 : 1,
+                                      fontFamily: "inherit",
+                                    }}
+                                  >
+                                    {isActing ? "Removing..." : "Remove from Expedition"}
+                                  </button>
+                                </TD>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -794,7 +2347,7 @@ const PageLogin = ({ onLogin }) => {
 /* ════════════════════════════════════════════════
    PAGE: DASHBOARD
 ════════════════════════════════════════════════ */
-const PageDashboard = ({ navigate, users=USERS }) => {
+const PageDashboard = ({ navigate, users=USERS, pendingAdmins=[], pendingTrekkers=[] }) => {
   const active=users.filter(u=>u.status==="active").length;
   const sos=users.filter(u=>u.status==="sos").length;
   const [trips, setTrips] = useState(TRIPS);
@@ -829,6 +2382,95 @@ const PageDashboard = ({ navigate, users=USERS }) => {
     <div>
       <PageHeader title="Operations Dashboard" sub="Live visibility for every trip, even where signal can't reach"
         right={<div style={{display:"flex",gap:8}}>{sos>0&&<Pill color="red">🚨 {sos} SOS Active</Pill>}<Pill color="green">● Live</Pill></div>}/>
+
+      {pendingAdmins && pendingAdmins.length > 0 && (
+        <div
+          onClick={() => navigate("admin-approvals")}
+          style={{
+            marginBottom: 16,
+            padding: "12px 18px",
+            borderRadius: 14,
+            background: "linear-gradient(90deg, rgba(245, 158, 11, 0.16), rgba(59, 130, 246, 0.12))",
+            border: "1px solid rgba(245, 158, 11, 0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            cursor: "pointer",
+            boxShadow: "0 4px 16px rgba(245, 158, 11, 0.12)",
+            transition: "all 0.2s ease",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 20 }}>🛡️</span>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#fbbf24" }}>
+                {pendingAdmins.length} Administrator Access Request{pendingAdmins.length > 1 ? "s" : ""} Pending Authorization
+              </div>
+              <div style={{ fontSize: 11, color: "rgba(180, 210, 245, 0.7)" }}>
+                New expedition personnel have applied for administrative console clearance.
+              </div>
+            </div>
+          </div>
+          <div
+            style={{
+              padding: "6px 14px",
+              borderRadius: 8,
+              background: "rgba(245, 158, 11, 0.22)",
+              border: "1px solid rgba(245, 158, 11, 0.4)",
+              color: "#fef3c7",
+              fontSize: 12,
+              fontWeight: 600,
+            }}
+          >
+            Review & Authorize ›
+          </div>
+        </div>
+      )}
+
+      {pendingTrekkers && pendingTrekkers.length > 0 && (
+        <div
+          onClick={() => navigate("trip-rosters")}
+          style={{
+            marginBottom: 16,
+            padding: "12px 18px",
+            borderRadius: 14,
+            background: "linear-gradient(90deg, rgba(16, 185, 129, 0.16), rgba(59, 130, 246, 0.12))",
+            border: "1px solid rgba(16, 185, 129, 0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            cursor: "pointer",
+            boxShadow: "0 4px 16px rgba(16, 185, 129, 0.12)",
+            transition: "all 0.2s ease",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 20 }}>🧭</span>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#6ee7b7" }}>
+                {pendingTrekkers.length} Trekker Application{pendingTrekkers.length > 1 ? "s" : ""} Awaiting Expedition Approval
+              </div>
+              <div style={{ fontSize: 11, color: "rgba(180, 210, 245, 0.7)" }}>
+                Trekkers have applied to join active expeditions. Review safety info and authorize their enrollment.
+              </div>
+            </div>
+          </div>
+          <div
+            style={{
+              padding: "6px 14px",
+              borderRadius: 8,
+              background: "rgba(16, 185, 129, 0.22)",
+              border: "1px solid rgba(16, 185, 129, 0.4)",
+              color: "#ecfdf5",
+              fontSize: 12,
+              fontWeight: 600,
+            }}
+          >
+            Review Rosters ›
+          </div>
+        </div>
+      )}
+
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
         <StatCard label="Total users" value={users.length} sub="Registered" color={C.accent} icon="👥"/>
         <StatCard label="Active now" value={active} sub="On platform" color={C.green} icon="📍"/>
@@ -1864,6 +3506,8 @@ const NAV = [
   {section:"Overview",items:[{id:"dashboard",label:"Dashboard",icon:"⊞"}]},
   {section:"Users",items:[
     {id:"all-users",label:"All users",icon:"👥"},
+    {id:"trip-rosters",label:"Trip rosters & approvals",icon:"🧭"},
+    {id:"admin-approvals",label:"Admin approvals",icon:"🛡️"},
     {id:"feature-access",label:"Feature access",icon:"🔑"},
     {id:"live-tracking",label:"Live navigation & tracking",icon:"📍"},
   ]},
@@ -1934,12 +3578,127 @@ function distanceKm(a, b) {
    ROOT COMPONENT
 ════════════════════════════════════════════════ */
 export default function AdminPanel() {
-  const [loggedIn,setLoggedIn]=useState(false);
-  const [page,setPage]=useState("dashboard");
+  const [activeAdmin, setActiveAdmin] = useState(() => {
+    try {
+      const stored = localStorage.getItem("coordage_admin_session");
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [loggedIn, setLoggedIn] = useState(() => {
+    return !!localStorage.getItem("coordage_admin_session");
+  });
+  const [page, setPage] = useState("dashboard");
   const [firestoreUsers, setFirestoreUsers] = useState(USERS);
+  const [pendingAdmins, setPendingAdmins] = useState([]);
+  const [refreshingPending, setRefreshingPending] = useState(false);
+  const [pendingTrekkers, setPendingTrekkers] = useState([]);
+  const [refreshingTrekkers, setRefreshingTrekkers] = useState(false);
   const { liveUsers, sosEvents, connectionState, error } = useAdminTracking({ serverUrl: "http://localhost:4000" });
   const displayUsers = toDisplayUsers(liveUsers, firestoreUsers);
-  const navigate=p=>setPage(p);
+  const navigate = (p) => setPage(p);
+
+  const loadPendingAdmins = useCallback(async () => {
+    setRefreshingPending(true);
+    try {
+      const list = await fetchPendingAdmins();
+      setPendingAdmins(Array.isArray(list) ? list : []);
+    } catch (err) {
+      console.warn("Failed to load pending admins:", err);
+    } finally {
+      setRefreshingPending(false);
+    }
+  }, []);
+
+  const loadPendingTrekkers = useCallback(async () => {
+    setRefreshingTrekkers(true);
+    try {
+      const list = await fetchPendingTripRequests();
+      setPendingTrekkers(Array.isArray(list) ? list : []);
+    } catch (err) {
+      console.warn("Failed to load pending trekker requests:", err);
+    } finally {
+      setRefreshingTrekkers(false);
+    }
+  }, []);
+
+  const handleApproveTrekker = async (tripId, userId) => {
+    const res = await approveTrekker(tripId, userId, activeAdmin?.email || "admin@coordage.app");
+    if (res?.success) {
+      await loadPendingTrekkers();
+      return { success: true };
+    }
+    return res;
+  };
+
+  const handleRemoveTrekker = async (tripId, userId) => {
+    const res = await removeTrekker(tripId, userId, activeAdmin?.email || "admin@coordage.app");
+    if (res?.success) {
+      await loadPendingTrekkers();
+      return { success: true };
+    }
+    return res;
+  };
+
+  const handleApproveAdmin = async (adminId) => {
+    const res = await approveAdmin(adminId, activeAdmin?.email || "admin@coordage.app");
+    if (res?.success) {
+      await loadPendingAdmins();
+      try {
+        const response = await fetch(`${AUTH_API_URL}/users`);
+        if (response.ok) {
+          const data = await response.json();
+          if (Array.isArray(data?.users)) setFirestoreUsers(data.users);
+        }
+      } catch {}
+      return { success: true };
+    }
+    return res;
+  };
+
+  const handleRejectAdmin = async (adminId) => {
+    const res = await rejectAdmin(adminId, activeAdmin?.email || "admin@coordage.app");
+    if (res?.success) {
+      await loadPendingAdmins();
+      return { success: true };
+    }
+    return res;
+  };
+
+  const approvedAdmins = useMemo(() => {
+    const list = firestoreUsers
+      .filter((u) => {
+        const email = (u.email || "").toLowerCase();
+        const role = (u.role || "").toLowerCase();
+        return role === "admin" || email === "admin@coordage.app";
+      })
+      .filter((u) => u.status !== "pending_approval" && u.status !== "rejected");
+
+    if (!list.some((u) => (u.email || "").toLowerCase() === "admin@coordage.app")) {
+      list.unshift({
+        id: "demo-admin-001",
+        name: "Super Admin",
+        email: "admin@coordage.app",
+        role: "admin",
+        roleTitle: "Lead Command Dispatcher",
+        organization: "Coordage HQ Dispatch",
+        phone: "+91 98765 00000",
+        status: "approved",
+      });
+    }
+    return list;
+  }, [firestoreUsers]);
+
+  useEffect(() => {
+    loadPendingAdmins();
+    loadPendingTrekkers();
+    const interval = setInterval(() => {
+      loadPendingAdmins();
+      loadPendingTrekkers();
+    }, 12000);
+    return () => clearInterval(interval);
+  }, [loadPendingAdmins, loadPendingTrekkers]);
 
   useEffect(() => {
     // 1. Live Firestore real-time listener for users
@@ -1978,11 +3737,43 @@ export default function AdminPanel() {
     };
   }, []);
 
-  if(!loggedIn) return <PageLogin onLogin={()=>setLoggedIn(true)}/>;
+  const handleLogin = (adminUser) => {
+    const adminObj = adminUser || { email: "admin@coordage.app", name: "Super Admin", role: "admin" };
+    setActiveAdmin(adminObj);
+    try {
+      localStorage.setItem("coordage_admin_session", JSON.stringify(adminObj));
+    } catch {}
+    setLoggedIn(true);
+  };
+
+  const handleLogout = () => {
+    try {
+      localStorage.removeItem("coordage_admin_session");
+    } catch {}
+    setActiveAdmin(null);
+    setLoggedIn(false);
+  };
+
+  if(!loggedIn) return <PageAdminAuth onLogin={handleLogin}/>;
 
   const pages = {
-    dashboard:        <PageDashboard navigate={navigate} users={displayUsers}/>,
+    dashboard:        <PageDashboard navigate={navigate} users={displayUsers} pendingAdmins={pendingAdmins} pendingTrekkers={pendingTrekkers}/>,
     "all-users":      <PageAllUsers navigate={navigate}/>,
+    "trip-rosters":   <PageTripRosters
+                        pendingTrekkers={pendingTrekkers}
+                        onApprove={handleApproveTrekker}
+                        onRemove={handleRemoveTrekker}
+                        refreshing={refreshingTrekkers}
+                        onRefresh={loadPendingTrekkers}
+                      />,
+    "admin-approvals": <PageAdminApprovals
+                        pendingAdmins={pendingAdmins}
+                        approvedAdmins={approvedAdmins}
+                        onApprove={handleApproveAdmin}
+                        onReject={handleRejectAdmin}
+                        refreshing={refreshingPending}
+                        onRefresh={loadPendingAdmins}
+                      />,
     "device-tracking":<PageDeviceTracking users={displayUsers} connectionState={connectionState}/>,
     "feature-access": <PageFeatureAccess users={displayUsers}/>,
     "safety-protocol":<PageSafetyProtocol/>,
@@ -2007,8 +3798,13 @@ export default function AdminPanel() {
           <div><div style={{fontSize:14,fontWeight:600,color:C.text,letterSpacing:"0.03em"}}>Coordage <span style={{color:C.accent}}>Admin</span></div><div style={{fontSize:10,color:C.muted2}}>Control panel v3.0</div></div>
         </div>
         <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:10}}>
-          <div style={{width:34,height:34,borderRadius:"50%",background:"rgba(59,130,246,0.18)",color:C.accent,fontSize:12,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center"}}>SA</div>
-          <div><div style={{fontSize:12,fontWeight:500,color:C.text}}>Super Admin</div><div style={{fontSize:10,color:C.muted2}}>admin@coordage.app</div></div>
+          <div style={{width:34,height:34,borderRadius:"50%",background:"rgba(59,130,246,0.18)",color:C.accent,fontSize:12,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            {(activeAdmin?.name || "SA").slice(0, 2).toUpperCase()}
+          </div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:12,fontWeight:500,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{activeAdmin?.name || "Super Admin"}</div>
+            <div style={{fontSize:10,color:C.muted2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{activeAdmin?.email || "admin@coordage.app"}</div>
+          </div>
           {activeSOS>0&&<div style={{marginLeft:"auto",background:"rgba(239,68,68,0.15)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:"50%",width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:C.red,fontWeight:700}}>{activeSOS}</div>}
         </div>
         <nav style={{flex:1,overflowY:"auto",padding:"10px 0"}}>
@@ -2018,6 +3814,7 @@ export default function AdminPanel() {
               {items.map(item=>{
                 const active=page===item.id;
                 const isSosNav=item.id==="sos-navigation";
+                const isApprovals=item.id==="admin-approvals";
                 return (
                   <div key={item.id} onClick={()=>setPage(item.id)}
                     style={{display:"flex",alignItems:"center",gap:10,padding:"8px 16px",cursor:"pointer",
@@ -2027,6 +3824,8 @@ export default function AdminPanel() {
                     <span style={{fontSize:15,width:18,textAlign:"center",flexShrink:0}}>{item.icon}</span>
                     <span style={{fontSize:12,color:active?C.text:isSosNav?"rgba(252,165,165,0.8)":C.muted,fontWeight:active?500:400}}>{item.label}</span>
                     {isSosNav&&activeSOS>0&&<div style={{marginLeft:"auto",background:"rgba(239,68,68,0.2)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:10,padding:"1px 7px",fontSize:9,color:C.red,fontWeight:700}}>LIVE</div>}
+                    {isApprovals&&pendingAdmins.length>0&&<div style={{marginLeft:"auto",background:"rgba(245,158,11,0.2)",border:"1px solid rgba(245,158,11,0.35)",borderRadius:10,padding:"1px 7px",fontSize:9,color:C.amber,fontWeight:700}}>{pendingAdmins.length} PENDING</div>}
+                    {item.id==="trip-rosters"&&pendingTrekkers.length>0&&<div style={{marginLeft:"auto",background:"rgba(16,185,129,0.2)",border:"1px solid rgba(16,185,129,0.35)",borderRadius:10,padding:"1px 7px",fontSize:9,color:"#6ee7b7",fontWeight:700}}>{pendingTrekkers.length} PENDING</div>}
                   </div>
                 );
               })}
@@ -2035,7 +3834,7 @@ export default function AdminPanel() {
         </nav>
         <div style={{padding:"12px 16px",borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <span style={{fontSize:10,color:C.muted2}}>© 2026 Coordage</span>
-          <button onClick={()=>setLoggedIn(false)} style={{fontSize:11,color:C.muted,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}}>Sign out</button>
+          <button onClick={handleLogout} style={{fontSize:11,color:C.muted,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}}>Sign out</button>
         </div>
       </aside>
 

@@ -1,7 +1,16 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import UserTrackingWidget from "./UserTrackingWidget";
 import { useLocationTracking } from "./useLocationTracking";
-import { subscribeToSafetyProtocols, getTripByCode } from "./services/firebase";
+import {
+  subscribeToSafetyProtocols,
+  getTripByCode,
+  subscribeToTrips,
+  updateUserProfileInFirestore,
+  fetchUserActiveTrip,
+  subscribeToUserActiveTrip,
+  joinTripInFirestore,
+  leaveTripInFirestore,
+} from "./services/firebase";
 
 
 /* ════════════════════════════════════════════════
@@ -1529,15 +1538,22 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
   const [pressureHistory, setPressureHistory] = useState([1013,1013,1012,1012,1011,1011,1010]);
   const [sosConfirm, setSosConfirm] = useState(false);
   const [sosActive, setSosActive] = useState(activeSOS);
+
+  useEffect(() => {
+    setSosActive(activeSOS);
+  }, [activeSOS]);
   const [expandProtocol, setExpandProtocol] = useState(null);
   const [safetyProtocols, setSafetyProtocols] = useState(FALLBACK_SAFETY_PROTOCOLS);
 
   /* Fetch Open-Meteo weather */
   useEffect(()=>{
+    if (!joinedTrip) return;
+    const lat = joinedTrip?.lat || 18.8286;
+    const lon = joinedTrip?.lon || 73.3986;
     const go = async () => {
       try {
         const r = await fetch(
-          "https://api.open-meteo.com/v1/forecast?latitude=18.5196&longitude=73.8554" +
+          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
           "&current=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m," +
           "wind_direction_10m,cloud_cover,pressure_msl,uv_index,weather_code" +
           "&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weather_code" +
@@ -1560,7 +1576,7 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
     go();
     const t = setInterval(go, 300_000);
     return ()=>clearInterval(t);
-  },[]);
+  },[joinedTrip]);
 
   /* Sensor micro-drift */
   useEffect(()=>{
@@ -1620,16 +1636,237 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
   };
   const cancelSOS = () => { setSosActive(false); setSosConfirm(false); onSOS(false); };
 
+  if (!joinedTrip) {
+    return (
+      <div>
+        <PageHeader
+          title="My Dashboard"
+          sub={`Welcome back, ${user?.name || "Trekker"} · Duty-of-Care Portal`}
+          right={
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <Pill color="gray">⚪ No Active Trip</Pill>
+              <Btn variant="primary" onClick={() => onNavigate("join-trip")}>
+                🔑 Join an Expedition
+              </Btn>
+            </div>
+          }
+        />
+
+        {/* Hero Card for No Active Trip */}
+        <Card
+          style={{
+            background: "linear-gradient(135deg, rgba(30, 58, 110, 0.35), rgba(11, 20, 34, 0.95))",
+            borderColor: "rgba(59, 130, 246, 0.3)",
+            padding: "36px 28px",
+            marginBottom: 20,
+            textAlign: "center",
+          }}
+        >
+          <div
+            style={{
+              width: 64,
+              height: 64,
+              borderRadius: "50%",
+              background: "rgba(59, 130, 246, 0.15)",
+              border: "1px solid rgba(59, 130, 246, 0.35)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 16px",
+              fontSize: 32,
+              boxShadow: "0 8px 24px rgba(0, 0, 0, 0.4)",
+            }}
+          >
+            🧭
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 8 }}>
+            No Active Trip at the Moment
+          </div>
+          <div style={{ fontSize: 13.5, color: C.muted, maxWidth: 540, margin: "0 auto 24px", lineHeight: 1.6 }}>
+            You are not currently enrolled in an active trek. Live mountain weather telemetry, atmospheric barometer trends, route geofencing, and emergency SOS dispatch are activated once you join an expedition.
+          </div>
+          <div style={{ display: "flex", justifyContent: "center", gap: 12 }}>
+            <Btn variant="primary" onClick={() => onNavigate("join-trip")} style={{ padding: "10px 22px", fontSize: 13.5 }}>
+              🔑 Join with Trip Code or Browse Treks →
+            </Btn>
+          </div>
+        </Card>
+
+        {/* 2-Column Grid: Profile Readiness & How Coordage Works */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
+          {/* Duty-of-Care Readiness Summary */}
+          <Card>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>
+                Duty-of-Care &amp; Emergency Profile
+              </div>
+              <Pill color="green">Ready for Field ✓</Pill>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14, paddingBottom: 14, borderBottom: `1px solid ${C.border}` }}>
+              <Avatar initials={user?.avatar || (user?.name || "T").slice(0, 2).toUpperCase()} bg={user?.color?.[0] || "#E6F1FB"} text={user?.color?.[1] || "#0C447C"} size={44}/>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{user?.name}</div>
+                <div style={{ fontSize: 11, color: C.muted }}>{user?.email} · {user?.city || "Western Ghats"}</div>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+              <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 10, color: C.muted2 }}>BLOOD GROUP</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.red }}>🩸 {user?.blood || "B+"}</div>
+              </div>
+              <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 10, color: C.muted2 }}>PRIMARY CONTACT</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {user?.ec1Name ? `${user.ec1Name} (${user.ec1Rel || "Family"})` : "Not set"}
+                </div>
+              </div>
+            </div>
+
+            <Btn onClick={() => onNavigate("profile")} style={{ width: "100%", justifyContent: "center" }}>
+              👤 View &amp; Edit Full Medical Profile →
+            </Btn>
+          </Card>
+
+          {/* Expedition Safety Notice */}
+          <Card style={{ background: "rgba(11, 20, 34, 0.75)" }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 12 }}>
+              How Expedition Safety Works
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {[
+                ["🔑 1. Enter Trip Join Code", "Obtain the 6-character code (e.g. RAJM26) from your trip organizer to enroll in the expedition roster."],
+                ["📡 2. Live Weather & Telemetry", "Once joined, real-time barometric pressure, rain radar, and micro-climate sensors for that peak will unlock."],
+                ["🔶 3. Admin-Controlled Geofence", "Your trek leader sets the trail perimeter (e.g. 2.5 km). You will be warned instantly if you stray off course."],
+                ["🚨 4. Mountain SOS Dispatch", "In emergencies, triggering SOS broadcasts your medical card and exact GPS coordinates to SAR rescue teams."],
+              ].map(([t, desc]) => (
+                <div key={t} style={{ background: "rgba(255, 255, 255, 0.03)", padding: "10px 12px", borderRadius: 8, border: `1px solid ${C.border}` }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "#60a5fa", marginBottom: 3 }}>{t}</div>
+                  <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.45 }}>{desc}</div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // Awaiting Admin Approval state
+  if (joinedTrip && joinedTrip.tripStatus === "pending_approval") {
+    return (
+      <div>
+        <PageHeader
+          title="My Dashboard"
+          sub={`Welcome back, ${user?.name || "Trekker"} · Duty-of-Care Portal`}
+          right={
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <Pill color="amber">⏳ Application Pending Approval</Pill>
+              <Btn variant="default" onClick={() => onNavigate("join-trip")}>
+                🧭 View Expeditions
+              </Btn>
+            </div>
+          }
+        />
+
+        {/* Hero Card for Pending Approval */}
+        <Card
+          style={{
+            background: "linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(11, 20, 34, 0.95))",
+            borderColor: "rgba(245, 158, 11, 0.4)",
+            padding: "36px 28px",
+            marginBottom: 20,
+            textAlign: "center",
+          }}
+        >
+          <div
+            style={{
+              width: 64,
+              height: 64,
+              borderRadius: "50%",
+              background: "rgba(245, 158, 11, 0.18)",
+              border: "1px solid rgba(245, 158, 11, 0.45)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 16px",
+              fontSize: 32,
+              boxShadow: "0 8px 24px rgba(245, 158, 11, 0.2)",
+            }}
+          >
+            ⏳
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 8 }}>
+            Application Pending Admin Approval
+          </div>
+          <div style={{ fontSize: 13.5, color: C.muted, maxWidth: 580, margin: "0 auto 20px", lineHeight: 1.6 }}>
+            Your application for <strong>{joinedTrip.name}</strong> (Code: <strong>{joinedTrip.code}</strong>) has been submitted and is currently in queue for review by the expedition leader or administrator. Live mountain weather telemetry, route geofencing, and SAR emergency dispatch will unlock automatically upon authorization.
+          </div>
+
+          <div style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${C.border}`, borderRadius: 12, padding: "16px 20px", maxWidth: 620, margin: "0 auto 24px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, textAlign: "left" }}>
+            <div>
+              <div style={{ fontSize: 11, color: C.muted2 }}>EXPEDITION</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{joinedTrip.name}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: C.muted2 }}>ZONE &amp; LOCATION</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>📍 {joinedTrip.location}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: C.muted2 }}>LEADER &amp; DISPATCH</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>🧭 {joinedTrip.leader || "Field Guide"}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: C.muted2 }}>APPLICATION STATUS</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#fbbf24" }}>⏳ Pending Authorization</div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "center", gap: 12 }}>
+            <Btn variant="primary" onClick={() => onNavigate("join-trip")} style={{ padding: "10px 22px", fontSize: 13.5 }}>
+              🧭 Manage Application in Expeditions →
+            </Btn>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div>
       <PageHeader title="My Dashboard"
-        sub={`Welcome back, ${user.name} · ${new Date().toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}`}
+        sub={`${joinedTrip.name} · ${joinedTrip.date}`}
         right={<div style={{display:"flex",gap:8}}>
           <Pill color={safetyStatus==="safe"?"green":safetyStatus==="caution"?"amber":"red"}>
             {statusLabel[safetyStatus]}
           </Pill>
           <Pill color="green">● Live</Pill>
         </div>}/>
+
+      {/* Active Expedition Hero Card */}
+      <Card style={{ marginBottom: 16, background: "linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(11, 20, 34, 0.95))", borderColor: "rgba(16, 185, 129, 0.35)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <Pill color="green">● ACTIVE EXPEDITION</Pill>
+              <span style={{ fontSize: 11, color: "#34d399", fontWeight: 700 }}>{joinedTrip.code}</span>
+              <span style={{ fontSize: 11, color: C.muted }}>· {joinedTrip.difficulty || "Moderate"}</span>
+            </div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: C.text }}>{joinedTrip.name}</div>
+            <div style={{ fontSize: 11.5, color: C.muted, marginTop: 4, display: "flex", gap: 14, flexWrap: "wrap" }}>
+              <span>📍 {joinedTrip.location}</span>
+              <span>📅 {joinedTrip.date}</span>
+              <span>🏔️ {joinedTrip.elevation || "829m"}</span>
+              <span>🧭 Leader: {joinedTrip.leader || "Field Guide"}</span>
+              <span>🔒 Admin Geofence: {joinedTrip.geofence?.radius ? (joinedTrip.geofence.radius/1000).toFixed(1) + ' km' : '2.5 km'}</span>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn onClick={() => onNavigate("join-trip")}>Expeditions Hub →</Btn>
+          </div>
+        </div>
+      </Card>
 
       {/* SOS Active Banner */}
       {sosActive&&(
@@ -1649,69 +1886,46 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
       )}
 
       <div style={{display:"grid",gridTemplateColumns:"300px 1fr",gap:16,marginBottom:16}}>
-        {/* Left: Profile Card */}
+        {/* Left: Expedition Command & Quick Profile */}
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          <Card style={{background:"linear-gradient(135deg,rgba(59,130,246,0.10),rgba(11,20,34,0.95))"}}>
-            <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
-              <Avatar initials={user.avatar} bg={user.color[0]} text={user.color[1]} size={50}/>
-              <div>
-                <div style={{fontSize:16,fontWeight:700,color:C.text}}>{user.name}</div>
-                <div style={{fontSize:11,color:C.muted}}>{user.email}</div>
-                <div style={{marginTop:4}}><Pill color="blue">{user.role}</Pill></div>
-              </div>
-            </div>
+          {/* Expedition Command Card */}
+          <Card style={{background:"linear-gradient(135deg,rgba(16,185,129,0.08),rgba(11,20,34,0.95))",borderColor:"rgba(16,185,129,0.3)"}}>
+            <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>Expedition Details</div>
             {[
-              ["📍 Location",  user.city],
-              ["🩸 Blood",     user.blood],
-              ["⚕️ Medical",   user.medical||"None"],
-              ["📱 Devices",   `${user.devices} linked`],
-              ["🥾 Treks",     `${user.trips} completed`],
+              ["🏔️ Trail Peak", joinedTrip.name],
+              ["📍 Location", joinedTrip.location],
+              ["🧭 Leader", joinedTrip.leader || "Field Guide"],
+              ["👥 Roster", `${joinedTrip.rosterCount || 0} Trekkers`],
+              ["🚑 SAR Unit", joinedTrip.rescueUnit || "Team Alpha"],
+              ["📻 Radio VHF", joinedTrip.emergencyFrequency || "145.500 MHz"],
             ].map(([k,v])=>(
               <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:12,
-                padding:"5px 0",borderBottom:`1px solid ${C.border}`}}>
+                padding:"6px 0",borderBottom:`1px solid ${C.border}`}}>
                 <span style={{color:C.muted2}}>{k}</span>
-                <span style={{color:C.text,fontWeight:500}}>{v}</span>
+                <span style={{color:C.text,fontWeight:500,maxWidth:160,textAlign:"right"}}>{v}</span>
               </div>
             ))}
-            <div style={{marginTop:12,display:"flex",gap:8}}>
-              <Btn style={{flex:1,justifyContent:"center",fontSize:11}} onClick={()=>onNavigate("join-trip")}>🔑 Join Trip</Btn>
+            <Btn style={{marginTop:12,width:"100%",justifyContent:"center",fontSize:11}} onClick={()=>onNavigate("join-trip")}>
+              🧭 View Expedition Roster
+            </Btn>
+          </Card>
+
+          {/* Quick Duty-of-Care Snapshot */}
+          <Card>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em"}}>Trekker Duty-of-Care</div>
+              <Pill color="green">Verified ✓</Pill>
             </div>
-          </Card>
-
-          {/* My Trip */}
-          <Card>
-            <div style={{fontSize:12,fontWeight:600,color:C.text,marginBottom:10}}>My Trip</div>
-            {joinedTrip ? (
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+              <Avatar initials={user?.avatar || (user?.name || "T").slice(0, 2).toUpperCase()} bg={user?.color?.[0] || "#E6F1FB"} text={user?.color?.[1] || "#0C447C"} size={36}/>
               <div>
-                <div style={{fontSize:13,fontWeight:500,color:C.text}}>{joinedTrip.name}</div>
-                <div style={{fontSize:11,color:C.muted,marginTop:2}}>{joinedTrip.date} · {joinedTrip.location}</div>
+                <div style={{fontSize:13,fontWeight:600,color:C.text}}>{user?.name}</div>
+                <div style={{fontSize:11,color:C.muted}}>Blood: <strong style={{color:C.red}}>{user?.blood || "B+"}</strong> · {user?.ec1Name ? `EC: ${user.ec1Name}` : "No EC"}</div>
               </div>
-            ) : (
-              <div>
-                <div style={{fontSize:12,color:C.muted,marginBottom:10}}>You haven't joined a trip yet.</div>
-                <Btn variant="primary" style={{justifyContent:"center",fontSize:12}} onClick={()=>onNavigate("join-trip")}>🔑 Join with a code</Btn>
-              </div>
-            )}
-          </Card>
-
-          {/* Emergency Contacts */}
-          <Card>
-            <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>Emergency Contacts</div>
-            {[{name:user.ec1Name,rel:user.ec1Rel,ph:user.ec1Ph},{name:user.ec2Name,rel:user.ec2Rel,ph:user.ec2Ph}].map((ec,i)=>(
-              <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:i===0?`1px solid ${C.border}`:"none"}}>
-                <div style={{width:30,height:30,borderRadius:"50%",background:"rgba(59,130,246,0.1)",
-                  display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0}}>
-                  {i===0?"👩":"👨"}
-                </div>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:12,fontWeight:500,color:C.text}}>{ec.name}</div>
-                  <div style={{fontSize:10,color:C.muted}}>{ec.rel} · {ec.ph}</div>
-                </div>
-                <a href={`tel:${ec.ph}`} style={{padding:"3px 10px",borderRadius:7,
-                  background:"rgba(34,197,94,0.1)",border:`1px solid rgba(34,197,94,0.25)`,
-                  color:C.green,fontSize:10,textDecoration:"none",fontWeight:500}}>📞</a>
-              </div>
-            ))}
+            </div>
+            <Btn onClick={()=>onNavigate("profile")} style={{width:"100%",justifyContent:"center",fontSize:11}}>
+              👤 Manage Medical Records &amp; Contacts →
+            </Btn>
           </Card>
         </div>
 
@@ -1846,7 +2060,7 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
   );
 };
 
-const PageLiveTracking = ({ user, activeSOS, onSOS }) => {
+const PageLiveTracking = ({ user, joinedTrip, onNavigate, activeSOS, onSOS }) => {
   const [trackingToken, setTrackingToken] = useState(() => localStorage.getItem("coordage_tracking_token") || "");
   const [tokenState, setTokenState] = useState(trackingToken ? "ready" : "loading");
   const [tokenError, setTokenError] = useState("");
@@ -1895,11 +2109,57 @@ const PageLiveTracking = ({ user, activeSOS, onSOS }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id, user.name]);
 
+  if (!joinedTrip) {
+    return (
+      <div>
+        <PageHeader
+          title="Live Tracking"
+          sub="Real-time GPS telemetry & expedition beacon"
+          right={<Pill color="gray">No Active Trip</Pill>}
+        />
+        <Card
+          style={{
+            textAlign: "center",
+            padding: "44px 24px",
+            background: "linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(11, 20, 34, 0.95))",
+            borderColor: "rgba(59, 130, 246, 0.25)",
+          }}
+        >
+          <div
+            style={{
+              width: 60,
+              height: 60,
+              borderRadius: "50%",
+              background: "rgba(59, 130, 246, 0.15)",
+              border: "1px solid rgba(59, 130, 246, 0.35)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 16px",
+              fontSize: 28,
+            }}
+          >
+            📡
+          </div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: C.text, marginBottom: 8 }}>
+            No Active Expedition to Track
+          </div>
+          <div style={{ fontSize: 13, color: C.muted, maxWidth: 500, margin: "0 auto 22px", lineHeight: 1.6 }}>
+            Live GPS telemetry broadcasts your exact coordinates and elevation to your trek leader's command portal. Join an active expedition to activate live location tracking.
+          </div>
+          <Btn variant="primary" onClick={() => onNavigate?.("join-trip")} style={{ padding: "10px 22px" }}>
+            🔑 Join an Expedition →
+          </Btn>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div>
       <PageHeader
         title="Live Tracking"
-        sub="Real-time GPS sharing for your current trip"
+        sub={`Real-time GPS sharing · ${joinedTrip.name} (${joinedTrip.code})`}
         right={
           <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
             <Pill color={tokenState === "ready" ? "green" : tokenState === "loading" ? "amber" : "red"}>
@@ -1934,25 +2194,442 @@ const PageLiveTracking = ({ user, activeSOS, onSOS }) => {
 };
 
 /* ════════════════════════════════════════════════
-   PAGE: JOIN TRIP
+   EXPEDITIONS DATA & PAGE: JOIN TRIP
 ════════════════════════════════════════════════ */
-const PageJoinTrip = ({ onJoin, error }) => {
+const FALLBACK_TRIPS = [
+  {
+    id: "trip-001",
+    code: "RAJM26",
+    name: "Rajmachi Fort Monsoon Expedition — Batch 12",
+    location: "Rajmachi, Lonavala, Maharashtra",
+    leader: "Field Guide Aryan Rao",
+    date: "May 3–4, 2026",
+    status: "active",
+    rosterCount: 18,
+    maxRoster: 25,
+    elevation: "829m",
+    lat: 18.8286,
+    lon: 73.3986,
+    geofence: {
+      lat: 18.8286,
+      lon: 73.3986,
+      radius: 2500,
+      zoneName: "Rajmachi Safe Trek Corridor"
+    },
+    difficulty: "Moderate",
+    rescueUnit: "Team Alpha (Lonavala SAR)"
+  },
+  {
+    id: "trip-002",
+    code: "HAR26",
+    name: "Harishchandragad Peak & Konkan Kada Trek",
+    location: "Harishchandragad, Ahmednagar, Maharashtra",
+    leader: "Trek Leader Sneha Kulkarni",
+    date: "May 10–11, 2026",
+    status: "active",
+    rosterCount: 14,
+    maxRoster: 20,
+    elevation: "1,424m",
+    lat: 19.3853,
+    lon: 73.7786,
+    geofence: {
+      lat: 19.3853,
+      lon: 73.7786,
+      radius: 3000,
+      zoneName: "Harishchandragad Plateau Safety Perimeter"
+    },
+    difficulty: "Challenging",
+    rescueUnit: "Team Bravo (Malshej Ghat Rescue)"
+  }
+];
+
+const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) => {
   const [code, setCode] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [localErr, setLocalErr] = useState("");
+  const [availableTrips, setAvailableTrips] = useState(FALLBACK_TRIPS);
+  const [confirmLeave, setConfirmLeave] = useState(false);
+
+  const isPending = joinedTrip?.tripStatus === "pending_approval";
+  const isApproved = joinedTrip && joinedTrip?.tripStatus !== "pending_approval";
+
+  useEffect(() => {
+    const unsub = subscribeToTrips((trips) => {
+      if (trips && trips.length > 0) {
+        setAvailableTrips(trips);
+      }
+    });
+    return () => unsub?.();
+  }, []);
+
+  const handleCodeSubmit = async (e) => {
+    e?.preventDefault();
+    setLocalErr("");
+    if (joinedTrip) {
+      setLocalErr("You are already enrolled in an expedition. Leave your current expedition before applying to another.");
+      return;
+    }
+    const cleanCode = code.trim().toUpperCase();
+    if (!cleanCode) {
+      setLocalErr("Please enter a valid expedition code (e.g. RAJM26).");
+      return;
+    }
+    setSubmitting(true);
+    const ok = await onJoin(cleanCode);
+    setSubmitting(false);
+    if (!ok) {
+      setLocalErr("No active expedition matches that code. Please check with your organizer.");
+    }
+  };
+
+  const handleCardJoin = async (trip) => {
+    setLocalErr("");
+    if (joinedTrip && (joinedTrip.id === trip.id || joinedTrip.code === trip.code)) {
+      onNavigate?.("dashboard");
+      return;
+    }
+    if (joinedTrip) {
+      setLocalErr("You are already enrolled in an expedition. Leave your current expedition before applying to another.");
+      return;
+    }
+    setSubmitting(true);
+    await onJoin(trip);
+    setSubmitting(false);
+  };
+
   return (
-    <div style={{padding:16,maxWidth:360,margin:"0 auto"}}>
-      <div style={{fontSize:16,fontWeight:600,color:"#fff",marginBottom:6}}>Join a trip</div>
-      <div style={{fontSize:12,color:"rgba(255,255,255,0.5)",marginBottom:16}}>
-        Your trek leader shares this code over WhatsApp or in person before the trip starts.
+    <div>
+      <PageHeader
+        title="Expeditions & Trips"
+        sub="Browse active organizer treks or enter your expedition join code"
+        right={
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <Pill color={isApproved ? "green" : isPending ? "amber" : "gray"}>
+              {isApproved ? `● Enrolled: ${joinedTrip.code}` : isPending ? `⏳ Pending: ${joinedTrip.code}` : "No Active Trip"}
+            </Pill>
+            <Pill color="blue">{availableTrips.length} Active Treks</Pill>
+          </div>
+        }
+      />
+
+      {/* Currently Enrolled Active Trip Banner */}
+      {joinedTrip && (
+        <Card
+          style={{
+            marginBottom: 20,
+            background: isPending
+              ? "linear-gradient(135deg, rgba(245, 158, 11, 0.14), rgba(11, 20, 34, 0.95))"
+              : "linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(11, 20, 34, 0.95))",
+            borderColor: isPending ? "rgba(245, 158, 11, 0.4)" : "rgba(16, 185, 129, 0.35)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <Pill color={isPending ? "amber" : "green"}>
+                  {isPending ? "⏳ APPLICATION PENDING APPROVAL" : "● ACTIVE EXPEDITION · APPROVED"}
+                </Pill>
+                <span style={{ fontSize: 12, color: C.muted }}>Joined as {user?.name || "Trekker"}</span>
+              </div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: C.text }}>{joinedTrip.name}</div>
+              <div style={{ fontSize: 12, color: isPending ? "#fef08a" : C.muted, marginTop: 4 }}>
+                {isPending
+                  ? "Your request has been submitted to expedition organizers. Awaiting clearance before live GPS and telemetry activate."
+                  : "Officially registered. Telemetry, geofence perimeter, and emergency SOS dispatch are active."}
+              </div>
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 6, display: "flex", gap: 16, flexWrap: "wrap" }}>
+                <span>📍 {joinedTrip.location}</span>
+                <span>📅 {joinedTrip.date}</span>
+                <span>🏔️ Elevation: {joinedTrip.elevation || "829m"}</span>
+                <span>🧭 Leader: {joinedTrip.leader || "Field Guide"}</span>
+                <span>🔒 Admin Geofence: {joinedTrip.geofence?.radius ? (joinedTrip.geofence.radius / 1000).toFixed(1) + " km" : "2.5 km"}</span>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <Btn variant={isPending ? "default" : "primary"} onClick={() => onNavigate("dashboard")}>
+                {isPending ? "View Status in Dashboard →" : "Go to Live Dashboard →"}
+              </Btn>
+              {confirmLeave ? (
+                <div style={{ display: "flex", gap: 6, alignItems: "center", background: "rgba(239, 68, 68, 0.15)", padding: "4px 8px", borderRadius: 8 }}>
+                  <span style={{ fontSize: 11, color: "#fca5a5" }}>{isPending ? "Cancel application?" : "Leave trek?"}</span>
+                  <Btn variant="danger" onClick={() => { setConfirmLeave(false); onLeave?.(); }} style={{ padding: "4px 10px", fontSize: 11 }}>
+                    {isPending ? "Yes, Cancel" : "Yes, Leave"}
+                  </Btn>
+                  <Btn onClick={() => setConfirmLeave(false)} style={{ padding: "4px 10px", fontSize: 11 }}>
+                    Back
+                  </Btn>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmLeave(true)}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid rgba(239, 68, 68, 0.35)",
+                    borderRadius: 8,
+                    color: "#fca5a5",
+                    fontSize: 12,
+                    padding: "7px 12px",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {isPending ? "✕ Cancel Application" : "✕ Leave Trip"}
+                </button>
+              )}
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Main Grid: Code input on left, Available trips on right */}
+      <div style={{ display: "grid", gridTemplateColumns: "340px 1fr", gap: 18, alignItems: "start" }}>
+        {/* Left Card: Join with Code */}
+        <Card style={{ background: "rgba(11, 20, 34, 0.95)" }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>
+            Join with Expedition Code
+          </div>
+          <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, marginBottom: 14 }}>
+            Your trek leader or organizer shares a unique 6-character code (e.g. <strong>RAJM26</strong> or <strong>HAR26</strong>) before the trek begins.
+          </div>
+
+          <form onSubmit={handleCodeSubmit}>
+            <input
+              type="text"
+              value={joinedTrip ? "" : code}
+              disabled={!!joinedTrip}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder={joinedTrip ? (isPending ? `Pending: ${joinedTrip.code}` : `Enrolled: ${joinedTrip.code}`) : "e.g. RAJM26"}
+              maxLength={8}
+              style={{
+                width: "100%",
+                height: 44,
+                background: joinedTrip ? "rgba(255, 255, 255, 0.02)" : "rgba(255, 255, 255, 0.05)",
+                border: `1px solid ${C.border}`,
+                borderRadius: 10,
+                color: "#fff",
+                fontSize: 16,
+                letterSpacing: 2,
+                textAlign: "center",
+                padding: "0 14px",
+                fontFamily: "inherit",
+                boxSizing: "border-box",
+                outline: "none",
+                marginBottom: 10,
+                textTransform: "uppercase",
+                fontWeight: 600,
+                opacity: joinedTrip ? 0.45 : 1,
+                cursor: joinedTrip ? "not-allowed" : "text",
+              }}
+            />
+
+            {(localErr || error) && (
+              <div
+                style={{
+                  background: "rgba(239, 68, 68, 0.12)",
+                  border: "1px solid rgba(239, 68, 68, 0.3)",
+                  borderRadius: 8,
+                  padding: "8px 12px",
+                  fontSize: 12,
+                  color: "#fca5a5",
+                  marginBottom: 12,
+                }}
+              >
+                ⚠️ {localErr || error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={submitting || !!joinedTrip}
+              style={{
+                width: "100%",
+                height: 42,
+                background: joinedTrip
+                  ? "rgba(255, 255, 255, 0.06)"
+                  : "linear-gradient(135deg, #2563eb, #1d4ed8)",
+                border: "none",
+                borderRadius: 10,
+                color: joinedTrip ? "rgba(180, 210, 245, 0.4)" : "#ffffff",
+                fontSize: 13.5,
+                fontWeight: 600,
+                cursor: joinedTrip || submitting ? "not-allowed" : "pointer",
+                fontFamily: "inherit",
+                boxShadow: joinedTrip ? "none" : "0 4px 14px rgba(37, 99, 235, 0.35)",
+                opacity: joinedTrip ? 0.45 : 1,
+              }}
+            >
+              {joinedTrip
+                ? (isPending ? "Application Under Review" : "Expedition in Progress")
+                : submitting ? "Verifying code…" : "Join with Code →"}
+            </button>
+          </form>
+
+          {joinedTrip && (
+            <div
+              style={{
+                marginTop: 12,
+                padding: "10px 12px",
+                background: "rgba(245, 158, 11, 0.08)",
+                border: "1px solid rgba(245, 158, 11, 0.25)",
+                borderRadius: 8,
+                fontSize: 11.5,
+                color: "#fef08a",
+                lineHeight: 1.45,
+              }}
+            >
+              🔒 <strong>Single Expedition Policy:</strong> You are currently enrolled in <strong>{joinedTrip.name}</strong>. A trekker can only participate in one active expedition at a time to maintain uninterrupted duty-of-care. To apply to another trek, you must first leave or cancel your active expedition.
+            </div>
+          )}
+
+          <div
+            style={{
+              marginTop: 18,
+              paddingTop: 14,
+              borderTop: `1px solid ${C.border}`,
+              fontSize: 11.5,
+              color: C.muted2,
+              lineHeight: 1.5,
+            }}
+          >
+            🔒 <strong>Safety Note:</strong> A trekker can participate in at most one active expedition at a time to ensure uninterrupted location and safety monitoring.
+          </div>
+        </Card>
+
+        {/* Right Section: Available Expeditions from Admins */}
+        <div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>
+              Active Expeditions (Organized by Admins)
+            </div>
+            <span style={{ fontSize: 11, color: C.muted2 }}>
+              {joinedTrip ? "Enrolled in active trek · Other treks locked" : "Select a trek to register directly"}
+            </span>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {availableTrips.map((t) => {
+              const isCurrent = joinedTrip && (joinedTrip.id === t.id || joinedTrip.code === t.code);
+              const isLocked = joinedTrip && !isCurrent;
+
+              return (
+                <Card
+                  key={t.id || t.code}
+                  style={{
+                    background: isCurrent
+                      ? (isPending ? "rgba(245, 158, 11, 0.08)" : "rgba(16, 185, 129, 0.06)")
+                      : isLocked ? "rgba(11, 20, 34, 0.55)" : "rgba(11, 20, 34, 0.85)",
+                    border: isCurrent
+                      ? (isPending ? "1px solid rgba(245, 158, 11, 0.4)" : "1px solid rgba(16, 185, 129, 0.35)")
+                      : `1px solid ${C.border}`,
+                    opacity: isLocked ? 0.55 : 1,
+                    transition: "border-color 0.2s ease, transform 0.2s ease, opacity 0.2s ease",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 8 }}>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                        <span style={{ background: "rgba(59, 130, 246, 0.15)", border: "1px solid rgba(59, 130, 246, 0.3)", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700, color: "#60a5fa" }}>
+                          {t.code}
+                        </span>
+                        <Pill color={t.difficulty === "Challenging" ? "red" : "amber"}>
+                          {t.difficulty || "Moderate"}
+                        </Pill>
+                        {isCurrent && (
+                          <Pill color={isPending ? "amber" : "green"}>
+                            {isPending ? "⏳ Pending Approval" : "● Your Active Trek"}
+                          </Pill>
+                        )}
+                        {isLocked && (
+                          <span style={{ fontSize: 10, color: C.muted2, padding: "2px 6px", borderRadius: 4, background: "rgba(255,255,255,0.04)" }}>
+                            🔒 Single Trek Limit
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>
+                        {t.name}
+                      </div>
+                    </div>
+
+                    <div>
+                      {isCurrent ? (
+                        isPending ? (
+                          <button
+                            type="button"
+                            onClick={() => onNavigate("dashboard")}
+                            style={{
+                              padding: "8px 16px",
+                              borderRadius: 8,
+                              background: "rgba(245, 158, 11, 0.18)",
+                              border: "1px solid rgba(245, 158, 11, 0.4)",
+                              color: "#fbbf24",
+                              fontSize: 12,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              fontFamily: "inherit",
+                            }}
+                          >
+                            ⏳ Pending Approval
+                          </button>
+                        ) : (
+                          <Btn variant="success" onClick={() => onNavigate("dashboard")}>
+                            ✓ Currently Enrolled
+                          </Btn>
+                        )
+                      ) : isLocked ? (
+                        <button
+                          type="button"
+                          disabled={true}
+                          title="You can only participate in one active expedition at a time."
+                          style={{
+                            padding: "8px 16px",
+                            borderRadius: 8,
+                            background: "rgba(255, 255, 255, 0.05)",
+                            border: "1px solid rgba(80, 140, 220, 0.12)",
+                            color: "rgba(180, 210, 245, 0.35)",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: "not-allowed",
+                            fontFamily: "inherit",
+                            opacity: 0.5,
+                          }}
+                        >
+                          Enrolled elsewhere
+                        </button>
+                      ) : (
+                        <Btn variant="primary" onClick={() => handleCardJoin(t)}>
+                          Join Expedition →
+                        </Btn>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8, marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
+                    <div style={{ fontSize: 11.5, color: C.muted }}>
+                      <span style={{ color: C.muted2 }}>📍 Location:</span> {t.location}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: C.muted }}>
+                      <span style={{ color: C.muted2 }}>📅 Date:</span> {t.date}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: C.muted }}>
+                      <span style={{ color: C.muted2 }}>🏔️ Elevation:</span> {t.elevation || "—"}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: C.muted }}>
+                      <span style={{ color: C.muted2 }}>🧭 Leader:</span> {t.leader || "Field Guide"}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: C.muted }}>
+                      <span style={{ color: C.muted2 }}>👥 Roster:</span> {t.rosterCount || 0} / {t.maxRoster || 25} Trekkers
+                    </div>
+                    <div style={{ fontSize: 11.5, color: C.muted }}>
+                      <span style={{ color: C.muted2 }}>🔒 Admin Geofence:</span> {t.geofence?.radius ? (t.geofence.radius / 1000).toFixed(1) + " km" : "2.5 km"}
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
       </div>
-      <input value={code} onChange={e=>setCode(e.target.value)} placeholder="Enter trip code"
-        style={{width:"100%",height:44,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",
-          borderRadius:8,color:"#fff",fontSize:16,letterSpacing:2,textAlign:"center",padding:"0 12px",
-          fontFamily:"inherit",boxSizing:"border-box",outline:"none",marginBottom:10,textTransform:"uppercase"}}/>
-      {error && <div style={{fontSize:12,color:"#f87171",marginBottom:10}}>{error}</div>}
-      <button onClick={()=>onJoin(code)} style={{width:"100%",height:40,background:"#0C447C",border:"none",
-        borderRadius:8,color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-        Join trip
-      </button>
     </div>
   );
 };
@@ -1960,7 +2637,7 @@ const PageJoinTrip = ({ onJoin, error }) => {
 /* ════════════════════════════════════════════════
    PAGE: WEATHER MAPS (mirrors admin exactly)
 ════════════════════════════════════════════════ */
-const PageWeatherMaps = () => {
+const PageWeatherMaps = ({ joinedTrip, onNavigate }) => {
   const [tab, setTab]           = useState("live");
   const [mapType, setMapType]   = useState("terrain");
   const [perspective, setPerspective] = useState(false);
@@ -1968,15 +2645,20 @@ const PageWeatherMaps = () => {
   const [loading, setLoading]   = useState(true);
   const [sensor, setSensor]     = useState({
     temp:27.4, humidity:68, pressure:1013.2, windSpeed:9.8, windDir:210,
-    uvIndex:5.8, rainfall:0.0, altitude:580, co2:415, aqi:52,
+    uvIndex:5.8, rainfall:0.0, altitude: joinedTrip?.elevation ? parseInt(joinedTrip.elevation) || 829 : 580,
+    co2:415, aqi:52,
     lastSync:new Date().toLocaleTimeString("en-IN"),
   });
 
+  const tripLat = joinedTrip?.lat || 18.8286;
+  const tripLon = joinedTrip?.lon || 73.3986;
+
   useEffect(()=>{
+    if (!joinedTrip) return;
     const go = async () => {
       try {
         const r = await fetch(
-          "https://api.open-meteo.com/v1/forecast?latitude=18.5196&longitude=73.8554" +
+          `https://api.open-meteo.com/v1/forecast?latitude=${tripLat}&longitude=${tripLon}` +
           "&current=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m," +
           "wind_direction_10m,cloud_cover,pressure_msl,uv_index,weather_code" +
           "&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weather_code,wind_speed_10m_max" +
@@ -1995,9 +2677,10 @@ const PageWeatherMaps = () => {
       } catch { setLoading(false); }
     };
     go(); const t = setInterval(go,300_000); return()=>clearInterval(t);
-  },[]);
+  },[joinedTrip, tripLat, tripLon]);
 
   useEffect(()=>{
+    if (!joinedTrip) return;
     const t = setInterval(()=>setSensor(p=>({...p,
       temp:+(p.temp+(Math.random()-.5)*.18).toFixed(1),
       windSpeed:+Math.max(0,(p.windSpeed+(Math.random()-.5)*1.4)).toFixed(1),
@@ -2006,7 +2689,7 @@ const PageWeatherMaps = () => {
       lastSync:new Date().toLocaleTimeString("en-IN"),
     })),2000);
     return()=>clearInterval(t);
-  },[]);
+  },[joinedTrip]);
 
   /* Leaflet with geofence layer */
   const LeafletWeatherMap = ({ height, tileType, perspective:tilted, extraMarkers=[] }) => {
@@ -2018,21 +2701,21 @@ const PageWeatherMaps = () => {
       if(!rdy||!ref.current) return;
       const L = window.L;
       if(mapRef2.current){mapRef2.current.remove();mapRef2.current=null;}
-      const map = L.map(ref.current,{center:[18.5196,73.8554],zoom:12,zoomControl:true});
+      const map = L.map(ref.current,{center:[tripLat,tripLon],zoom:12,zoomControl:true});
       const {url,attr} = TILE_LAYERS[tileType]||TILE_LAYERS.road;
       L.tileLayer(url,{attribution:attr,maxZoom:19}).addTo(map);
       const mkI = (color) => L.divIcon({className:"",
         html:`<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 0 0 5px ${color}44;"></div>`,
         iconSize:[14,14],iconAnchor:[7,7],popupAnchor:[0,-10]});
-      L.marker([18.5196,73.8554],{icon:mkI("#3b82f6")}).addTo(map)
-        .bindPopup("<b>📡 Weather Station</b><br><small>Mulshi, Maharashtra<br>18.52°N · 73.85°E · 580m ASL</small>");
+      L.marker([tripLat,tripLon],{icon:mkI("#3b82f6")}).addTo(map)
+        .bindPopup(`<b>📡 Expedition Trailhead</b><br><small>${joinedTrip?.name || "Trailhead"}<br>${tripLat.toFixed(4)}°N · ${tripLon.toFixed(4)}°E</small>`);
       extraMarkers.forEach(m=>{
         const mk = L.marker([m.lat,m.lon],{icon:mkI(m.color||"#ef4444")}).addTo(map);
         if(m.popup) mk.bindPopup(m.popup);
       });
       mapRef2.current = map;
       return()=>{if(mapRef2.current){mapRef2.current.remove();mapRef2.current=null;}};
-    },[rdy,tileType]);
+    },[rdy,tileType,tripLat,tripLon]);
     return (
       <div style={{borderRadius:12,overflow:"hidden",border:`1px solid ${C.border}`,boxShadow:"0 4px 24px rgba(0,0,0,.4)",
         ...(tilted?{transform:"perspective(900px) rotateX(28deg)",transformOrigin:"top center"}:{})}}>
@@ -2051,10 +2734,56 @@ const PageWeatherMaps = () => {
     {id:"forecast",icon:"📅",label:"7-Day Forecast"},
   ];
 
+  if (!joinedTrip) {
+    return (
+      <div>
+        <PageHeader
+          title="Weather & Maps"
+          sub="Live meteorological radar & mountain trail maps"
+          right={<Pill color="gray">No Active Trip</Pill>}
+        />
+        <Card
+          style={{
+            textAlign: "center",
+            padding: "44px 24px",
+            background: "linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(11, 20, 34, 0.95))",
+            borderColor: "rgba(59, 130, 246, 0.25)",
+          }}
+        >
+          <div
+            style={{
+              width: 60,
+              height: 60,
+              borderRadius: "50%",
+              background: "rgba(59, 130, 246, 0.15)",
+              border: "1px solid rgba(59, 130, 246, 0.35)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 16px",
+              fontSize: 28,
+            }}
+          >
+            🌤️
+          </div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: C.text, marginBottom: 8 }}>
+            No Expedition Selected for Weather Telemetry
+          </div>
+          <div style={{ fontSize: 13, color: C.muted, maxWidth: 480, margin: "0 auto 22px", lineHeight: 1.6 }}>
+            Coordage pulls hyper-local micro-climate forecasts, summit wind vectors, and barometric storm alerts specifically tailored for your active trek destination. Join an expedition to unlock trail weather.
+          </div>
+          <Btn variant="primary" onClick={() => onNavigate?.("join-trip")} style={{ padding: "10px 22px" }}>
+            🔑 Join Expedition to Unlock Weather →
+          </Btn>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div>
       <PageHeader title="Weather & Maps"
-        sub={`Live · Mulshi, Maharashtra · ${loading?"Loading…":"Updated "+sensor.lastSync}`}
+        sub={`Live · ${joinedTrip.name} · ${loading?"Loading…":"Updated "+sensor.lastSync}`}
         right={<Pill color="green">● Live Data</Pill>}/>
 
       <div style={{display:"flex",gap:6,marginBottom:16}}>
@@ -2071,7 +2800,7 @@ const PageWeatherMaps = () => {
         <Card style={{marginBottom:14,background:"linear-gradient(135deg,rgba(20,50,110,0.55),rgba(11,20,34,0.92))"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:16}}>
             <div>
-              <div style={{fontSize:11,color:C.muted,marginBottom:6}}>📍 Mulshi, Maharashtra · Hinjawadi</div>
+              <div style={{fontSize:11,color:C.muted,marginBottom:6}}>📍 {joinedTrip.name} · {joinedTrip.location}</div>
               <div style={{display:"flex",alignItems:"center",gap:14}}>
                 <div style={{fontSize:60}}>{wxIcon}</div>
                 <div>
@@ -2094,7 +2823,7 @@ const PageWeatherMaps = () => {
           </div>
           <div style={{marginTop:12,paddingTop:10,borderTop:`1px solid ${C.border}`,fontSize:10,color:C.muted2,display:"flex",gap:16,flexWrap:"wrap"}}>
             <span>⚡ Open-Meteo API</span><span>🔄 Last sync: {sensor.lastSync}</span>
-            <span>📡 Protocol: MQTT / LoRa Gateway</span>
+            <span>🏔️ Peak Elevation: {joinedTrip.elevation || "829m"}</span>
           </div>
         </Card>
         {wx?.hourly&&(
@@ -2164,11 +2893,11 @@ const PageWeatherMaps = () => {
           </div>
         </div>
         <LeafletWeatherMap height={480} tileType={mapType} perspective={perspective}
-          extraMarkers={[{lat:18.52,lon:73.85,color:"#22c55e",popup:"<b>📍 My Location</b><br>Mulshi, Maharashtra"}]}/>
+          extraMarkers={[{lat:tripLat,lon:tripLon,color:"#22c55e",popup:`<b>📍 ${joinedTrip.name}</b><br>${joinedTrip.location}<br>Elevation: ${joinedTrip.elevation||"—"}`}]}/>
         <div style={{marginTop:10,display:"flex",gap:16,fontSize:11,color:C.muted2,flexWrap:"wrap"}}>
-          <span>📍 18.52°N, 73.85°E</span>
-          <span>🗺️ Mulshi Reservoir — Western Ghats</span>
-          <span>🏔️ Alt: {sensor.altitude}m ASL</span>
+          <span>📍 {tripLat.toFixed(4)}°N, {tripLon.toFixed(4)}°E</span>
+          <span>🗺️ {joinedTrip.location}</span>
+          <span>🏔️ Alt: {joinedTrip.elevation || sensor.altitude + "m ASL"}</span>
           <span>🌐 OpenStreetMap / ESRI · Free tiles</span>
         </div>
       </div>}
@@ -2220,7 +2949,7 @@ const PageWeatherMaps = () => {
 /* ════════════════════════════════════════════════
    PAGE: SOS NAVIGATION  (user view)
 ════════════════════════════════════════════════ */
-const PageSOSNav = ({ user, activeSOS }) => {
+const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate }) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [elapsed, setElapsed]         = useState(0);
   const [teamPos, setTeamPos]         = useState({lat:RESCUE_TEAMS[0].lat,lon:RESCUE_TEAMS[0].lon});
@@ -2264,7 +2993,19 @@ const PageSOSNav = ({ user, activeSOS }) => {
     serverUrl: TRACKING_SERVER_URL,
   });
 
-  const { position, startTracking, stopTracking } = tracking;
+  const { position, startTracking, stopTracking, cancelSOS } = tracking;
+
+  const handleExitSOS = () => {
+    try {
+      cancelSOS?.();
+    } catch (e) {
+      console.warn("Failed to cancel tracking SOS:", e);
+    }
+    setNavMode(false);
+    setCurrentStep(0);
+    onSOS?.(false);
+    onNavigate?.("dashboard");
+  };
 
   const steps    = TURN_BY_TURN_USER;
   const myPos    = position || { lat: user?.lat || 18.5196, lon: user?.lon || 73.8554 };
@@ -2363,7 +3104,7 @@ const PageSOSNav = ({ user, activeSOS }) => {
         <span style={{fontSize:14,fontWeight:600,color:C.text}}>LIVE SOS NAVIGATION</span>
         <Pill color="red">🚨 ACTIVE</Pill>
         <div style={{flex:1}}/>
-        <Btn onClick={()=>{setNavMode(false);setCurrentStep(0);}}>✕ Exit</Btn>
+        <Btn onClick={handleExitSOS}>✕ Exit</Btn>
       </div>
       <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 340px",overflow:"hidden"}}>
         <div style={{position:"relative"}}>
@@ -2437,16 +3178,23 @@ const PageSOSNav = ({ user, activeSOS }) => {
     <div>
       <PageHeader title="SOS Navigation"
         sub="Rescue team en route — live tracking"
-        right={<div style={{display:"flex",gap:8}}><Pill color="red">🚨 SOS Active</Pill><Pill color="green">● Live</Pill></div>}/>
+        right={
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <Pill color="red">🚨 SOS Active</Pill>
+            <Pill color="green">● Live</Pill>
+            <Btn onClick={handleExitSOS}>✕ Exit</Btn>
+          </div>
+        }/>
 
       <div style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.35)",
         borderRadius:12,padding:"14px 18px",marginBottom:16,display:"flex",alignItems:"center",gap:14}}>
         <div style={{width:12,height:12,borderRadius:"50%",background:C.red,animation:"ud-sos-blink 1.2s infinite",flexShrink:0}}/>
-        <div>
+        <div style={{flex:1}}>
           <div style={{fontSize:14,fontWeight:700,color:C.red}}>Emergency broadcast active — Team Alpha dispatched</div>
           <div style={{fontSize:12,color:C.muted,marginTop:2}}>Your blood group, medical profile and GPS shared with rescue team</div>
         </div>
-        <Pill color="amber" style={{marginLeft:"auto"}}>ETA {etaMin} min</Pill>
+        <Pill color="amber">ETA {etaMin} min</Pill>
+        <Btn variant="danger" onClick={handleExitSOS} style={{padding:"6px 14px",fontSize:12}}>✕ Exit &amp; Stop SOS</Btn>
       </div>
 
       <div style={{display:"grid",gridTemplateColumns:"1fr 280px",gap:14}}>
@@ -2497,16 +3245,17 @@ const PageSOSNav = ({ user, activeSOS }) => {
 /* ════════════════════════════════════════════════
    PAGE: GEOFENCING
 ════════════════════════════════════════════════ */
-const PageGeofencing = ({ user }) => {
-  const [radius, setRadius]         = useState(2000);   // metres
-  const [fence, setFence]           = useState({lat:18.5196,lon:73.8554}); // geofence center
-  const [userPos, setUserPos]       = useState({lat:18.5196,lon:73.8554});
+const PageGeofencing = ({ user, joinedTrip, onNavigate }) => {
+  const radius = joinedTrip?.geofence?.radius || 2500;   // metres — admin locked
+  const fence = {
+    lat: joinedTrip?.geofence?.lat || joinedTrip?.lat || 18.8286,
+    lon: joinedTrip?.geofence?.lon || joinedTrip?.lon || 73.3986,
+  }; // geofence center locked by admin
+
+  const [userPos, setUserPos]       = useState(fence);
   const [alerts, setAlerts]         = useState(true);
   const [vibrate, setVibrate]       = useState(true);
   const [fenceActive, setFenceActive] = useState(true);
-  const [editing, setEditing]       = useState(false);
-  const [editLat, setEditLat]       = useState("18.5196");
-  const [editLon, setEditLon]       = useState("73.8554");
   const [trackingToken, setTrackingToken] = useState(() => localStorage.getItem("coordage_tracking_token") || "");
   const [tokenState, setTokenState] = useState(trackingToken ? "ready" : "loading");
   const [history, setHistory]       = useState([
@@ -2517,7 +3266,7 @@ const PageGeofencing = ({ user }) => {
 
   /* Issue tracking token if needed */
   useEffect(() => {
-    if (trackingToken) return;
+    if (trackingToken || !joinedTrip) return;
     const fetchToken = async () => {
       try {
         const response = await fetch(`${TRACKING_SERVER_URL}/auth/token`, {
@@ -2536,7 +3285,7 @@ const PageGeofencing = ({ user }) => {
       }
     };
     fetchToken();
-  }, []);
+  }, [joinedTrip]);
 
   /* Use live location tracking */
   const tracking = useLocationTracking({
@@ -2556,13 +3305,13 @@ const PageGeofencing = ({ user }) => {
 
   /* Start/stop tracking based on fence active state */
   useEffect(() => {
-    if (!fenceActive || tokenState !== "ready") {
+    if (!joinedTrip || !fenceActive || tokenState !== "ready") {
       stopTracking();
       return;
     }
     startTracking();
     return () => stopTracking();
-  }, [fenceActive, tokenState, startTracking, stopTracking]);
+  }, [joinedTrip, fenceActive, tokenState, startTracking, stopTracking]);
 
   /* Check inside/outside */
   const dist = (a,b) => {
@@ -2599,21 +3348,21 @@ const PageGeofencing = ({ user }) => {
           fill:true, fillColor:"#f59e0b", fillOpacity:0.07,
           dashArray:"9 6",
         }).addTo(map)
-          .bindPopup(`<b>🔶 Geofence Zone</b><br>Radius: ${(radius/1000).toFixed(1)} km<br>Center: ${fence.lat.toFixed(4)}°N ${fence.lon.toFixed(4)}°E`);
+          .bindPopup(`<b>🔶 Admin Safety Perimeter</b><br>Zone: ${joinedTrip?.geofence?.zoneName || joinedTrip?.name || "Corridor"}<br>Radius: ${(radius/1000).toFixed(1)} km<br>Center: ${fence.lat.toFixed(4)}°N ${fence.lon.toFixed(4)}°E`);
 
         /* Fence center cross */
         L.marker([fence.lat,fence.lon],{
           icon: L.divIcon({className:"",
             html:`<div style="font-size:18px;line-height:1;text-shadow:0 0 8px rgba(245,158,11,0.8)">⊕</div>`,
             iconSize:[18,18],iconAnchor:[9,9]})
-        }).addTo(map).bindPopup("<b>Geofence Center</b>");
+        }).addTo(map).bindPopup(`<b>Trailhead Center</b><br>${joinedTrip?.name}`);
       }
 
       /* User position */
       L.marker([userPos.lat,userPos.lon],{icon:makeDotIcon(L,inside?"#22c55e":"#ef4444",12,true)})
         .addTo(map)
         .bindPopup(`<b>📍 ${user?.name || "Trekker"}</b><br>
-          ${inside?"✅ Inside geofence":"⚠️ Outside geofence"}<br>
+          ${inside?"✅ Inside safety perimeter":"⚠️ Outside safety perimeter"}<br>
           Distance to center: ${distToCenter.toFixed(0)}m`);
 
       map.fitBounds([[fence.lat-radius/111000-0.005,fence.lon-radius/111000-0.005],
@@ -2629,20 +3378,59 @@ const PageGeofencing = ({ user }) => {
     );
   };
 
-  const radiusOptions = [500,1000,2000,5050,10000];
-  const saveEdit = () => {
-    const la=parseFloat(editLat), lo=parseFloat(editLon);
-    if(!isNaN(la)&&!isNaN(lo)){setFence({lat:la,lon:lo});}
-    setEditing(false);
-  };
+  if (!joinedTrip) {
+    return (
+      <div>
+        <PageHeader
+          title="Geofencing"
+          sub="Safety boundary perimeter & off-trail tracking"
+          right={<Pill color="gray">No Active Perimeter</Pill>}
+        />
+        <Card
+          style={{
+            textAlign: "center",
+            padding: "44px 24px",
+            background: "linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(11, 20, 34, 0.95))",
+            borderColor: "rgba(245, 158, 11, 0.25)",
+          }}
+        >
+          <div
+            style={{
+              width: 60,
+              height: 60,
+              borderRadius: "50%",
+              background: "rgba(245, 158, 11, 0.15)",
+              border: "1px solid rgba(245, 158, 11, 0.35)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 16px",
+              fontSize: 28,
+            }}
+          >
+            🔶
+          </div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: C.text, marginBottom: 8 }}>
+            No Active Geofence Assigned
+          </div>
+          <div style={{ fontSize: 13, color: C.muted, maxWidth: 480, margin: "0 auto 22px", lineHeight: 1.6 }}>
+            Geofence safety perimeters are established and locked by the expedition organizer for each trail. Join an active expedition to activate real-time trail boundary surveillance and breach alerts.
+          </div>
+          <Btn variant="primary" onClick={() => onNavigate?.("join-trip")} style={{ padding: "10px 22px" }}>
+            🔑 Join Expedition to Activate Geofence →
+          </Btn>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div>
       <PageHeader title="Geofencing"
-        sub="Define a safety zone — admin can track if you exit the boundary"
+        sub={`Locked Perimeter (${(radius/1000).toFixed(1)} km) · ${joinedTrip.name}`}
         right={<div style={{display:"flex",gap:8}}>
           <Pill color={inside?"green":"red"}>{inside?"● Inside Zone":"⚠️ Outside Zone"}</Pill>
-          <Pill color={fenceActive?"amber":"gray"}>{fenceActive?"Fence Active":"Fence Off"}</Pill>
+          <Pill color={fenceActive?"amber":"gray"}>{fenceActive?"Surveillance Active":"Surveillance Off"}</Pill>
         </div>}/>
 
       {/* Status banner */}
@@ -2652,109 +3440,95 @@ const PageGeofencing = ({ user }) => {
         <div style={{fontSize:26}}>{inside?"✅":"⚠️"}</div>
         <div style={{flex:1}}>
           <div style={{fontSize:14,fontWeight:700,color:inside?C.green:C.red}}>
-            {inside?"You are inside your safety zone":"You have exited your safety zone!"}
+            {inside?"You are inside the expedition safety perimeter":"You have strayed outside the safety perimeter!"}
           </div>
           <div style={{fontSize:12,color:C.muted,marginTop:2}}>
             Distance from center: <strong style={{color:C.text}}>{distToCenter.toFixed(0)}m</strong>
-            {" · "}Geofence radius: <strong style={{color:C.text}}>{(radius/1000).toFixed(1)} km</strong>
-            {" · "}Remaining: <strong style={{color:inside?C.green:C.red}}>{Math.max(0,radius-distToCenter).toFixed(0)}m</strong>
+            {" · "}Admin perimeter: <strong style={{color:C.text}}>{(radius/1000).toFixed(1)} km</strong>
+            {" · "}Buffer remaining: <strong style={{color:inside?C.green:C.red}}>{Math.max(0,radius-distToCenter).toFixed(0)}m</strong>
           </div>
         </div>
         {!inside&&alerts&&<div style={{background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.3)",
           borderRadius:8,padding:"6px 12px",fontSize:11,color:"#fca5a5",fontWeight:500}}>
-          📢 Admin Alerted
+          📢 Leader Alerted
         </div>}
       </div>
 
-      <div style={{display:"grid",gridTemplateColumns:"1fr 300px",gap:14}}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 320px",gap:14}}>
         {/* Map */}
-        <GeoMap height={460}/>
+        <GeoMap height={480}/>
 
-        {/* Controls */}
+        {/* Controls & Admin Settings */}
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {/* Geofence on/off */}
+          {/* Admin Locked Perimeter Notice */}
+          <Card style={{background:"rgba(245,158,11,0.06)",borderColor:"rgba(245,158,11,0.3)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+              <span style={{fontSize:16}}>🔒</span>
+              <div style={{fontSize:12,fontWeight:700,color:C.amber,textTransform:"uppercase",letterSpacing:"0.06em"}}>
+                Admin-Controlled Perimeter
+              </div>
+            </div>
+            <div style={{fontSize:12,color:C.muted,lineHeight:1.5,marginBottom:12}}>
+              The safety boundary of <strong style={{color:C.text}}>{(radius/1000).toFixed(1)} km</strong> is established and locked by trek organizer <strong style={{color:C.text}}>{joinedTrip.leader || "Admin"}</strong>. Individual trekkers cannot alter this perimeter.
+            </div>
+            <div style={{height:6,background:"rgba(255,255,255,0.08)",borderRadius:4,marginBottom:6}}>
+              <div style={{
+                height:"100%",
+                borderRadius:4,
+                background:`linear-gradient(90deg, ${C.teal}, ${C.amber})`,
+                width:`${Math.min(100,(radius/5000)*100)}%`
+              }}/>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:C.muted2}}>
+              <span>Strict Boundary</span>
+              <span>{(radius/1000).toFixed(1)} km Enforced</span>
+            </div>
+          </Card>
+
+          {/* Device alerts on/off */}
           <Card>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-              <div style={{fontSize:13,fontWeight:600,color:C.text}}>Geofence Active</div>
+              <div style={{fontSize:13,fontWeight:600,color:C.text}}>Surveillance Active</div>
               <Toggle on={fenceActive} onChange={()=>setFenceActive(x=>!x)}/>
             </div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-              <div style={{fontSize:12,color:C.muted}}>Alert on exit</div>
+              <div style={{fontSize:12,color:C.muted}}>Alert on trail exit</div>
               <Toggle on={alerts} onChange={()=>setAlerts(x=>!x)}/>
             </div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <div style={{fontSize:12,color:C.muted}}>Vibrate on breach</div>
+              <div style={{fontSize:12,color:C.muted}}>Vibrate device on breach</div>
               <Toggle on={vibrate} onChange={()=>setVibrate(x=>!x)}/>
             </div>
           </Card>
 
-          {/* Radius selector */}
+          {/* Center coordinates locked from Admin */}
           <Card>
-            <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>Geofence Radius</div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-              {radiusOptions.map(r=>(
-                <button key={r} onClick={()=>setRadius(r)}
-                  style={{padding:"5px 12px",borderRadius:8,border:`1px solid ${radius===r?C.amber:C.border}`,
-                    background:radius===r?"rgba(245,158,11,0.12)":"transparent",
-                    color:radius===r?C.amber:C.muted,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
-                  {r<1000?r+"m":(r/1000).toFixed(r===500?0:0)+" km"}
-                </button>
-              ))}
+            <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>
+              Trailhead Center (Locked)
             </div>
-            <div style={{marginTop:12}}>
-              <div style={{height:6,background:"rgba(255,255,255,0.06)",borderRadius:4}}>
-                <div style={{height:"100%",borderRadius:4,background:`linear-gradient(90deg,${C.teal},${C.amber})`,
-                  width:`${(radius/10000)*100}%`,transition:"width 0.4s"}}/>
+            {[
+              ["Zone", joinedTrip.geofence?.zoneName || joinedTrip.name],
+              ["Latitude", `${fence.lat.toFixed(4)}°N`],
+              ["Longitude", `${fence.lon.toFixed(4)}°E`],
+              ["Leader", joinedTrip.leader || "Field Guide"],
+              ["Status", "Enforced by Admin"],
+            ].map(([k,v])=>(
+              <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:12,
+                padding:"5px 0",borderBottom:`1px solid ${C.border}`}}>
+                <span style={{color:C.muted2}}>{k}</span>
+                <span style={{color:C.text,fontFamily:k.includes("tude")?"monospace":"inherit",fontWeight:500}}>{v}</span>
               </div>
-              <div style={{fontSize:10,color:C.muted2,marginTop:4,textAlign:"right"}}>
-                {(radius/1000).toFixed(1)} km selected
-              </div>
-            </div>
-          </Card>
-
-          {/* Center coordinates */}
-          <Card>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-              <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em"}}>Zone Center</div>
-              <Btn onClick={()=>{setEditing(!editing);setEditLat(fence.lat.toFixed(4));setEditLon(fence.lon.toFixed(4));}} style={{fontSize:10,padding:"3px 9px"}}>
-                {editing?"Cancel":"Edit"}
-              </Btn>
-            </div>
-            {editing?(
-              <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                <div><div style={{fontSize:10,color:C.muted2,marginBottom:3}}>Latitude</div>
-                  <Input value={editLat} onChange={e=>setEditLat(e.target.value)} placeholder="18.5196"/></div>
-                <div><div style={{fontSize:10,color:C.muted2,marginBottom:3}}>Longitude</div>
-                  <Input value={editLon} onChange={e=>setEditLon(e.target.value)} placeholder="73.8554"/></div>
-                <Btn variant="primary" onClick={saveEdit} style={{width:"100%",justifyContent:"center"}}>Save Center</Btn>
-              </div>
-            ):(
-              <div>
-                {[["Latitude",`${fence.lat.toFixed(4)}°N`],["Longitude",`${fence.lon.toFixed(4)}°E`],
-                  ["Zone name","Mulshi Base Area"],["Last updated","Today 14:22"]].map(([k,v])=>(
-                  <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:12,
-                    padding:"5px 0",borderBottom:`1px solid ${C.border}`}}>
-                    <span style={{color:C.muted2}}>{k}</span>
-                    <span style={{color:C.text,fontFamily:k.includes("tit")||k.includes("upd")?"inherit":"monospace",fontWeight:500}}>{v}</span>
-                  </div>
-                ))}
-                <Btn onClick={()=>setFence({lat:userPos.lat,lon:userPos.lon})}
-                  style={{marginTop:10,width:"100%",justifyContent:"center",fontSize:11}}>
-                  📍 Set Center to My Location
-                </Btn>
-              </div>
-            )}
+            ))}
           </Card>
 
           {/* Admin visibility info */}
           <Card style={{background:"rgba(59,130,246,0.04)",borderColor:"rgba(59,130,246,0.2)"}}>
-            <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>Admin Visibility</div>
+            <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>Command Visibility</div>
             {[
-              ["Real-time GPS","Shared"],
-              ["Geofence status",inside?"Inside":"Outside"],
-              ["Zone radius",`${(radius/1000).toFixed(1)} km`],
-              ["Last update","Live"],
-              ["Alert on breach",alerts?"Enabled":"Disabled"],
+              ["Real-time GPS","Shared with Lead"],
+              ["Boundary status",inside?"Inside Zone":"Breached"],
+              ["Admin radius",`${(radius/1000).toFixed(1)} km`],
+              ["Rescue unit",joinedTrip.rescueUnit || "Team Alpha"],
             ].map(([k,v])=>(
               <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"4px 0",borderBottom:`1px solid ${C.border}`}}>
                 <span style={{color:C.muted2}}>{k}</span>
@@ -2767,7 +3541,7 @@ const PageGeofencing = ({ user }) => {
 
       {/* Event log */}
       <div style={{marginTop:16}}>
-        <div style={{fontSize:12,fontWeight:600,color:C.text,marginBottom:10}}>Geofence Event Log</div>
+        <div style={{fontSize:12,fontWeight:600,color:C.text,marginBottom:10}}>Geofence Perimeter Log</div>
         <Card style={{padding:0}}>
           <table style={{width:"100%",borderCollapse:"collapse"}}>
             <thead>
@@ -2800,10 +3574,620 @@ const PageGeofencing = ({ user }) => {
 };
 
 /* ════════════════════════════════════════════════
+   PAGE: TREKKER PROFILE & DUTY-OF-CARE
+════════════════════════════════════════════════ */
+const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"];
+const RELATIONSHIPS = ["Family", "Spouse", "Parent", "Sibling", "Partner", "Friend", "Guardian", "Relative"];
+const EXPERIENCE_LEVELS = [
+  "Beginner Hiker (Day Treks)",
+  "Intermediate Trekker (Western Ghats / Sahyadri)",
+  "Advanced Trekker (High-Altitude / Multi-day)",
+  "Mountaineer & Field Guide"
+];
+
+const PageProfile = ({ user, onUpdateUser, joinedTrip, onNavigate }) => {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  const [form, setForm] = useState({
+    name: user?.name || "",
+    phone: user?.phone || "",
+    city: user?.city || "",
+    experienceLevel: user?.experienceLevel || "Intermediate Trekker (Western Ghats / Sahyadri)",
+    blood: user?.blood || "B+",
+    medical: user?.medical || "None",
+    allergies: user?.allergies || "None",
+    medications: user?.medications || "None",
+    insurancePolicy: user?.insurancePolicy || "",
+    emergencyBeaconId: user?.emergencyBeaconId || "",
+    ec1Name: user?.ec1Name || "",
+    ec1Rel: user?.ec1Rel || "Family",
+    ec1Ph: user?.ec1Ph || "",
+    ec2Name: user?.ec2Name || "",
+    ec2Rel: user?.ec2Rel || "Family",
+    ec2Ph: user?.ec2Ph || "",
+  });
+
+  // Calculate duty-of-care readiness score
+  const checks = [
+    { label: "Blood Group Specified", ok: !!form.blood },
+    { label: "Primary Emergency Contact", ok: !!form.ec1Name && !!form.ec1Ph },
+    { label: "Field Mobile Phone", ok: !!form.phone },
+    { label: "Medical & Health Declaration", ok: !!form.medical && form.medical !== "" },
+    { label: "Secondary Contact (Optional)", ok: !!form.ec2Name && !!form.ec2Ph },
+  ];
+  const completedChecks = checks.filter(c => c.ok).length;
+  const readinessPercent = Math.round((completedChecks / checks.length) * 100);
+
+  const handleChange = (key, val) => {
+    setForm(prev => ({ ...prev, [key]: val }));
+    setSaveSuccess(false);
+    setSaveError("");
+  };
+
+  const handleSave = async (e) => {
+    e?.preventDefault();
+    setSaveError("");
+    setSaveSuccess(false);
+
+    if (!form.name.trim()) {
+      setSaveError("Please enter your full name.");
+      return;
+    }
+    if (!form.phone.trim()) {
+      setSaveError("Please provide a contact phone number for field operations.");
+      return;
+    }
+    if (!form.ec1Name.trim() || !form.ec1Ph.trim()) {
+      setSaveError("Primary emergency contact name and phone number are required for duty-of-care safety.");
+      return;
+    }
+
+    setSaving(true);
+    const updatedProfile = {
+      ...user,
+      ...form,
+      updatedAt: new Date().toISOString(),
+    };
+
+    try {
+      // 1. Direct Firestore update
+      await updateUserProfileInFirestore(user.id, form);
+
+      // 2. Backend update if token available
+      const token = localStorage.getItem(USER_TOKEN_KEY);
+      if (token && user?.id) {
+        await fetch(`${AUTH_API_URL}/api/users/${user.id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify(form)
+        }).catch(() => {});
+      }
+
+      // 3. Update localStorage and parent state
+      localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(updatedProfile));
+      onUpdateUser(updatedProfile);
+      setSaveSuccess(true);
+      setEditing(false);
+    } catch (err) {
+      setSaveError("Failed to save profile changes. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const resetForm = () => {
+    setForm({
+      name: user?.name || "",
+      phone: user?.phone || "",
+      city: user?.city || "",
+      experienceLevel: user?.experienceLevel || "Intermediate Trekker (Western Ghats / Sahyadri)",
+      blood: user?.blood || "B+",
+      medical: user?.medical || "None",
+      allergies: user?.allergies || "None",
+      medications: user?.medications || "None",
+      insurancePolicy: user?.insurancePolicy || "",
+      emergencyBeaconId: user?.emergencyBeaconId || "",
+      ec1Name: user?.ec1Name || "",
+      ec1Rel: user?.ec1Rel || "Family",
+      ec1Ph: user?.ec1Ph || "",
+      ec2Name: user?.ec2Name || "",
+      ec2Rel: user?.ec2Rel || "Family",
+      ec2Ph: user?.ec2Ph || "",
+    });
+    setEditing(false);
+    setSaveError("");
+  };
+
+  return (
+    <div>
+      <PageHeader
+        title="Trekker Profile & Medical Records"
+        sub="Duty-of-care credentials, emergency contacts & SAR dispatch data"
+        right={
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            {editing ? (
+              <>
+                <Btn onClick={resetForm}>
+                  ✕ Cancel
+                </Btn>
+                <Btn variant="primary" onClick={handleSave} disabled={saving}>
+                  {saving ? "Saving…" : "💾 Save Changes"}
+                </Btn>
+              </>
+            ) : (
+              <Btn variant="primary" onClick={() => setEditing(true)}>
+                ✏️ Edit Profile & Medical Info
+              </Btn>
+            )}
+          </div>
+        }
+      />
+
+      {/* Success Notification */}
+      {saveSuccess && (
+        <div style={{
+          background: "rgba(34, 197, 94, 0.12)",
+          border: "1px solid rgba(34, 197, 94, 0.35)",
+          borderRadius: 12,
+          padding: "12px 18px",
+          marginBottom: 18,
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          color: C.green
+        }}>
+          <span style={{ fontSize: 20 }}>✓</span>
+          <div style={{ fontSize: 13, fontWeight: 500 }}>
+            Profile updated successfully! All medical notes, blood group, and emergency contacts are synchronized for SAR dispatch.
+          </div>
+        </div>
+      )}
+
+      {/* Error Notification */}
+      {saveError && (
+        <div style={{
+          background: "rgba(239, 68, 68, 0.12)",
+          border: "1px solid rgba(239, 68, 68, 0.35)",
+          borderRadius: 12,
+          padding: "12px 18px",
+          marginBottom: 18,
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          color: "#fca5a5"
+        }}>
+          <span style={{ fontSize: 20 }}>⚠️</span>
+          <div style={{ fontSize: 13, fontWeight: 500 }}>{saveError}</div>
+        </div>
+      )}
+
+      {/* Hero Overview Card */}
+      <Card style={{
+        marginBottom: 20,
+        background: "linear-gradient(135deg, rgba(20, 50, 110, 0.45), rgba(11, 20, 34, 0.95))",
+        borderColor: "rgba(59, 130, 246, 0.3)",
+        padding: "24px 26px"
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+            <Avatar
+              initials={user?.avatar || (form.name || "T").slice(0, 2).toUpperCase()}
+              bg={user?.color?.[0] || "#E6F1FB"}
+              text={user?.color?.[1] || "#0C447C"}
+              size={64}
+            />
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                <span style={{ fontSize: 22, fontWeight: 700, color: C.text }}>{form.name}</span>
+                <Pill color="green">● Duty-of-Care Verified</Pill>
+              </div>
+              <div style={{ fontSize: 12.5, color: C.muted, display: "flex", gap: 14, flexWrap: "wrap" }}>
+                <span>✉️ {user?.email}</span>
+                <span>📞 {form.phone || "No phone linked"}</span>
+                <span>📍 {form.city || "Western Ghats"}</span>
+                <span>🥾 {form.experienceLevel}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick readiness meter & Trip status */}
+          <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{
+              background: "rgba(255, 255, 255, 0.04)",
+              border: `1px solid ${C.border}`,
+              borderRadius: 10,
+              padding: "10px 16px",
+              minWidth: 160
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: C.muted, marginBottom: 5 }}>
+                <span>Trail Readiness</span>
+                <span style={{ color: readinessPercent >= 80 ? C.green : C.amber, fontWeight: 700 }}>{readinessPercent}%</span>
+              </div>
+              <div style={{ height: 6, background: "rgba(255, 255, 255, 0.08)", borderRadius: 4 }}>
+                <div style={{
+                  height: "100%",
+                  borderRadius: 4,
+                  background: readinessPercent >= 80 ? `linear-gradient(90deg, ${C.teal}, ${C.green})` : C.amber,
+                  width: `${readinessPercent}%`,
+                  transition: "width 0.4s"
+                }}/>
+              </div>
+              <div style={{ fontSize: 10, color: C.muted2, marginTop: 4 }}>
+                {completedChecks} of {checks.length} safety items ready
+              </div>
+            </div>
+
+            <div style={{
+              background: joinedTrip ? "rgba(16, 185, 129, 0.08)" : "rgba(255, 255, 255, 0.04)",
+              border: joinedTrip ? "1px solid rgba(16, 185, 129, 0.3)" : `1px solid ${C.border}`,
+              borderRadius: 10,
+              padding: "10px 16px",
+              minWidth: 170
+            }}>
+              <div style={{ fontSize: 10.5, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>
+                Active Expedition
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: joinedTrip ? "#34d399" : C.muted2 }}>
+                {joinedTrip ? joinedTrip.code : "No active trek"}
+              </div>
+              <button
+                type="button"
+                onClick={() => onNavigate("join-trip")}
+                style={{
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  fontSize: 11,
+                  color: C.accent,
+                  cursor: "pointer",
+                  marginTop: 2,
+                  fontFamily: "inherit"
+                }}
+              >
+                {joinedTrip ? "View trek details →" : "Browse Expeditions →"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Main 2-Column Grid of Profile Details */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
+        {/* Column 1: Personal Contact & Field Identity */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          <Card>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>
+                👤 Personal &amp; Field Contact Info
+              </div>
+              <span style={{ fontSize: 11, color: C.muted2 }}>
+                {editing ? "Editable Mode" : "Verified Identity"}
+              </span>
+            </div>
+
+            <FieldRow label="FULL NAME">
+              {editing ? (
+                <Input value={form.name} onChange={(e) => handleChange("name", e.target.value)} placeholder="Full Name" />
+              ) : (
+                <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{form.name}</div>
+              )}
+            </FieldRow>
+
+            <FieldRow label="MOBILE PHONE (EMERGENCY SMS & VOICE DISPATCH)">
+              {editing ? (
+                <Input value={form.phone} onChange={(e) => handleChange("phone", e.target.value)} placeholder="+91 98765 43210" />
+              ) : (
+                <div style={{ fontSize: 13.5, color: form.phone ? C.text : C.muted, fontFamily: "monospace" }}>
+                  {form.phone || "Not set — Add a phone number"}
+                </div>
+              )}
+            </FieldRow>
+
+            <FieldRow label="HOME CITY / BASE REGION">
+              {editing ? (
+                <Input value={form.city} onChange={(e) => handleChange("city", e.target.value)} placeholder="e.g. Pune, Maharashtra" />
+              ) : (
+                <div style={{ fontSize: 13.5, color: C.text }}>{form.city || "Western Ghats"}</div>
+              )}
+            </FieldRow>
+
+            <FieldRow label="TREKKING EXPERIENCE LEVEL">
+              {editing ? (
+                <Select value={form.experienceLevel} onChange={(e) => handleChange("experienceLevel", e.target.value)}>
+                  {EXPERIENCE_LEVELS.map(lvl => (
+                    <option key={lvl} value={lvl} style={{ background: "#0b1422", color: "#fff" }}>{lvl}</option>
+                  ))}
+                </Select>
+              ) : (
+                <div style={{ fontSize: 13, color: "#60a5fa", fontWeight: 500 }}>{form.experienceLevel}</div>
+              )}
+            </FieldRow>
+
+            <FieldRow label="AUTHENTICATED LOGIN EMAIL">
+              <div style={{
+                background: "rgba(255, 255, 255, 0.03)",
+                border: `1px solid ${C.border}`,
+                borderRadius: 8,
+                padding: "8px 12px",
+                fontSize: 13,
+                color: C.muted,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between"
+              }}>
+                <span>{user?.email}</span>
+                <span style={{ fontSize: 10, color: C.muted2 }}>🔒 Primary ID</span>
+              </div>
+            </FieldRow>
+          </Card>
+
+          {/* Emergency Contacts Card */}
+          <Card style={{ borderColor: "rgba(59, 130, 246, 0.25)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>
+                📞 Emergency Contacts (SAR Call Tree)
+              </div>
+              <span style={{ fontSize: 11, color: C.muted2 }}>Direct Next-of-Kin</span>
+            </div>
+
+            {/* Primary Contact */}
+            <div style={{
+              background: "rgba(255, 255, 255, 0.03)",
+              border: `1px solid ${C.border}`,
+              borderRadius: 10,
+              padding: "12px 14px",
+              marginBottom: 12
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#60a5fa", letterSpacing: "0.05em" }}>
+                  PRIMARY EMERGENCY CONTACT
+                </span>
+                {!editing && form.ec1Ph && (
+                  <a
+                    href={`tel:${form.ec1Ph}`}
+                    style={{
+                      background: "rgba(34, 197, 94, 0.15)",
+                      border: "1px solid rgba(34, 197, 94, 0.3)",
+                      borderRadius: 6,
+                      color: C.green,
+                      fontSize: 11,
+                      padding: "2px 8px",
+                      textDecoration: "none",
+                      fontWeight: 600
+                    }}
+                  >
+                    📞 Call
+                  </a>
+                )}
+              </div>
+
+              {editing ? (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 10, color: C.muted2, marginBottom: 3 }}>Name</div>
+                    <Input value={form.ec1Name} onChange={(e) => handleChange("ec1Name", e.target.value)} placeholder="Contact Name" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, color: C.muted2, marginBottom: 3 }}>Relationship</div>
+                    <Select value={form.ec1Rel} onChange={(e) => handleChange("ec1Rel", e.target.value)}>
+                      {RELATIONSHIPS.map(r => (
+                        <option key={r} value={r} style={{ background: "#0b1422", color: "#fff" }}>{r}</option>
+                      ))}
+                    </Select>
+                  </div>
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <div style={{ fontSize: 10, color: C.muted2, marginBottom: 3 }}>Phone Number</div>
+                    <Input value={form.ec1Ph} onChange={(e) => handleChange("ec1Ph", e.target.value)} placeholder="+91 98765 43210" />
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>
+                    {form.ec1Name || "No primary contact configured"}
+                  </div>
+                  <div style={{ fontSize: 12, color: C.muted, marginTop: 2, display: "flex", gap: 10 }}>
+                    <span>{form.ec1Rel || "Family"}</span>
+                    <span>·</span>
+                    <span style={{ fontFamily: "monospace" }}>{form.ec1Ph || "—"}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Secondary Contact */}
+            <div style={{
+              background: "rgba(255, 255, 255, 0.02)",
+              border: `1px solid ${C.border}`,
+              borderRadius: 10,
+              padding: "12px 14px"
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.05em" }}>
+                  SECONDARY EMERGENCY CONTACT (BACKUP)
+                </span>
+                {!editing && form.ec2Ph && (
+                  <a
+                    href={`tel:${form.ec2Ph}`}
+                    style={{
+                      background: "rgba(34, 197, 94, 0.15)",
+                      border: "1px solid rgba(34, 197, 94, 0.3)",
+                      borderRadius: 6,
+                      color: C.green,
+                      fontSize: 11,
+                      padding: "2px 8px",
+                      textDecoration: "none",
+                      fontWeight: 600
+                    }}
+                  >
+                    📞 Call
+                  </a>
+                )}
+              </div>
+
+              {editing ? (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 10, color: C.muted2, marginBottom: 3 }}>Name</div>
+                    <Input value={form.ec2Name} onChange={(e) => handleChange("ec2Name", e.target.value)} placeholder="Backup Name (Optional)" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, color: C.muted2, marginBottom: 3 }}>Relationship</div>
+                    <Select value={form.ec2Rel} onChange={(e) => handleChange("ec2Rel", e.target.value)}>
+                      {RELATIONSHIPS.map(r => (
+                        <option key={r} value={r} style={{ background: "#0b1422", color: "#fff" }}>{r}</option>
+                      ))}
+                    </Select>
+                  </div>
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <div style={{ fontSize: 10, color: C.muted2, marginBottom: 3 }}>Phone Number</div>
+                    <Input value={form.ec2Ph} onChange={(e) => handleChange("ec2Ph", e.target.value)} placeholder="+91 Phone" />
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: form.ec2Name ? C.text : C.muted }}>
+                    {form.ec2Name || "Optional backup contact not set"}
+                  </div>
+                  {form.ec2Name && (
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 2, display: "flex", gap: 10 }}>
+                      <span>{form.ec2Rel || "Family"}</span>
+                      <span>·</span>
+                      <span style={{ fontFamily: "monospace" }}>{form.ec2Ph || "—"}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </Card>
+        </div>
+
+        {/* Column 2: Medical & Duty-of-Care Record (Life-Critical) */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          {/* Medical Duty-of-Care Card */}
+          <Card style={{ borderColor: "rgba(239, 68, 68, 0.25)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>
+                ⚕️ Medical &amp; Duty-of-Care Record
+              </div>
+              <Pill color="red">🚨 Shared on SOS</Pill>
+            </div>
+            <div style={{ fontSize: 11.5, color: C.muted2, lineHeight: 1.45, marginBottom: 14 }}>
+              This information is instantly broadcast to Search &amp; Rescue (SAR) responders, mountain ambulances, and local hospitals when an emergency is activated.
+            </div>
+
+            <FieldRow label="BLOOD GROUP">
+              {editing ? (
+                <Select value={form.blood} onChange={(e) => handleChange("blood", e.target.value)}>
+                  {BLOOD_GROUPS.map(bg => (
+                    <option key={bg} value={bg} style={{ background: "#0b1422", color: "#fff" }}>{bg}</option>
+                  ))}
+                </Select>
+              ) : (
+                <div style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  background: "rgba(239, 68, 68, 0.12)",
+                  border: "1px solid rgba(239, 68, 68, 0.3)",
+                  borderRadius: 8,
+                  padding: "4px 12px",
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: C.red
+                }}>
+                  <span>🩸 {form.blood || "Not set"}</span>
+                </div>
+              )}
+            </FieldRow>
+
+            <FieldRow label="MEDICAL CONDITIONS / CHRONIC ILLNESSES">
+              {editing ? (
+                <textarea
+                  value={form.medical}
+                  onChange={(e) => handleChange("medical", e.target.value)}
+                  placeholder="e.g. Asthma (carry inhaler), mild hypertension, knee injury history"
+                  rows={2}
+                  style={{
+                    width: "100%",
+                    background: "rgba(255, 255, 255, 0.04)",
+                    border: `1px solid ${C.border}`,
+                    borderRadius: 8,
+                    color: C.text,
+                    fontSize: 13,
+                    padding: "8px 12px",
+                    fontFamily: "inherit",
+                    boxSizing: "border-box",
+                    outline: "none",
+                    resize: "vertical"
+                  }}
+                />
+              ) : (
+                <div style={{ fontSize: 13, color: form.medical && form.medical !== "None" ? C.text : C.muted }}>
+                  {form.medical || "None declared"}
+                </div>
+              )}
+            </FieldRow>
+
+            <FieldRow label="KNOWN ALLERGIES (FOOD / MEDICATION / INSECTS)">
+              {editing ? (
+                <Input
+                  value={form.allergies}
+                  onChange={(e) => handleChange("allergies", e.target.value)}
+                  placeholder="e.g. Penicillin, Bee stings, Peanuts"
+                />
+              ) : (
+                <div style={{ fontSize: 13, color: form.allergies && form.allergies !== "None" ? C.text : C.muted }}>
+                  {form.allergies || "None declared"}
+                </div>
+              )}
+            </FieldRow>
+
+            <FieldRow label="CURRENT MEDICATIONS ON TREK">
+              {editing ? (
+                <Input
+                  value={form.medications}
+                  onChange={(e) => handleChange("medications", e.target.value)}
+                  placeholder="e.g. Salbutamol inhaler in top bag pocket, Cetirizine"
+                />
+              ) : (
+                <div style={{ fontSize: 13, color: form.medications && form.medications !== "None" ? C.text : C.muted }}>
+                  {form.medications || "None declared"}
+                </div>
+              )}
+            </FieldRow>
+
+            <FieldRow label="TREK / MEDICAL INSURANCE POLICY">
+              {editing ? (
+                <Input
+                  value={form.insurancePolicy}
+                  onChange={(e) => handleChange("insurancePolicy", e.target.value)}
+                  placeholder="e.g. Star Health / ICICI Lombard Policy #12345678"
+                />
+              ) : (
+                <div style={{ fontSize: 13, color: form.insurancePolicy ? C.text : C.muted }}>
+                  {form.insurancePolicy || "Not specified (Optional)"}
+                </div>
+              )}
+            </FieldRow>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ════════════════════════════════════════════════
    SIDEBAR NAVIGATION
 ════════════════════════════════════════════════ */
 const NAV = [
-  {section:"Home",items:[
+  {section:"Expedition",items:[
+    {id:"join-trip",label:"Expeditions & Trips",icon:"🧭"},
     {id:"dashboard",label:"My Dashboard",icon:"⊞"},
   ]},
   {section:"Safety",items:[
@@ -2812,9 +4196,6 @@ const NAV = [
   ]},
   {section:"Tracking",items:[
     {id:"live-tracking",label:"Live Tracking",icon:"📡"},
-  ]},
-  {section:"Exploration",items:[
-    {id:"forts",label:"Forts Explorer",icon:"🏰"},
   ]},
   {section:"Weather",items:[
     {id:"weather",label:"Weather & Maps",icon:"🌤️"},
@@ -2831,37 +4212,7 @@ export default function UserDashboard() {
     localStorage.removeItem(USER_PROFILE_KEY);
     localStorage.removeItem(USER_CREDENTIALS_KEY);
     localStorage.removeItem("coordage_tracking_token");
-  };
-
-  const [page, setPage] = useState("dashboard");
-  const [activeSOS, setActiveSOS] = useState(false);
-  const [joinedTrip, setJoinedTrip] = useState(null);
-  const [joinError, setJoinError] = useState("");
-
-  // Demo fallback — only used if the real Firestore lookup is unreachable,
-  // so the join flow still works during a demo with no network/misconfigured rules.
-  const DEMO_TRIP_CODES = {
-    "RAJM26": { name: "Rajmachi Weekend Trek — Batch 12", date: "May 3–4, 2026", location: "Rajmachi, Maharashtra" },
-  };
-
-  const handleJoinTrip = async (code) => {
-    const result = await getTripByCode(code);
-    if (result.success) {
-      setJoinedTrip(result.trip);
-      setJoinError("");
-      setPage("dashboard");
-      return;
-    }
-    if (result.error === "unreachable") {
-      const demoTrip = DEMO_TRIP_CODES[code.trim().toUpperCase()];
-      if (demoTrip) {
-        setJoinedTrip(demoTrip);
-        setJoinError("");
-        setPage("dashboard");
-        return;
-      }
-    }
-    setJoinError("That code doesn't match an active trip. Check with your trek leader.");
+    localStorage.removeItem("coordage_joined_trip");
   };
 
   const [user, setUser] = useState(() => {
@@ -2876,11 +4227,207 @@ export default function UserDashboard() {
     }
   });
 
+  const handleUpdateUser = (updatedProfile) => {
+    setUser(updatedProfile);
+    localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(updatedProfile));
+  };
+
   const handleLogin = (profile) => {
     setUser(profile);
     localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(profile));
     localStorage.setItem(USER_SESSION_KEY, JSON.stringify({ userId: profile.id, email: profile.email }));
+    const savedTrip = localStorage.getItem("coordage_joined_trip");
+    setPage(savedTrip ? "dashboard" : "join-trip");
+  };
+
+  const [joinedTrip, setJoinedTrip] = useState(() => {
+    try {
+      const saved = localStorage.getItem("coordage_joined_trip");
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  // Real-time synchronization of Active Trip from Firestore
+  useEffect(() => {
+    if (!user?.id) return;
+    const unsub = subscribeToUserActiveTrip(user.id, (activeData) => {
+      if (activeData && activeData.trip) {
+        const fullTrip = {
+          ...activeData.trip,
+          tripStatus: activeData.status || "pending_approval",
+          requestedAt: activeData.requestedAt,
+          approvedAt: activeData.approvedAt,
+        };
+        setJoinedTrip(fullTrip);
+        localStorage.setItem("coordage_joined_trip", JSON.stringify(fullTrip));
+      } else {
+        setJoinedTrip(null);
+        localStorage.removeItem("coordage_joined_trip");
+      }
+    });
+    return () => unsub?.();
+  }, [user?.id]);
+
+  // Default page: if user has no joined trip, open "join-trip" by default
+  const [page, setPage] = useState(() => {
+    return localStorage.getItem("coordage_joined_trip") ? "dashboard" : "join-trip";
+  });
+
+  const [activeSOS, setActiveSOS] = useState(false);
+  const [joinError, setJoinError] = useState("");
+
+  const handleJoinTrip = async (tripOrCode) => {
+    setJoinError("");
+    if (joinedTrip) {
+      setJoinError("You are already enrolled in an expedition. Leave your current expedition before applying to another.");
+      return false;
+    }
+    let targetTrip = null;
+
+    if (typeof tripOrCode === "object" && tripOrCode !== null) {
+      targetTrip = tripOrCode;
+    } else {
+      const code = String(tripOrCode).trim().toUpperCase();
+
+      // 1. Try backend API lookup
+      try {
+        const res = await fetch(`http://localhost:5050/api/trips/${code}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.code) targetTrip = data;
+        }
+      } catch (e) {
+        console.warn("Backend lookup failed, checking Firestore directly...", e);
+      }
+
+      // 2. Direct Firestore fallback
+      if (!targetTrip) {
+        try {
+          const result = await getTripByCode(code);
+          if (result.success && result.trip) {
+            targetTrip = result.trip;
+          }
+        } catch (e) {
+          console.warn("Firestore lookup error:", e);
+        }
+      }
+
+      // 3. Fallback list
+      if (!targetTrip) {
+        targetTrip = FALLBACK_TRIPS.find(t => t.code.toUpperCase() === code);
+      }
+    }
+
+    if (!targetTrip) {
+      setJoinError("That code doesn't match an active expedition. Please check with your organizer.");
+      return false;
+    }
+
+    // Call backend join API to register join request in Firestore
+    const tripId = targetTrip.id || targetTrip.tripId;
+    let joinOk = false;
+    try {
+      const token = localStorage.getItem(USER_TOKEN_KEY);
+      const res = await fetch(`http://localhost:5050/api/trips/${tripId}/join`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          userId: user?.id,
+          name: user?.name,
+          email: user?.email,
+          phone: user?.phone,
+          blood: user?.blood,
+          medical: user?.medical,
+          ec1Name: user?.ec1Name,
+          ec1Rel: user?.ec1Rel,
+          ec1Ph: user?.ec1Ph
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        if (errData.error) {
+          setJoinError(errData.error);
+          return false;
+        }
+      } else {
+        joinOk = true;
+      }
+    } catch (e) {
+      console.warn("Backend join API error:", e);
+    }
+
+    // Direct Firestore update fallback if backend was unavailable
+    if (!joinOk && user?.id) {
+      const fbRes = await joinTripInFirestore(targetTrip, user);
+      if (!fbRes.success && fbRes.error) {
+        setJoinError(fbRes.error);
+        return false;
+      }
+    }
+
+    // Save active trip (status is pending_approval until admin approves)
+    const tripWithStatus = {
+      ...targetTrip,
+      tripStatus: "pending_approval",
+    };
+    setJoinedTrip(tripWithStatus);
+    localStorage.setItem("coordage_joined_trip", JSON.stringify(tripWithStatus));
+
+    // Fast-sync from database
+    if (user?.id) {
+      fetchUserActiveTrip(user.id).then((active) => {
+        if (active && active.trip) {
+          const synced = {
+            ...active.trip,
+            tripStatus: active.status || "pending_approval",
+            requestedAt: active.requestedAt,
+            approvedAt: active.approvedAt,
+          };
+          setJoinedTrip(synced);
+          localStorage.setItem("coordage_joined_trip", JSON.stringify(synced));
+        }
+      }).catch(() => {});
+    }
+
     setPage("dashboard");
+    return true;
+  };
+
+  const handleLeaveTrip = async () => {
+    const tripId = joinedTrip?.id || joinedTrip?.tripId;
+    if (tripId && user?.id) {
+      try {
+        const token = localStorage.getItem(USER_TOKEN_KEY);
+        await fetch(`http://localhost:5050/api/trips/${tripId}/leave`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { "Authorization": `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ userId: user?.id })
+        });
+      } catch (e) {
+        console.warn("Backend leave API error:", e);
+      }
+      try {
+        await leaveTripInFirestore(tripId, user.id);
+      } catch (e) {
+        console.warn("Firestore leave error:", e);
+      }
+    }
+
+    setJoinedTrip(null);
+    localStorage.removeItem("coordage_joined_trip");
+    if (user?.id) {
+      fetchUserActiveTrip(user.id).catch(() => {});
+    }
+    setPage("join-trip");
   };
 
   if (!user) {
@@ -2891,18 +4438,20 @@ export default function UserDashboard() {
 
   const PAGES = {
     "dashboard": <PageDashboard user={user} onNavigate={navigate} activeSOS={activeSOS} joinedTrip={joinedTrip} onSOS={v=>{ setActiveSOS(v); if(v) setPage("sos-nav"); }}/>,
-    "sos-nav":   <PageSOSNav user={user} activeSOS={activeSOS}/>,
-    "geofencing":<PageGeofencing user={user}/>,
-    "live-tracking": <PageLiveTracking user={user} activeSOS={activeSOS} onSOS={v=>{ setActiveSOS(v); if(v) setPage("sos-nav"); }}/>,
-    "weather":   <PageWeatherMaps/>,
-    "join-trip": <PageJoinTrip onJoin={handleJoinTrip} error={joinError}/>,
+    "sos-nav":   <PageSOSNav user={user} activeSOS={activeSOS} onSOS={v=>setActiveSOS(v)} onNavigate={navigate}/>,
+    "geofencing":<PageGeofencing user={user} joinedTrip={joinedTrip} onNavigate={navigate}/>,
+    "live-tracking": <PageLiveTracking user={user} joinedTrip={joinedTrip} onNavigate={navigate} activeSOS={activeSOS} onSOS={v=>{ setActiveSOS(v); if(v) setPage("sos-nav"); }}/>,
+    "weather":   <PageWeatherMaps joinedTrip={joinedTrip} onNavigate={navigate}/>,
+    "join-trip": <PageJoinTrip user={user} joinedTrip={joinedTrip} onJoin={handleJoinTrip} onLeave={handleLeaveTrip} onNavigate={navigate} error={joinError}/>,
+    "profile":   <PageProfile user={user} onUpdateUser={handleUpdateUser} joinedTrip={joinedTrip} onNavigate={navigate}/>,
   };
 
   const signOut = () => {
     clearAuthData();
     setUser(null);
     setActiveSOS(false);
-    setPage("dashboard");
+    setJoinedTrip(null);
+    setPage("join-trip");
   };
 
   return (
@@ -2921,12 +4470,37 @@ export default function UserDashboard() {
           </div>
         </div>
 
-        {/* User info */}
-        <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:10}}>
+        {/* User profile card — Clickable to Profile page */}
+        <div
+          onClick={() => setPage("profile")}
+          title="View & Edit Trekker Profile & Medical Records"
+          style={{
+            padding:"12px 16px",
+            borderBottom:`1px solid ${C.border}`,
+            display:"flex",
+            alignItems:"center",
+            gap:10,
+            cursor:"pointer",
+            background: page === "profile" ? "rgba(59, 130, 246, 0.12)" : "transparent",
+            borderLeft: page === "profile" ? `3px solid ${C.accent}` : "3px solid transparent",
+            transition:"background 0.15s, border-color 0.15s"
+          }}
+        >
           <Avatar initials={user?.avatar || (user?.name || "T").slice(0, 2).toUpperCase()} bg={user?.color?.[0] || "#E6F1FB"} text={user?.color?.[1] || "#0C447C"} size={34}/>
           <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:12,fontWeight:500,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user?.name || "Trekker"}</div>
-            <div style={{fontSize:10,color:C.muted2}}>{user?.role || "Trekker"} · {user?.blood || "—"}</div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{fontSize:12,fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user?.name || "Trekker"}</div>
+              <span style={{fontSize:10,color:C.muted2,marginLeft:4}}>›</span>
+            </div>
+            <div style={{fontSize:10,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:2}}>
+              {!joinedTrip ? (
+                <span style={{ color: C.amber }}>⚪ No Trip · Join →</span>
+              ) : joinedTrip.tripStatus === "pending_approval" ? (
+                <span style={{ color: "#fbbf24" }}>⏳ {joinedTrip.code} · Pending</span>
+              ) : (
+                <span style={{ color: "#86efac" }}>🟢 {joinedTrip.code} · Active</span>
+              )}
+            </div>
           </div>
           {activeSOS&&(
             <div style={{width:22,height:22,background:"rgba(239,68,68,0.18)",border:"1px solid rgba(239,68,68,0.4)",
@@ -2942,6 +4516,7 @@ export default function UserDashboard() {
               {items.map(item=>{
                 const active = page===item.id;
                 const isSOS  = item.id==="sos-nav";
+                const isJoin = item.id==="join-trip";
                 return (
                   <div key={item.id} onClick={()=>setPage(item.id)}
                     style={{display:"flex",alignItems:"center",gap:10,padding:"8px 16px",cursor:"pointer",
@@ -2952,6 +4527,18 @@ export default function UserDashboard() {
                     <span style={{fontSize:12,color:active?C.text:isSOS?"rgba(252,165,165,0.8)":C.muted,fontWeight:active?500:400}}>
                       {item.label}
                     </span>
+                    {isJoin && (
+                      !joinedTrip ? (
+                        <div style={{marginLeft:"auto",background:"rgba(245,158,11,0.2)",border:"1px solid rgba(245,158,11,0.35)",
+                          borderRadius:10,padding:"1px 6px",fontSize:9,color:C.amber,fontWeight:600}}>JOIN</div>
+                      ) : joinedTrip.tripStatus === "pending_approval" ? (
+                        <div style={{marginLeft:"auto",background:"rgba(245,158,11,0.2)",border:"1px solid rgba(245,158,11,0.35)",
+                          borderRadius:10,padding:"1px 6px",fontSize:9,color:C.amber,fontWeight:600}}>PENDING</div>
+                      ) : (
+                        <div style={{marginLeft:"auto",background:"rgba(34,197,94,0.18)",border:"1px solid rgba(34,197,94,0.35)",
+                          borderRadius:10,padding:"1px 6px",fontSize:9,color:"#86efac",fontWeight:600}}>ACTIVE</div>
+                      )
+                    )}
                     {isSOS&&activeSOS&&(
                       <div style={{marginLeft:"auto",background:"rgba(239,68,68,0.2)",border:"1px solid rgba(239,68,68,0.35)",
                         borderRadius:10,padding:"1px 7px",fontSize:9,color:C.red,fontWeight:700}}>LIVE</div>
@@ -2965,7 +4552,20 @@ export default function UserDashboard() {
 
         {/* Quick SOS in sidebar */}
         <div style={{padding:"12px 16px",borderTop:`1px solid ${C.border}`}}>
-          <button onClick={()=>{ setActiveSOS(true); setPage("sos-nav"); }}
+          <button onClick={()=>{
+            if (!joinedTrip) {
+              alert("⚠️ No Active Expedition: Please join an expedition first so SAR rescue teams know which zone and trail you are located on.");
+              setPage("join-trip");
+              return;
+            }
+            if (joinedTrip.tripStatus === "pending_approval") {
+              alert("⏳ Expedition Approval Pending: Your application to join " + (joinedTrip.name || "the expedition") + " is awaiting administrator review. Emergency SAR beacons activate once approved.");
+              setPage("join-trip");
+              return;
+            }
+            setActiveSOS(true);
+            setPage("sos-nav");
+          }}
             style={{width:"100%",padding:"9px",background:"rgba(239,68,68,0.12)",
               border:"1px solid rgba(239,68,68,0.35)",borderRadius:10,color:C.red,
               fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",

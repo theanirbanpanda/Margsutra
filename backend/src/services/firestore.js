@@ -32,12 +32,23 @@ const db = getFirestore(firebaseApp);
 
 function toSafeProfile(id, data = {}) {
   const lastSeen = data.lastSeenAt || data.lastSeen;
+  const reqAt = data.requestedAt;
+  const isSuperAdmin = (data.email || "").toLowerCase() === "admin@coordage.app";
+  const approved = isSuperAdmin ? true : (data.approved !== undefined ? data.approved : (data.role === "admin" ? false : true));
+  const status = isSuperAdmin ? "approved" : (data.status || (data.role === "admin" ? "pending_approval" : "active"));
+
   return {
     id,
     name: data.name || data.displayName || "",
     email: data.email || "",
     role: data.role || "Explorer",
-    status: data.status || "active",
+    status,
+    approved,
+    organization: data.organization || "",
+    roleTitle: data.roleTitle || "",
+    requestedAt: reqAt ? (reqAt.toDate ? reqAt.toDate() : reqAt) : null,
+    approvedAt: data.approvedAt ? (data.approvedAt.toDate ? data.approvedAt.toDate() : data.approvedAt) : null,
+    approvedBy: data.approvedBy || "",
     avatar: data.avatar || "EU",
     color: Array.isArray(data.color) && data.color.length === 2 ? data.color : ["#E6F1FB", "#0C447C"],
     blood: data.blood || data.bloodGroup || "B+",
@@ -60,6 +71,12 @@ function toSafeProfile(id, data = {}) {
     ec2Name: data.ec2Name || (data.emergencyContacts && data.emergencyContacts[1]?.name) || "",
     ec2Rel: data.ec2Rel || (data.emergencyContacts && data.emergencyContacts[1]?.relation) || "",
     ec2Ph: data.ec2Ph || (data.emergencyContacts && data.emergencyContacts[1]?.phone) || "",
+    activeTripId: data.activeTripId || null,
+    activeTripCode: data.activeTripCode || null,
+    activeTripName: data.activeTripName || null,
+    tripStatus: data.tripStatus || null,
+    tripRequestedAt: data.tripRequestedAt ? (data.tripRequestedAt.toDate ? data.tripRequestedAt.toDate() : data.tripRequestedAt) : null,
+    tripApprovedAt: data.tripApprovedAt ? (data.tripApprovedAt.toDate ? data.tripApprovedAt.toDate() : data.tripApprovedAt) : null,
   };
 }
 
@@ -81,6 +98,7 @@ async function createUser(userData) {
   const normalizedEmail = String(userData.email).trim().toLowerCase();
   const avatar = userData.name.trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join("").toUpperCase() || "EU";
   const userDocRef = db.collection("users").doc();
+  const isAdmin = userData.role === "admin";
 
   const record = {
     uid: userDocRef.id,
@@ -91,12 +109,16 @@ async function createUser(userData) {
     phone: userData.phone || "",
     city: userData.city || "",
     role: userData.role || "Explorer",
+    status: userData.status || (isAdmin ? "pending_approval" : "active"),
+    approved: userData.approved !== undefined ? userData.approved : (isAdmin ? false : true),
+    organization: userData.organization || (isAdmin ? "Expedition Command & SAR" : ""),
+    roleTitle: userData.roleTitle || (isAdmin ? "Field Administrator" : "Trekker"),
+    requestedAt: userData.requestedAt || new Date(),
     blood: userData.blood || "B+",
     bloodGroup: userData.blood || "B+",
     medical: userData.medical || "None",
     avatar,
     color: ["#E6F1FB", "#0C447C"],
-    status: "active",
     lat: 18.5196,
     lon: 73.8554,
     accuracy: null,
@@ -119,6 +141,47 @@ async function createUser(userData) {
 
   await userDocRef.set(record);
   return { id: userDocRef.id, ...record };
+}
+
+async function listPendingAdmins() {
+  const snapshot = await db.collection("users").where("role", "==", "admin").get();
+  return snapshot.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((u) => {
+      const email = (u.email || "").toLowerCase();
+      if (email === "admin@coordage.app") return false;
+      return u.status === "pending_approval" || u.approved === false;
+    });
+}
+
+async function approveAdminUser(adminId, approvedBy = "System Administrator") {
+  const docRef = db.collection("users").doc(adminId);
+  const docSnap = await docRef.get();
+  if (!docSnap.exists) return null;
+  const updates = {
+    status: "approved",
+    approved: true,
+    approvedAt: new Date(),
+    approvedBy: approvedBy || "admin@coordage.app",
+    updatedAt: new Date(),
+  };
+  await docRef.set(updates, { merge: true });
+  return { id: docSnap.id, ...docSnap.data(), ...updates };
+}
+
+async function rejectAdminUser(adminId, rejectedBy = "System Administrator") {
+  const docRef = db.collection("users").doc(adminId);
+  const docSnap = await docRef.get();
+  if (!docSnap.exists) return null;
+  const updates = {
+    status: "rejected",
+    approved: false,
+    rejectedAt: new Date(),
+    rejectedBy: rejectedBy || "admin@coordage.app",
+    updatedAt: new Date(),
+  };
+  await docRef.set(updates, { merge: true });
+  return { id: docSnap.id, ...docSnap.data(), ...updates };
 }
 
 async function listUsers() {
@@ -168,6 +231,218 @@ async function setAppThemeConfig(config) {
   return data;
 }
 
+async function listTrips() {
+  const snapshot = await db.collection("trips").get();
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+}
+
+async function findTripByCode(code) {
+  const normalized = String(code).trim().toUpperCase();
+  const snapshot = await db.collection("trips").where("code", "==", normalized).limit(1).get();
+  if (snapshot.empty) return null;
+  const doc = snapshot.docs[0];
+  return { id: doc.id, ...doc.data() };
+}
+
+async function joinTrip(tripId, userId, userData = {}) {
+  const tripRef = db.collection("trips").doc(tripId);
+  const tripDoc = await tripRef.get();
+  if (!tripDoc.exists) return { error: "Expedition not found." };
+
+  const userRef = db.collection("users").doc(userId);
+  const userDoc = await userRef.get();
+  const existingUser = userDoc.exists ? userDoc.data() : {};
+
+  // Strictly enforce one active expedition at a time
+  if (existingUser.activeTripId && existingUser.activeTripId !== tripId && existingUser.tripStatus) {
+    return {
+      error: `You are already enrolled in "${existingUser.activeTripName || "another expedition"}". You must leave your current expedition before joining a new one.`,
+    };
+  }
+
+  const tripData = tripDoc.data();
+  const rosterRef = tripRef.collection("roster").doc(userId);
+  const now = new Date();
+
+  const rosterEntry = {
+    userId,
+    name: userData.name || existingUser.name || existingUser.displayName || "Trekker",
+    email: userData.email || existingUser.email || "",
+    phone: userData.phone || existingUser.phone || "",
+    blood: userData.blood || existingUser.blood || "B+",
+    medical: userData.medical || existingUser.medical || "None",
+    ec1Name: userData.ec1Name || existingUser.ec1Name || "",
+    ec1Rel: userData.ec1Rel || existingUser.ec1Rel || "Family",
+    ec1Ph: userData.ec1Ph || existingUser.ec1Ph || "",
+    status: "pending_approval",
+    requestedAt: now,
+    approvedAt: null,
+    approvedBy: "",
+  };
+
+  await rosterRef.set(rosterEntry, { merge: true });
+
+  // Update user document in Firestore so it's permanently stored across any device / signout
+  const userTripUpdates = {
+    activeTripId: tripId,
+    activeTripCode: tripData.code || "",
+    activeTripName: tripData.name || "Expedition",
+    tripStatus: "pending_approval",
+    tripRequestedAt: now,
+    tripApprovedAt: null,
+    updatedAt: now,
+  };
+  await userRef.set(userTripUpdates, { merge: true });
+
+  // Count approved members for public roster count
+  const approvedSnap = await tripRef.collection("roster").where("status", "==", "approved").get();
+  await tripRef.update({ rosterCount: approvedSnap.size });
+
+  return {
+    success: true,
+    status: "pending_approval",
+    trip: { id: tripDoc.id, ...tripData, rosterCount: approvedSnap.size },
+    rosterEntry,
+  };
+}
+
+async function leaveTrip(tripId, userId) {
+  const tripRef = db.collection("trips").doc(tripId);
+  const tripDoc = await tripRef.get();
+  if (tripDoc.exists) {
+    await tripRef.collection("roster").doc(userId).delete();
+    const approvedSnap = await tripRef.collection("roster").where("status", "==", "approved").get();
+    await tripRef.update({ rosterCount: approvedSnap.size });
+  }
+
+  // Clear active trip from user document in Firestore
+  const userRef = db.collection("users").doc(userId);
+  await userRef.set({
+    activeTripId: null,
+    activeTripCode: null,
+    activeTripName: null,
+    tripStatus: null,
+    tripRequestedAt: null,
+    tripApprovedAt: null,
+    updatedAt: new Date(),
+  }, { merge: true });
+
+  const updatedDoc = tripDoc.exists ? await tripRef.get() : null;
+  return {
+    success: true,
+    trip: updatedDoc ? { id: updatedDoc.id, ...updatedDoc.data() } : null,
+  };
+}
+
+async function getTripRoster(tripId) {
+  const tripRef = db.collection("trips").doc(tripId);
+  const snap = await tripRef.collection("roster").get();
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+async function listPendingTripRequests() {
+  const tripsSnap = await db.collection("trips").get();
+  const pending = [];
+  for (const tDoc of tripsSnap.docs) {
+    const tripData = tDoc.data();
+    const rosterSnap = await tDoc.ref.collection("roster").where("status", "==", "pending_approval").get();
+    for (const rDoc of rosterSnap.docs) {
+      pending.push({
+        tripId: tDoc.id,
+        tripName: tripData.name || "Expedition",
+        tripCode: tripData.code || "",
+        id: rDoc.id,
+        ...rDoc.data(),
+      });
+    }
+  }
+  return pending;
+}
+
+async function approveTripUser(tripId, userId, approvedBy = "admin@coordage.app") {
+  const tripRef = db.collection("trips").doc(tripId);
+  const tripDoc = await tripRef.get();
+  if (!tripDoc.exists) return { error: "Expedition not found." };
+
+  const rosterRef = tripRef.collection("roster").doc(userId);
+  const rDoc = await rosterRef.get();
+  if (!rDoc.exists) return { error: "User is not in the expedition roster." };
+
+  const now = new Date();
+  await rosterRef.update({
+    status: "approved",
+    approvedAt: now,
+    approvedBy: approvedBy || "admin@coordage.app",
+  });
+
+  const userRef = db.collection("users").doc(userId);
+  await userRef.set({
+    activeTripId: tripId,
+    activeTripCode: tripDoc.data().code || "",
+    activeTripName: tripDoc.data().name || "Expedition",
+    tripStatus: "approved",
+    tripApprovedAt: now,
+    tripApprovedBy: approvedBy || "admin@coordage.app",
+    updatedAt: now,
+  }, { merge: true });
+
+  const approvedSnap = await tripRef.collection("roster").where("status", "==", "approved").get();
+  await tripRef.update({ rosterCount: approvedSnap.size });
+
+  return {
+    success: true,
+    tripId,
+    userId,
+    rosterCount: approvedSnap.size,
+  };
+}
+
+async function removeTripUser(tripId, userId, removedBy = "admin@coordage.app") {
+  const tripRef = db.collection("trips").doc(tripId);
+  const tripDoc = await tripRef.get();
+  if (tripDoc.exists) {
+    await tripRef.collection("roster").doc(userId).delete();
+    const approvedSnap = await tripRef.collection("roster").where("status", "==", "approved").get();
+    await tripRef.update({ rosterCount: approvedSnap.size });
+  }
+
+  // Clear active trip from user doc
+  const userRef = db.collection("users").doc(userId);
+  await userRef.set({
+    activeTripId: null,
+    activeTripCode: null,
+    activeTripName: null,
+    tripStatus: null,
+    tripRequestedAt: null,
+    tripApprovedAt: null,
+    updatedAt: new Date(),
+  }, { merge: true });
+
+  return { success: true, tripId, userId };
+}
+
+async function getUserActiveTrip(userId) {
+  const userRef = db.collection("users").doc(userId);
+  const userDoc = await userRef.get();
+  if (!userDoc.exists) return null;
+  const userData = userDoc.data();
+  if (!userData.activeTripId) return null;
+
+  const tripRef = db.collection("trips").doc(userData.activeTripId);
+  const tripDoc = await tripRef.get();
+  if (!tripDoc.exists) return null;
+
+  const rosterDoc = await tripRef.collection("roster").doc(userId).get();
+  const rosterData = rosterDoc.exists ? rosterDoc.data() : {};
+
+  return {
+    trip: { id: tripDoc.id, ...tripDoc.data() },
+    status: rosterData.status || userData.tripStatus || "pending_approval",
+    requestedAt: rosterData.requestedAt || userData.tripRequestedAt || null,
+    approvedAt: rosterData.approvedAt || userData.tripApprovedAt || null,
+  };
+}
+
 module.exports = {
   db,
   toSafeProfile,
@@ -178,4 +453,16 @@ module.exports = {
   updateUser,
   getAppThemeConfig,
   setAppThemeConfig,
+  listTrips,
+  findTripByCode,
+  joinTrip,
+  leaveTrip,
+  getTripRoster,
+  listPendingTripRequests,
+  approveTripUser,
+  removeTripUser,
+  getUserActiveTrip,
+  listPendingAdmins,
+  approveAdminUser,
+  rejectAdminUser,
 };

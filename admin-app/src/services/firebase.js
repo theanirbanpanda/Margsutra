@@ -1,6 +1,6 @@
 // src/services/firebase.js
 import { initializeApp } from "firebase/app";
-import { getAuth, signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "firebase/auth";
 import {
   getFirestore,
   collection,
@@ -41,24 +41,204 @@ export const db = getFirestore(app);
 export const rtdb = getDatabase(app);
 export const storage = getStorage(app);
 
+export const AUTH_API_URL = import.meta.env.VITE_AUTH_API_URL || "http://localhost:5050/api";
+
 // ===== AUTHENTICATION =====
 export const adminLogin = async (email, password) => {
+  const normalizedEmail = (email || "").trim().toLowerCase();
+
+  // 1. Try Backend API first (validates Firestore credentials and checks pending approval)
   try {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const res = await fetch(`${AUTH_API_URL}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: normalizedEmail, password }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 403) {
+      return {
+        success: false,
+        error: data.error || "Your administrator account is pending approval by an existing system administrator.",
+      };
+    }
+    if (res.ok && data?.user) {
+      if (data.user.role !== "admin") {
+        return { success: false, error: "Unauthorized: Administrator privileges required for this console." };
+      }
+      return {
+        success: true,
+        user: { email: data.user.email, uid: data.user.id },
+        userData: data.user,
+        token: data.token,
+      };
+    }
+    if (!res.ok && data?.error && !data.error.includes("Unable to sign in")) {
+      return { success: false, error: data.error };
+    }
+  } catch (backendErr) {
+    console.warn("Backend auth failed, falling back to Firebase Auth client:", backendErr);
+  }
+
+  // 2. Try Firebase Auth client
+  try {
+    const userCredential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
     const userDoc = await getDoc(doc(db, "users", userCredential.user.uid));
 
     if (userDoc.exists() && userDoc.data().role === "admin") {
+      const data = userDoc.data();
+      const isSuper = normalizedEmail === "admin@coordage.app";
+      if (!isSuper && (data.status === "pending_approval" || data.approved === false)) {
+        await signOut(auth);
+        return {
+          success: false,
+          error: "Your administrator account is pending approval by an existing system administrator. You will be notified once verified.",
+        };
+      }
       return {
         success: true,
         user: userCredential.user,
-        userData: userDoc.data(),
+        userData: { id: userDoc.id, ...data },
       };
     } else {
       await signOut(auth);
-      throw new Error("Unauthorized: Admin access required");
+      return { success: false, error: "Unauthorized: Admin access required" };
     }
   } catch (error) {
+    // Demo fallback for offline / mock testing
+    if (normalizedEmail === "admin@coordage.app" && (password === "admin123" || password === "Coordage@123")) {
+      return {
+        success: true,
+        user: { email: "admin@coordage.app", uid: "demo-admin-001" },
+        userData: { id: "demo-admin-001", name: "Super Admin", email: "admin@coordage.app", role: "admin", status: "approved", approved: true },
+      };
+    }
     return { success: false, error: error.message };
+  }
+};
+
+export const registerAdminAccount = async ({ name, email, password, phone, organization, roleTitle }) => {
+  const normalizedEmail = (email || "").trim().toLowerCase();
+
+  // 1. Try Backend Registration API
+  try {
+    const res = await fetch(`${AUTH_API_URL}/auth/register-admin`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: name.trim(),
+        email: normalizedEmail,
+        password,
+        phone: phone ? phone.trim() : "",
+        organization: organization ? organization.trim() : "Expedition Command & SAR",
+        roleTitle: roleTitle ? roleTitle.trim() : "Trek Administrator",
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      return {
+        success: true,
+        message: data.message || "Administrator access request submitted. An existing administrator must approve your account.",
+        user: data.user,
+      };
+    }
+    if (data?.error) {
+      return { success: false, error: data.error };
+    }
+  } catch (apiErr) {
+    console.warn("Backend admin register failed, attempting direct Firebase save:", apiErr);
+  }
+
+  // 2. Direct Firebase Auth & Firestore fallback
+  try {
+    const cred = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+    const adminRecord = {
+      uid: cred.user.uid,
+      name: name.trim(),
+      email: normalizedEmail,
+      phone: phone ? phone.trim() : "",
+      role: "admin",
+      status: "pending_approval",
+      approved: false,
+      organization: organization || "Expedition Command & SAR",
+      roleTitle: roleTitle || "Trek Administrator",
+      requestedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    };
+    await setDoc(doc(db, "users", cred.user.uid), adminRecord);
+    await signOut(auth); // Sign out so pending admin cannot enter console before approval
+    return {
+      success: true,
+      message: "Administrator access request submitted. An existing administrator must approve your account.",
+      user: adminRecord,
+    };
+  } catch (fbErr) {
+    return { success: false, error: fbErr.message };
+  }
+};
+
+export const fetchPendingAdmins = async () => {
+  try {
+    const res = await fetch(`${AUTH_API_URL}/admin/pending-admins`);
+    if (res.ok) {
+      const data = await res.json();
+      return data.pendingAdmins || [];
+    }
+  } catch {}
+  try {
+    const q = query(collection(db, "users"), where("role", "==", "admin"));
+    const snap = await getDocs(q);
+    return snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .filter((u) => {
+        const email = (u.email || "").toLowerCase();
+        return email !== "admin@coordage.app" && (u.status === "pending_approval" || u.approved === false);
+      });
+  } catch {
+    return [];
+  }
+};
+
+export const approveAdmin = async (adminId, approvedBy = "admin@coordage.app") => {
+  try {
+    const res = await fetch(`${AUTH_API_URL}/admin/approve-admin/${adminId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ approvedBy }),
+    });
+    if (res.ok) return { success: true };
+  } catch {}
+  try {
+    await updateDoc(doc(db, "users", adminId), {
+      status: "approved",
+      approved: true,
+      approvedAt: new Date().toISOString(),
+      approvedBy,
+    });
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+};
+
+export const rejectAdmin = async (adminId, rejectedBy = "admin@coordage.app") => {
+  try {
+    const res = await fetch(`${AUTH_API_URL}/admin/reject-admin/${adminId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rejectedBy }),
+    });
+    if (res.ok) return { success: true };
+  } catch {}
+  try {
+    await updateDoc(doc(db, "users", adminId), {
+      status: "rejected",
+      approved: false,
+      rejectedAt: new Date().toISOString(),
+      rejectedBy,
+    });
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
   }
 };
 
@@ -198,6 +378,148 @@ export const getTripByCode = async (code) => {
     return { success: true, trip };
   } catch (error) {
     return { success: false, error: error.message };
+  }
+};
+
+export const fetchPendingTripRequests = async () => {
+  // 1. Try Backend API
+  try {
+    const res = await fetch(`${AUTH_API_URL}/admin/pending-trip-requests`);
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.pending)) return data.pending;
+    }
+  } catch {}
+
+  // 2. Direct Firestore fallback
+  try {
+    const tripsSnap = await getDocs(collection(db, "trips"));
+    const pending = [];
+    for (const tDoc of tripsSnap.docs) {
+      const tripData = tDoc.data();
+      const rosterSnap = await getDocs(
+        query(collection(db, "trips", tDoc.id, "roster"), where("status", "==", "pending_approval"))
+      );
+      for (const rDoc of rosterSnap.docs) {
+        pending.push({
+          tripId: tDoc.id,
+          tripName: tripData.name || "Expedition",
+          tripCode: tripData.code || "",
+          id: rDoc.id,
+          ...rDoc.data(),
+        });
+      }
+    }
+    return pending;
+  } catch (err) {
+    console.warn("fetchPendingTripRequests error:", err);
+    return [];
+  }
+};
+
+export const approveTrekker = async (tripId, userId, approvedBy = "admin@coordage.app") => {
+  // 1. Try Backend API
+  try {
+    const res = await fetch(`${AUTH_API_URL}/admin/trips/${tripId}/approve-user/${userId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ approvedBy }),
+    });
+    if (res.ok) return { success: true };
+  } catch {}
+
+  // 2. Direct Firestore fallback
+  try {
+    const now = new Date().toISOString();
+    const rosterRef = doc(db, "trips", tripId, "roster", userId);
+    await updateDoc(rosterRef, {
+      status: "approved",
+      approvedAt: now,
+      approvedBy,
+    });
+
+    const userRef = doc(db, "users", userId);
+    await updateDoc(userRef, {
+      tripStatus: "approved",
+      tripApprovedAt: now,
+      tripApprovedBy: approvedBy,
+      updatedAt: now,
+    });
+
+    // Update roster count
+    const approvedSnap = await getDocs(
+      query(collection(db, "trips", tripId, "roster"), where("status", "==", "approved"))
+    );
+    await updateDoc(doc(db, "trips", tripId), {
+      rosterCount: approvedSnap.size,
+    });
+
+    return { success: true };
+  } catch (err) {
+    console.warn("Direct Firestore approve error:", err);
+    return { success: false, error: err.message };
+  }
+};
+
+export const removeTrekker = async (tripId, userId, removedBy = "admin@coordage.app") => {
+  // 1. Try Backend API
+  try {
+    const res = await fetch(`${AUTH_API_URL}/admin/trips/${tripId}/remove-user/${userId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ removedBy }),
+    });
+    if (res.ok) return { success: true };
+  } catch {}
+
+  // 2. Direct Firestore fallback
+  try {
+    if (tripId && userId) {
+      await deleteDoc(doc(db, "trips", tripId, "roster", userId));
+      const approvedSnap = await getDocs(
+        query(collection(db, "trips", tripId, "roster"), where("status", "==", "approved"))
+      );
+      await updateDoc(doc(db, "trips", tripId), {
+        rosterCount: approvedSnap.size,
+      });
+    }
+
+    if (userId) {
+      await updateDoc(doc(db, "users", userId), {
+        activeTripId: null,
+        activeTripCode: null,
+        activeTripName: null,
+        tripStatus: null,
+        tripRequestedAt: null,
+        tripApprovedAt: null,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    return { success: true };
+  } catch (err) {
+    console.warn("Direct Firestore remove error:", err);
+    return { success: false, error: err.message };
+  }
+};
+
+export const fetchTripRoster = async (tripId) => {
+  // 1. Try Backend API
+  try {
+    const res = await fetch(`${AUTH_API_URL}/trips/${tripId}/roster`);
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.roster)) return data.roster;
+    }
+  } catch {}
+
+  // 2. Direct Firestore fallback
+  try {
+    const snap = await getDocs(collection(db, "trips", tripId, "roster"));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (err) {
+    console.warn("Direct Firestore fetchTripRoster error:", err);
+    return [];
   }
 };
 
