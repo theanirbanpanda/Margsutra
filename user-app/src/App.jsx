@@ -1885,6 +1885,37 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
         </div>
       )}
 
+      {/* Live Group Radar Quick Bar */}
+      <div
+        style={{
+          background: "linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(11, 20, 34, 0.95))",
+          border: "1px solid rgba(59, 130, 246, 0.28)",
+          borderRadius: 12,
+          padding: "12px 18px",
+          marginBottom: 16,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 10,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 18 }}>👥</span>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>
+              Team Proximity Radar: Leader Ajay Saini is 365m ahead · 4 Teammates in Formation (&lt; 870m)
+            </div>
+            <div style={{ fontSize: 11, color: C.muted }}>
+              All 6 expedition members are in safe corridor formation along Rajmachi Fort ridge.
+            </div>
+          </div>
+        </div>
+        <Btn variant="primary" onClick={() => onNavigate("live-tracking")} style={{ fontSize: 11, padding: "6px 14px" }}>
+          🛰️ Open Live Radar Map →
+        </Btn>
+      </div>
+
       <div style={{display:"grid",gridTemplateColumns:"300px 1fr",gap:16,marginBottom:16}}>
         {/* Left: Expedition Command & Quick Profile */}
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -2183,6 +2214,7 @@ const PageLiveTracking = ({ user, joinedTrip, onNavigate, activeSOS, onSOS }) =>
 
       <UserTrackingWidget
         user={user}
+        joinedTrip={joinedTrip}
         serverUrl={TRACKING_SERVER_URL}
         token={trackingToken}
         activeSOS={activeSOS}
@@ -2202,7 +2234,7 @@ const FALLBACK_TRIPS = [
     code: "RAJM26",
     name: "Rajmachi Fort Monsoon Expedition — Batch 12",
     location: "Rajmachi, Lonavala, Maharashtra",
-    leader: "Field Guide Aryan Rao",
+    leader: "Field Guide Ajay Saini",
     date: "May 3–4, 2026",
     status: "active",
     rosterCount: 18,

@@ -18,6 +18,12 @@ import {
   subscribeToTrips,
   subscribeToUsers,
 } from "./services/firebase";
+import {
+  calculateDistanceMeters,
+  formatDistance,
+  RAJMACHI_ADMIN,
+  RAJMACHI_MEMBERS,
+} from "./services/expeditionTeam";
 
 /* ════════════════════════════════════════════════
    DESIGN TOKENS
@@ -40,9 +46,7 @@ const AUTH_API_URL = import.meta.env.VITE_AUTH_API_URL || "http://localhost:5050
    once subscribeToTrips() returns data; this array is only its seed/fallback.
    Remove or gate behind an env flag before any real deployment.
 ════════════════════════════════════════════════════════════════════════ */
-const USERS = [
-  { id:"U001",name:"Anirban Panda", email:"anirban@coordage.app", role:"Field Guide", status:"active", lat:18.52, lon:73.85, city:"Pune", lastSeen:"2 min ago", trips:12, devices:3, avatar:"AP", color:["#E6F1FB","#0C447C"], blood:"B+", medical:"None" },
-];
+const USERS = RAJMACHI_MEMBERS;
 
 const TRIPS = [
   {id:"TRIP001",name:"Rajmachi Weekend Trek — Batch 12",date:"May 3–4, 2026",roster:18,status:"active",code:"RAJM26"},
@@ -219,6 +223,49 @@ const LiveMap = ({ points=[], teams=[], height=380, showPulse=true, routeFrom=nu
     const L = window.L; const map = mapRef.current;
     markersRef.current.forEach((m) => map.removeLayer(m)); markersRef.current = [];
 
+    // 1. Admin Leader Marker (Ajay Saini)
+    const leaderIcon = L.divIcon({
+      className: "",
+      html: `
+        <div style="position:relative;width:38px;height:38px;display:flex;align-items:center;justify-content:center;">
+          <div style="position:absolute;inset:0;border-radius:50%;background:#f59e0b;opacity:0.25;animation:utw-ring 1.8s ease-out infinite;"></div>
+          <div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg, #f59e0b, #d97706);border:2px solid #ffffff;box-shadow:0 0 12px rgba(245,158,11,0.7);display:flex;align-items:center;justify-content:center;font-size:15px;color:#fff;cursor:pointer;">
+            👑
+          </div>
+        </div>
+      `,
+      iconSize: [38, 38],
+      iconAnchor: [19, 19],
+      popupAnchor: [0, -18],
+    });
+    const adminMk = L.marker([RAJMACHI_ADMIN.lat, RAJMACHI_ADMIN.lon], { icon: leaderIcon }).addTo(map);
+    adminMk.bindPopup(`
+      <b>👑 You (Ajay Saini) · Expedition Leader</b><br/>
+      <span style="color:#fbbf24;font-weight:600">Field Guide & Lead Navigator</span><br/>
+      📍 Manoranjan Ridge (842m ASL)<br/>
+      🔋 Battery: <strong>95%</strong> · ❤️ HR: <strong>76 bpm</strong><br/>
+      VHF Channel: <strong>145.500 MHz</strong>
+    `);
+    markersRef.current.push(adminMk);
+
+    // 2. Trail Corridor polyline
+    const trailPoly = L.polyline([
+      [18.8229, 73.3932],
+      [18.8242, 73.3945],
+      [18.8256, 73.3958],
+      [18.8271, 73.3971],
+      [18.8286, 73.3986],
+      [RAJMACHI_ADMIN.lat, RAJMACHI_ADMIN.lon],
+    ], {
+      color: "#f59e0b",
+      weight: 3.5,
+      opacity: 0.65,
+      dashArray: "8 6",
+    }).addTo(map).bindPopup("<b>Rajmachi Fort Expedition Corridor</b>");
+    markersRef.current.push(trailPoly);
+
+    const allMapPoints = [[RAJMACHI_ADMIN.lat, RAJMACHI_ADMIN.lon]];
+
     points.forEach((p) => {
       const isSOS = p.status === "sos";
       const isActive = p.status === "active";
@@ -226,10 +273,25 @@ const LiveMap = ({ points=[], teams=[], height=380, showPulse=true, routeFrom=nu
       const pulse = showPulse && (isSOS || isActive);
       const size = isSOS ? 14 : 10;
       const icon = makeDotIcon(L, color, size, pulse, isSOS ? "#ef4444" : "#3b82f6");
-      const popup = `<b>${p.name}</b><br><span style="color:#94a3b8">${p.city}</span><span style="margin:0 6px;color:#334155">·</span><span style="color:${color};font-weight:600;text-transform:capitalize">${p.status}</span>${p.blood ? `<br>🩸 ${p.blood}` : ""}${p.medical && p.medical !== "None" ? `<br>⚕ ${p.medical}` : ""}`;
+
+      const distFromAdmin = calculateDistanceMeters(RAJMACHI_ADMIN.lat, RAJMACHI_ADMIN.lon, p.lat, p.lon);
+      const distStr = formatDistance(distFromAdmin);
+
+      const popup = `<b>${p.name}</b> (${p.badge || "Trekker"})<br>` +
+        `<span style="color:#60a5fa;font-weight:700">📏 ${distStr} away from you</span><br>` +
+        `<span style="color:#94a3b8">${p.trailStatus || p.city}</span><span style="margin:0 6px;color:#334155">·</span><span style="color:${color};font-weight:600;text-transform:capitalize">${p.status}</span>` +
+        `<br>Alt: <strong>${p.altitude || 820}m</strong> · 🔋 <strong>${p.battery || 85}%</strong> · ❤️ <strong>${p.heartRate || 82} bpm</strong>` +
+        `${p.blood ? `<br>🩸 ${p.blood}` : ""}${p.medical && p.medical !== "None" ? `<br>⚕ ${p.medical}` : ""}` +
+        `<br>📞 ${p.phone || "—"}`;
+
       const mk = L.marker([p.lat, p.lon], { icon }).addTo(map).bindPopup(popup);
       markersRef.current.push(mk);
+      allMapPoints.push([p.lat, p.lon]);
     });
+
+    if (allMapPoints.length > 1) {
+      map.fitBounds(allMapPoints, { padding: [40, 40], maxZoom: 16 });
+    }
 
     teams.forEach((t) => {
       const icon = makeTeamIcon(L, t.name, t.status === "deployed");
@@ -2955,10 +3017,14 @@ const PageSOSTracking = ({ users=USERS }) => (
 const PageLiveTracking = ({ navigate, users=USERS, connectionState="disconnected", error=null }) => {
   const [filter,setFilter]=useState("all");
   const [sel,setSel]=useState(null);
-  const displayUsers = users;
+  const displayUsers = users && users.length > 0 ? users : USERS;
   const filtered = filter === "all" ? displayUsers : displayUsers.filter(u => u.status === filter);
   const activeSOSUser = displayUsers.find((user) => user.status === "sos") || null;
   const activeTeam = SOS_TEAMS.find((team) => team.status === "deployed") || SOS_TEAMS[0];
+
+  // Calculate distance from Admin (Ajay Saini) for each member
+  const memberDistances = displayUsers.map(u => calculateDistanceMeters(RAJMACHI_ADMIN.lat, RAJMACHI_ADMIN.lon, u.lat, u.lon));
+  const maxSpread = memberDistances.length > 0 ? Math.max(...memberDistances) : 0;
   
   return (
     <div>
@@ -2975,11 +3041,69 @@ const PageLiveTracking = ({ navigate, users=USERS, connectionState="disconnected
           {error && <span style={{color:C.red, marginLeft:8}}>Error: {error}</span>}
         </span>
       </div>
-      <PageHeader title="Live Navigation & User Tracking" sub="Real-time positions, routes and status"
+
+      <PageHeader title="Live Navigation & User Tracking" sub="Real-time positions, member proximity and trail formation"
         right={<div style={{display:"flex",gap:6}}>
           {["all","active","sos"].map(f=><button key={f} onClick={()=>setFilter(f)} style={{padding:"5px 12px",borderRadius:7,border:`1px solid ${filter===f?C.accent:C.border}`,background:filter===f?"rgba(59,130,246,0.12)":"transparent",color:filter===f?C.accent:C.muted,fontSize:11,cursor:"pointer",fontFamily:"inherit",textTransform:"capitalize"}}>{f}</button>)}
         </div>}/>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 300px",gap:14}}>
+
+      {/* Admin Location & Proximity Header Banner */}
+      <div
+        style={{
+          background: "linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(11, 20, 34, 0.95))",
+          border: "1px solid rgba(245, 158, 11, 0.35)",
+          borderRadius: 14,
+          padding: "14px 18px",
+          marginBottom: 16,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 12,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 10,
+              background: "rgba(245, 158, 11, 0.2)",
+              border: "1px solid rgba(245, 158, 11, 0.4)",
+              color: "#fbbf24",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 20,
+            }}
+          >
+            👑
+          </div>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>
+                Your Location: Ajay Saini (Expedition Leader & Field Guide)
+              </span>
+              <Pill color="green">● Leading Trail</Pill>
+            </div>
+            <div style={{ fontSize: 12, color: C.muted }}>
+              📍 Manoranjan Fort Ridge (18.8312°N, 73.4008°E · 842m ASL) · VHF Channel: 145.500 MHz
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 11, color: C.muted2 }}>Group Formation Spread</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#34d399" }}>
+              {formatDistance(maxSpread)} (Safe Corridor &lt; 2.5 km)
+            </div>
+          </div>
+          <Pill color="teal">5/5 Trekkers Accounted</Pill>
+        </div>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 310px",gap:14}}>
         <div>
           <LiveMap
             points={filtered}
@@ -3000,26 +3124,100 @@ const PageLiveTracking = ({ navigate, users=USERS, connectionState="disconnected
             <StatCard label="GPS accuracy" value="±6m" sub="Avg" color={C.green} icon="🛰️"/>
           </div>
         </div>
-        <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:560,overflowY:"auto"}}>
-          <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>Users</div>
-          {filtered.map(u=>(
-            <Card key={u.id} onClick={()=>setSel(sel===u.id?null:u.id)} style={{cursor:"pointer",marginBottom:0,borderColor:sel===u.id?C.accent:u.status==="sos"?"rgba(239,68,68,0.4)":C.border,background:sel===u.id?"rgba(59,130,246,0.07)":C.card}}>
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <div style={{position:"relative"}}><Avatar initials={u.avatar} bg={u.color[0]} text={u.color[1]}/><div style={{position:"absolute",bottom:0,right:0,width:9,height:9,borderRadius:"50%",background:u.status==="sos"?C.red:u.status==="active"?C.green:"#555",border:"2px solid #080f1a"}}/></div>
-                <div style={{flex:1}}><div style={{fontSize:12,fontWeight:500,color:C.text}}>{u.name}</div><div style={{fontSize:10,color:C.muted}}>📍{u.city} · {u.lastSeen}</div></div>
-                {u.status==="sos"&&<span>🚨</span>}
-              </div>
-              {sel===u.id&&<div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.border}`}}>
-                {[["Latitude",`${u.lat?.toFixed(4)}°N` || "—"],["Longitude",`${u.lon?.toFixed(4)}°E` || "—"],["Accuracy", `±${u.accuracy?.toFixed(0)}m` || "—"],["Blood",u.blood],["Medical",u.medical||"—"]].map(([k,v])=>(
-                  <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:11,padding:"2px 0"}}><span style={{color:C.muted2}}>{k}</span><span style={{color:C.text}}>{v}</span></div>
-                ))}
-                <div style={{marginTop:8,display:"flex",gap:6}}>
-                  <Btn style={{flex:1,justifyContent:"center",fontSize:11}} onClick={()=>navigate("sos-navigation")}>🗺 Navigate</Btn>
-                  {u.status==="sos"&&<Btn variant="danger" style={{flex:1,justifyContent:"center",fontSize:11}}>SOS Dispatch</Btn>}
+        <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:580,overflowY:"auto"}}>
+          <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4,display:"flex",justifyContent:"space-between"}}>
+            <span>Trekker Group ({filtered.length})</span>
+            <span style={{color:"#60a5fa"}}>Distances from You</span>
+          </div>
+          {filtered.map(u => {
+            const distFromAdmin = calculateDistanceMeters(RAJMACHI_ADMIN.lat, RAJMACHI_ADMIN.lon, u.lat, u.lon);
+            const distStr = formatDistance(distFromAdmin);
+            const isClose = distFromAdmin < 500;
+            const isMedium = distFromAdmin >= 500 && distFromAdmin <= 1200;
+
+            return (
+              <Card
+                key={u.id}
+                onClick={() => setSel(sel === u.id ? null : u.id)}
+                style={{
+                  cursor: "pointer",
+                  marginBottom: 0,
+                  borderColor: sel === u.id ? C.accent : u.status === "sos" ? "rgba(239,68,68,0.4)" : C.border,
+                  background: sel === u.id ? "rgba(59,130,246,0.07)" : C.card,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ position: "relative" }}>
+                    <Avatar initials={u.avatar || "TR"} bg={u.color ? u.color[0] : "#3b82f6"} text={u.color ? u.color[1] : "#fff"} />
+                    <div
+                      style={{
+                        position: "absolute",
+                        bottom: 0,
+                        right: 0,
+                        width: 9,
+                        height: 9,
+                        borderRadius: "50%",
+                        background: u.status === "sos" ? C.red : u.status === "active" ? C.green : "#555",
+                        border: "2px solid #080f1a",
+                      }}
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{u.name}</div>
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          padding: "1px 6px",
+                          borderRadius: 8,
+                          background: isClose ? "rgba(34,197,94,0.15)" : isMedium ? "rgba(59,130,246,0.15)" : "rgba(245,158,11,0.15)",
+                          color: isClose ? "#86efac" : isMedium ? "#93c5fd" : "#fcd34d",
+                        }}
+                      >
+                        {distStr} away
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>
+                      {u.trailStatus || `📍 ${u.city || "Rajmachi"} · ${u.lastSeen || "Active"}`}
+                    </div>
+                  </div>
+                  {u.status === "sos" && <span>🚨</span>}
                 </div>
-              </div>}
-            </Card>
-          ))}
+
+                {sel === u.id && (
+                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
+                    {[
+                      ["Distance from Leader", `${distStr} away`],
+                      ["Trail Status", u.trailStatus || "Ascending Trail"],
+                      ["Altitude", u.altitude ? `${u.altitude}m ASL` : "820m ASL"],
+                      ["Battery", u.battery ? `${u.battery}%` : "85%"],
+                      ["Heart Rate", u.heartRate ? `${u.heartRate} bpm` : "82 bpm"],
+                      ["Latitude", `${u.lat?.toFixed(4)}°N` || "—"],
+                      ["Longitude", `${u.lon?.toFixed(4)}°E` || "—"],
+                      ["Blood", u.blood],
+                      ["Emergency Contact", u.ec1Name ? `${u.ec1Name} (${u.ec1Rel || "Family"}) · ${u.ec1Ph || ""}` : "Registered"],
+                    ].map(([k, v]) => (
+                      <div key={k} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, padding: "2px 0" }}>
+                        <span style={{ color: C.muted2 }}>{k}</span>
+                        <span style={{ color: C.text, fontWeight: 500, maxWidth: 170, textAlign: "right" }}>{v}</span>
+                      </div>
+                    ))}
+                    <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
+                      <Btn style={{ flex: 1, justifyContent: "center", fontSize: 11 }} onClick={() => navigate("sos-navigation")}>
+                        🗺 Route Team
+                      </Btn>
+                      {u.status === "sos" && (
+                        <Btn variant="danger" style={{ flex: 1, justifyContent: "center", fontSize: 11 }}>
+                          SOS Dispatch
+                        </Btn>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </Card>
+            );
+          })}
           <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",margin:"12px 0 4px"}}>SOS Teams</div>
           {SOS_TEAMS.map(t=>(
             <Card key={t.id} style={{marginBottom:0,borderColor:t.status==="deployed"?"rgba(245,158,11,0.3)":C.border}}>
