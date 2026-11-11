@@ -3193,6 +3193,8 @@ const PageLiveTracking = ({ navigate, users=USERS, connectionState="disconnected
                       ["Altitude", u.altitude ? `${u.altitude}m ASL` : "820m ASL"],
                       ["Battery", u.battery ? `${u.battery}%` : "85%"],
                       ["Heart Rate", u.heartRate ? `${u.heartRate} bpm` : "82 bpm"],
+                      ["Blood SpO2", `${u.spO2 || 98}% (Optimal Saturation)`],
+                      ["Synced Wearable", u.wearable || "Garmin Instinct 2 (BLE Synced)"],
                       ["Latitude", `${u.lat?.toFixed(4)}°N` || "—"],
                       ["Longitude", `${u.lon?.toFixed(4)}°E` || "—"],
                       ["Blood", u.blood],

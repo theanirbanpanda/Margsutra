@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import UserTrackingWidget from "./UserTrackingWidget";
+import FitnessGadgetManager from "./FitnessGadgetManager";
 import { useLocationTracking } from "./useLocationTracking";
 import {
   subscribeToSafetyProtocols,
@@ -2193,24 +2194,14 @@ const PageLiveTracking = ({ user, joinedTrip, onNavigate, activeSOS, onSOS }) =>
         sub={`Real-time GPS sharing · ${joinedTrip.name} (${joinedTrip.code})`}
         right={
           <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-            <Pill color={tokenState === "ready" ? "green" : tokenState === "loading" ? "amber" : "red"}>
-              {tokenState === "ready" ? "JWT Ready" : tokenState === "loading" ? "Issuing token" : "Token missing"}
-            </Pill>
-            <Pill color={activeSOS ? "red" : "gray"}>{activeSOS ? "SOS Active" : "Tracking Ready"}</Pill>
+            {activeSOS ? (
+              <Pill color="red">🚨 SOS Active</Pill>
+            ) : (
+              <Pill color="green">● Live Telemetry</Pill>
+            )}
           </div>
         }
       />
-
-      {tokenError && (
-        <Card style={{marginBottom:16,borderColor:"rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.04)"}}>
-          <div style={{fontSize:12,color:"#fca5a5",marginBottom:10}}>
-            Tracking token could not be issued automatically: {tokenError}. Start the tracking server or seed localStorage with a valid JWT.
-          </div>
-          <Btn onClick={issueToken} disabled={tokenState === "loading"}>
-            {tokenState === "loading" ? "Retrying..." : "Retry Token Request"}
-          </Btn>
-        </Card>
-      )}
 
       <UserTrackingWidget
         user={user}
@@ -2413,6 +2404,16 @@ const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) 
           </div>
         </Card>
       )}
+
+      {/* Fitness Wearables & Telemetry Sync Section */}
+      <div style={{ marginBottom: 20 }}>
+        <FitnessGadgetManager
+          user={user}
+          joinedTrip={joinedTrip}
+          compact={true}
+          onNavigate={onNavigate}
+        />
+      </div>
 
       {/* Main Grid: Code input on left, Available trips on right */}
       <div style={{ display: "grid", gridTemplateColumns: "340px 1fr", gap: 18, alignItems: "start" }}>
@@ -4221,6 +4222,7 @@ const NAV = [
   {section:"Expedition",items:[
     {id:"join-trip",label:"Expeditions & Trips",icon:"🧭"},
     {id:"dashboard",label:"My Dashboard",icon:"⊞"},
+    {id:"fitness-devices",label:"Fitness & Wearables",icon:"⌚"},
   ]},
   {section:"Safety",items:[
     {id:"sos-nav",label:"SOS Navigation",icon:"🚨",highlight:true},
@@ -4474,6 +4476,16 @@ export default function UserDashboard() {
     "geofencing":<PageGeofencing user={user} joinedTrip={joinedTrip} onNavigate={navigate}/>,
     "live-tracking": <PageLiveTracking user={user} joinedTrip={joinedTrip} onNavigate={navigate} activeSOS={activeSOS} onSOS={v=>{ setActiveSOS(v); if(v) setPage("sos-nav"); }}/>,
     "weather":   <PageWeatherMaps joinedTrip={joinedTrip} onNavigate={navigate}/>,
+    "fitness-devices": (
+      <div>
+        <PageHeader
+          title="Fitness Wearables & Gadgets"
+          sub="Pair smartwatches, biometric sensors, and manage live telemetry broadcasts to expedition leaders"
+          right={<Pill color="green">● BLE Telemetry Active</Pill>}
+        />
+        <FitnessGadgetManager user={user} joinedTrip={joinedTrip} compact={false} onNavigate={navigate} />
+      </div>
+    ),
     "join-trip": <PageJoinTrip user={user} joinedTrip={joinedTrip} onJoin={handleJoinTrip} onLeave={handleLeaveTrip} onNavigate={navigate} error={joinError}/>,
     "profile":   <PageProfile user={user} onUpdateUser={handleUpdateUser} joinedTrip={joinedTrip} onNavigate={navigate}/>,
   };
