@@ -1,4 +1,4 @@
-# Margsutra (मार्गसूत्र)
+# Margsutra 
 
 > **Wilderness duty-of-care, real-time expedition tracking, and Search & Rescue (SAR) incident dispatch platform** for trek operators, field guides, and mountain safety commanders navigating regions with limited or zero cellular coverage.
 
@@ -16,7 +16,7 @@ Features real-time GPS telemetry, BLE fitness wearable sync, offline-capable SOS
 
 ---
 
-## ⚡ Quick Start (One-Shot Setup)
+## ⚡ Quick Start
 
 1. **Firebase Service Account:**  
    Drop your `serviceAccountKey.json` (from **Firebase Console → Project settings → Service accounts → Generate new private key**) into the root folder.
@@ -45,31 +45,6 @@ Features real-time GPS telemetry, BLE fitness wearable sync, offline-capable SOS
 
 ---
 
-## 🌐 Application Endpoints & Demo Credentials
-
-| Service | Port | Description | Default Login |
-| :--- | :--- | :--- | :--- |
-| **Admin Command Dashboard** | `http://localhost:5174` | SAR Dispatch, Live Map, Trip Management | `admin@margsutra.app` / `admin123` (or `Margsutra@123`) |
-| **Trekker Mobile PWA** | `http://localhost:5173` | Trekker HUD, SOS Beacon, BLE Wearables | `anirban@margsutra.app` / `user123` |
-| **Core REST API** | `http://localhost:5050` | Express, Firestore integration, SOS APIs | *Service token / JWT* |
-| **Tracking Server** | `http://localhost:4000` | Socket.IO low-latency position pipeline | *JWT-authenticated* |
-
-> [!TIP]
-> **User-App Demo Login:** `anirban@margsutra.app` / `user123` works completely offline with cached fallback credentials even without internet or backend access.
-
----
-
-## 🔥 Firebase Console — One Required Configuration
-
-The `trips` collection read rule is configured for public read access to allow pre-authenticated join-by-code lookups from the trail.
-
-1. Open your **Firebase Console → Firestore Database → Rules** tab.
-2. Paste the contents of [`firestore.rules`](./firestore.rules).
-3. Click **Publish**.
-
-*No other changes are required in the Firebase Console.*
-
----
 
 ## 🏛️ Architecture: Dual Authentication by Design
 
@@ -121,12 +96,8 @@ Hardware firmware for field relay nodes is located in [`firmware/`](./firmware/)
 Before rolling out into a live expedition environment:
 
 - [ ] **Rotate Secrets:** Generate fresh `JWT_SECRET` keys and rotate Firebase API credentials.
-- [ ] **Gate Demo Credentials:** Disable or gate the fallback test logins (`admin123`, `user123`, `anirban@margsutra.app`) behind environment variables (`NODE_ENV=production`).
 - [ ] **Strict Failure Handling:** Ensure mock data fallbacks fail loudly in production if live sensors or database feeds disconnect.
 - [ ] **Hardware Flash Testing:** Field-verify ESP32 LoRa packet transmission and GPS lock under dense forest canopy.
 
 ---
 
-## 📄 License
-
-This project is licensed under the [MIT License](./LICENSE).
