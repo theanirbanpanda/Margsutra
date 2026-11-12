@@ -1708,7 +1708,7 @@ const PageAdminAuth = ({ onLogin }) => {
           </div>
 
           <div style={{ fontSize: 26, fontWeight: 800, color: "#f8fafc", letterSpacing: "-0.03em" }}>
-            Coordage <span style={{ color: "#60a5fa" }}>Admin</span>
+            Margsutra <span style={{ color: "#60a5fa" }}>Admin</span>
           </div>
           <div style={{ fontSize: 13, color: "rgba(180, 210, 245, 0.65)", marginTop: 4 }}>
             Trip Safety & Emergency Response Platform · Operations Console
@@ -1802,7 +1802,7 @@ const PageAdminAuth = ({ onLogin }) => {
                 type="email"
                 value={loginEmail}
                 onChange={(e) => setLoginEmail(e.target.value)}
-                placeholder="admin@coordage.app"
+                placeholder="admin@margsutra.app"
                 autoComplete="email"
                 style={{
                   width: "100%",
@@ -1921,7 +1921,7 @@ const PageAdminAuth = ({ onLogin }) => {
                 opacity: loginLoading ? 0.7 : 1,
               }}
             >
-              {loginLoading ? "Authorizing..." : "Sign in to Coordage"}
+              {loginLoading ? "Authorizing..." : "Sign in to Margsutra"}
             </button>
 
             <div style={{ textAlign: "center", marginTop: 18, fontSize: 12, color: "rgba(180, 210, 245, 0.7)" }}>
@@ -2080,7 +2080,7 @@ const PageAdminAuth = ({ onLogin }) => {
                     type="email"
                     value={regForm.email}
                     onChange={(e) => updReg("email", e.target.value)}
-                    placeholder="vikram@coordage.app"
+                    placeholder="vikram@margsutra.app"
                     style={{
                       width: "100%",
                       height: 40,
@@ -2278,7 +2278,7 @@ const PageAdminAuth = ({ onLogin }) => {
           color: "rgba(180, 210, 245, 0.5)",
         }}
       >
-        <span>Coordage Mountain Safety Platform · Incident Command</span>
+        <span>Margsutra Mountain Safety Platform · Incident Command</span>
         <span style={{ margin: "0 8px" }}>·</span>
         <a
           href="http://localhost:5173"
@@ -3197,7 +3197,7 @@ const PageTripRosters = ({
                   Confirm Expedition Deletion
                 </div>
                 <div style={{ fontSize: 11, color: C.muted }}>
-                  Permanently remove this expedition from Coordage
+                  Permanently remove this expedition from Margsutra
                 </div>
               </div>
             </div>
@@ -5901,7 +5901,7 @@ function toDisplayUsers(liveUsersMap, baseUsers = USERS) {
       lastSeen: "just now",
       blood: liveUser.blood || baseMatch?.blood || "—",
       medical: liveUser.medical || baseMatch?.medical || "—",
-      email: baseMatch?.email || `${(liveUser.name || "user").toLowerCase().replace(/\s+/g, ".")}@coordage.app`,
+      email: baseMatch?.email || `${(liveUser.name || "user").toLowerCase().replace(/\s+/g, ".")}@margsutra.app`,
       role: baseMatch?.role || "Field Guide",
       trips: baseMatch?.trips ?? 0,
       devices: baseMatch?.devices ?? 1,
@@ -5933,14 +5933,14 @@ function distanceKm(a, b) {
 export default function AdminPanel() {
   const [activeAdmin, setActiveAdmin] = useState(() => {
     try {
-      const stored = localStorage.getItem("coordage_admin_session");
+      const stored = localStorage.getItem("margsutra_admin_session") || localStorage.getItem("coordage_admin_session");
       return stored ? JSON.parse(stored) : null;
     } catch {
       return null;
     }
   });
   const [loggedIn, setLoggedIn] = useState(() => {
-    return !!localStorage.getItem("coordage_admin_session");
+    return !!(localStorage.getItem("margsutra_admin_session") || localStorage.getItem("coordage_admin_session"));
   });
   const [page, setPage] = useState("dashboard");
   const [firestoreUsers, setFirestoreUsers] = useState(USERS);
@@ -6016,7 +6016,7 @@ export default function AdminPanel() {
   }, []);
 
   const handleApproveTrekker = async (tripId, userId) => {
-    const res = await approveTrekker(tripId, userId, activeAdmin?.email || "admin@coordage.app");
+    const res = await approveTrekker(tripId, userId, activeAdmin?.email || "admin@margsutra.app");
     if (res?.success) {
       await loadPendingTrekkers();
       return { success: true };
@@ -6025,7 +6025,7 @@ export default function AdminPanel() {
   };
 
   const handleRemoveTrekker = async (tripId, userId) => {
-    const res = await removeTrekker(tripId, userId, activeAdmin?.email || "admin@coordage.app");
+    const res = await removeTrekker(tripId, userId, activeAdmin?.email || "admin@margsutra.app");
     if (res?.success) {
       await loadPendingTrekkers();
       return { success: true };
@@ -6034,7 +6034,7 @@ export default function AdminPanel() {
   };
 
   const handleApproveAdmin = async (adminId) => {
-    const res = await approveAdmin(adminId, activeAdmin?.email || "admin@coordage.app");
+    const res = await approveAdmin(adminId, activeAdmin?.email || "admin@margsutra.app");
     if (res?.success) {
       await loadPendingAdmins();
       try {
@@ -6050,7 +6050,7 @@ export default function AdminPanel() {
   };
 
   const handleRejectAdmin = async (adminId) => {
-    const res = await rejectAdmin(adminId, activeAdmin?.email || "admin@coordage.app");
+    const res = await rejectAdmin(adminId, activeAdmin?.email || "admin@margsutra.app");
     if (res?.success) {
       await loadPendingAdmins();
       return { success: true };
@@ -6063,18 +6063,18 @@ export default function AdminPanel() {
       .filter((u) => {
         const email = (u.email || "").toLowerCase();
         const role = (u.role || "").toLowerCase();
-        return role === "admin" || email === "admin@coordage.app";
+        return role === "admin" || email === "admin@margsutra.app" || email === "admin@coordage.app";
       })
       .filter((u) => u.status !== "pending_approval" && u.status !== "rejected");
 
-    if (!list.some((u) => (u.email || "").toLowerCase() === "admin@coordage.app")) {
+    if (!list.some((u) => (u.email || "").toLowerCase() === "admin@margsutra.app" || (u.email || "").toLowerCase() === "admin@coordage.app")) {
       list.unshift({
         id: "demo-admin-001",
         name: "Super Admin",
-        email: "admin@coordage.app",
+        email: "admin@margsutra.app",
         role: "admin",
         roleTitle: "Lead Command Dispatcher",
-        organization: "Coordage HQ Dispatch",
+        organization: "Margsutra SAR Dispatch",
         phone: "+91 98765 00000",
         status: "approved",
       });
@@ -6130,17 +6130,17 @@ export default function AdminPanel() {
   }, []);
 
   const handleLogin = (adminUser) => {
-    const adminObj = adminUser || { email: "admin@coordage.app", name: "Super Admin", role: "admin" };
+    const adminObj = adminUser || { email: "admin@margsutra.app", name: "Super Admin", role: "admin" };
     setActiveAdmin(adminObj);
     try {
-      localStorage.setItem("coordage_admin_session", JSON.stringify(adminObj));
+      localStorage.setItem("margsutra_admin_session", JSON.stringify(adminObj));
     } catch {}
     setLoggedIn(true);
   };
 
   const handleLogout = () => {
     try {
-      localStorage.removeItem("coordage_admin_session");
+      localStorage.removeItem("margsutra_admin_session"); localStorage.removeItem("coordage_admin_session");
     } catch {}
     setActiveAdmin(null);
     setLoggedIn(false);
@@ -6195,7 +6195,7 @@ export default function AdminPanel() {
           <div style={{width:32,height:32,borderRadius:"50%",background:"rgba(59,130,246,0.15)",border:`1px solid rgba(59,130,246,0.3)`,display:"flex",alignItems:"center",justifyContent:"center"}}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke={C.accent} strokeWidth="1.5"/><circle cx="12" cy="12" r="4" stroke={C.accent} strokeWidth="1.5"/><circle cx="12" cy="12" r="1.5" fill={C.accent}/></svg>
           </div>
-          <div><div style={{fontSize:14,fontWeight:600,color:C.text,letterSpacing:"0.03em"}}>Coordage <span style={{color:C.accent}}>Admin</span></div><div style={{fontSize:10,color:C.muted2}}>Control panel v3.0</div></div>
+          <div><div style={{fontSize:14,fontWeight:600,color:C.text,letterSpacing:"0.03em"}}>Margsutra <span style={{color:C.accent}}>Admin</span></div><div style={{fontSize:10,color:C.muted2}}>Control panel v3.0</div></div>
         </div>
         <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:10}}>
           <div style={{width:34,height:34,borderRadius:"50%",background:"rgba(59,130,246,0.18)",color:C.accent,fontSize:12,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -6203,7 +6203,7 @@ export default function AdminPanel() {
           </div>
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:12,fontWeight:500,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{activeAdmin?.name || "Super Admin"}</div>
-            <div style={{fontSize:10,color:C.muted2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{activeAdmin?.email || "admin@coordage.app"}</div>
+            <div style={{fontSize:10,color:C.muted2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{activeAdmin?.email || "admin@margsutra.app"}</div>
           </div>
           {activeSOS>0&&<div style={{marginLeft:"auto",background:"rgba(239,68,68,0.15)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:"50%",width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:C.red,fontWeight:700}}>{activeSOS}</div>}
         </div>
@@ -6233,7 +6233,7 @@ export default function AdminPanel() {
           ))}
         </nav>
         <div style={{padding:"12px 16px",borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <span style={{fontSize:10,color:C.muted2}}>© 2026 Coordage</span>
+          <span style={{fontSize:10,color:C.muted2}}>© 2026 Margsutra</span>
           <button onClick={handleLogout} style={{fontSize:11,color:C.muted,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}}>Sign out</button>
         </div>
       </aside>

@@ -1,6 +1,6 @@
 /**
  * ╔══════════════════════════════════════════════════════════════╗
- *  COORDAGE TRACKING — Service Worker  (tracking-sw.js)
+ *  MARGSUTRA TRACKING — Service Worker  (tracking-sw.js)
  *  Place this file at the ROOT of your web server:
  *    /public/tracking-sw.js   →   https://yourapp.com/tracking-sw.js
  *
@@ -19,10 +19,10 @@
 
 "use strict";
 
-const SW_VERSION   = "coordage-tracking-v3";
+const SW_VERSION   = "margsutra-tracking-v3";
 const CACHE_NAME   = `${SW_VERSION}-shell`;
-const SYNC_TAG     = "coordage-location-sync";
-const PERIODIC_TAG = "coordage-periodic-location";
+const SYNC_TAG     = "margsutra-location-sync";
+const PERIODIC_TAG = "margsutra-periodic-location";
 
 // ── App shell assets to pre-cache ────────────────────────────────────────────
 const PRECACHE_URLS = [
@@ -36,7 +36,7 @@ const PRECACHE_URLS = [
 
 // ── Pending location queue (in SW memory; backed by IndexedDB below) ─────────
 // IndexedDB store name
-const IDB_NAME  = "coordage-tracking-db";
+const IDB_NAME  = "margsutra-tracking-db";
 const IDB_STORE = "pending-locations";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -92,7 +92,7 @@ self.addEventListener("fetch", (event) => {
 });
 
 async function staleWhileRevalidate(request) {
-  const cache    = await caches.open("coordage-tiles-v1");
+  const cache    = await caches.open("margsutra-tiles-v1");
   const cached   = await cache.match(request);
   const fetchPrm = fetch(request).then((resp) => {
     if (resp.ok) cache.put(request, resp.clone());
@@ -159,7 +159,7 @@ self.addEventListener("sync", (event) => {
 //
 //  Register from React with:
 //    const reg = await navigator.serviceWorker.ready;
-//    await reg.periodicSync.register('coordage-periodic-location', { minInterval: 60_000 });
+//    await reg.periodicSync.register('margsutra-periodic-location', { minInterval: 60_000 });
 // ─────────────────────────────────────────────────────────────────────────────
 self.addEventListener("periodicsync", (event) => {
   if (event.tag === PERIODIC_TAG) {
@@ -187,20 +187,20 @@ self.addEventListener("periodicsync", (event) => {
 // ─────────────────────────────────────────────────────────────────────────────
 self.addEventListener("push", (event) => {
   let data = {};
-  try { data = event.data?.json() ?? {}; } catch { data = { title: "Coordage Alert", body: event.data?.text() }; }
+  try { data = event.data?.json() ?? {}; } catch { data = { title: "Margsutra Alert", body: event.data?.text() }; }
 
   const options = {
     body:    data.body  || "Tap to open the app.",
     icon:    "/icon-192.png",
     badge:   "/badge-72.png",
-    tag:     data.tag   || "coordage-push",
+    tag:     data.tag   || "margsutra-push",
     renotify: true,
     data:    { url: data.url || "/" },
     actions: data.actions || [],
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title || "🏔️ Coordage SOS", options)
+    self.registration.showNotification(data.title || "🏔️ Margsutra SOS", options)
   );
 });
 

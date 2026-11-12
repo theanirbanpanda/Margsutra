@@ -33,7 +33,8 @@ const db = getFirestore(firebaseApp);
 function toSafeProfile(id, data = {}) {
   const lastSeen = data.lastSeenAt || data.lastSeen;
   const reqAt = data.requestedAt;
-  const isSuperAdmin = (data.email || "").toLowerCase() === "admin@coordage.app";
+  const emailLower = (data.email || "").toLowerCase();
+  const isSuperAdmin = emailLower === "admin@margsutra.app" || emailLower === "admin@coordage.app";
   const approved = isSuperAdmin ? true : (data.approved !== undefined ? data.approved : (data.role === "admin" ? false : true));
   const status = isSuperAdmin ? "approved" : (data.status || (data.role === "admin" ? "pending_approval" : "active"));
 
@@ -149,7 +150,7 @@ async function listPendingAdmins() {
     .map((d) => ({ id: d.id, ...d.data() }))
     .filter((u) => {
       const email = (u.email || "").toLowerCase();
-      if (email === "admin@coordage.app") return false;
+      if (email === "admin@margsutra.app" || email === "admin@coordage.app") return false;
       return u.status === "pending_approval" || u.approved === false;
     });
 }
@@ -162,7 +163,7 @@ async function approveAdminUser(adminId, approvedBy = "System Administrator") {
     status: "approved",
     approved: true,
     approvedAt: new Date(),
-    approvedBy: approvedBy || "admin@coordage.app",
+    approvedBy: approvedBy || "admin@margsutra.app",
     updatedAt: new Date(),
   };
   await docRef.set(updates, { merge: true });
@@ -177,7 +178,7 @@ async function rejectAdminUser(adminId, rejectedBy = "System Administrator") {
     status: "rejected",
     approved: false,
     rejectedAt: new Date(),
-    rejectedBy: rejectedBy || "admin@coordage.app",
+    rejectedBy: rejectedBy || "admin@margsutra.app",
     updatedAt: new Date(),
   };
   await docRef.set(updates, { merge: true });
@@ -501,7 +502,7 @@ async function listPendingTripRequests() {
   return pending;
 }
 
-async function approveTripUser(tripId, userId, approvedBy = "admin@coordage.app") {
+async function approveTripUser(tripId, userId, approvedBy = "admin@margsutra.app") {
   const tripRef = db.collection("trips").doc(tripId);
   const tripDoc = await tripRef.get();
   if (!tripDoc.exists) return { error: "Expedition not found." };
@@ -528,7 +529,7 @@ async function approveTripUser(tripId, userId, approvedBy = "admin@coordage.app"
   await rosterRef.update({
     status: "approved",
     approvedAt: now,
-    approvedBy: approvedBy || "admin@coordage.app",
+    approvedBy: approvedBy || "admin@margsutra.app",
   });
 
   const userRef = db.collection("users").doc(userId);
@@ -538,7 +539,7 @@ async function approveTripUser(tripId, userId, approvedBy = "admin@coordage.app"
     activeTripName: tripDoc.data().name || "Expedition",
     tripStatus: "approved",
     tripApprovedAt: now,
-    tripApprovedBy: approvedBy || "admin@coordage.app",
+    tripApprovedBy: approvedBy || "admin@margsutra.app",
     updatedAt: now,
   }, { merge: true });
 
@@ -553,7 +554,7 @@ async function approveTripUser(tripId, userId, approvedBy = "admin@coordage.app"
   };
 }
 
-async function removeTripUser(tripId, userId, removedBy = "admin@coordage.app") {
+async function removeTripUser(tripId, userId, removedBy = "admin@margsutra.app") {
   const tripRef = db.collection("trips").doc(tripId);
   const tripDoc = await tripRef.get();
   if (tripDoc.exists) {
@@ -645,7 +646,7 @@ async function createSOSEvent(sosData = {}) {
   return { success: true, event: payload };
 }
 
-async function resolveSOSEvent(eventId, notes = "Resolved by SAR Commander", resolvedBy = "admin@coordage.app") {
+async function resolveSOSEvent(eventId, notes = "Resolved by SAR Commander", resolvedBy = "admin@margsutra.app") {
   const docRef = db.collection("sos_events").doc(eventId);
   const docSnap = await docRef.get();
   if (!docSnap.exists) return { error: "SOS event not found" };
@@ -656,7 +657,7 @@ async function resolveSOSEvent(eventId, notes = "Resolved by SAR Commander", res
   await docRef.set({
     status: "resolved",
     resolutionNotes: notes || "Resolved by SAR Commander",
-    resolvedBy: resolvedBy || "admin@coordage.app",
+    resolvedBy: resolvedBy || "admin@margsutra.app",
     resolvedAt: now,
     updatedAt: now,
   }, { merge: true });

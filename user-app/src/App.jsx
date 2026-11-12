@@ -40,7 +40,7 @@ const C = {
    Remove or gate behind an env flag before any real deployment.
 ════════════════════════════════════════════════════════════════════════ */
 const CURRENT_USER = {
-  id:"U001", name:"Anirban Panda", email:"anirban@coordage.app",
+  id:"U001", name:"Anirban Panda", email:"anirban@margsutra.app",
   role:"Field Guide", status:"active", avatar:"AP",
   color:["#E6F1FB","#0C447C"], blood:"B+", medical:"None",
   lat:18.5196, lon:73.8554, city:"Mulshi, Maharashtra",
@@ -50,19 +50,20 @@ const CURRENT_USER = {
 };
 
 const DEFAULT_LOGIN = {
-  email: "anirban@coordage.app",
+  email: "anirban@margsutra.app",
   pass: "user123",
 };
 
-const USER_PROFILE_KEY = "coordage_user_profile";
-const USER_CREDENTIALS_KEY = "coordage_user_credentials";
-const USER_SESSION_KEY = "coordage_user_session";
-const USER_TOKEN_KEY = "coordage_auth_token";
+const USER_PROFILE_KEY = "margsutra_user_profile";
+const USER_CREDENTIALS_KEY = "margsutra_user_credentials";
+const USER_SESSION_KEY = "margsutra_user_session";
+const USER_TOKEN_KEY = "margsutra_auth_token";
+const LEGACY_USER_TOKEN_KEY = "coordage_auth_token";
 
 // Attaches the stored JWT (if any) to a fetch call — used for every request
 // to a route that now requires authentication on the backend.
 const authFetch = (url, options = {}) => {
-  const token = localStorage.getItem(USER_TOKEN_KEY);
+  const token = localStorage.getItem(USER_TOKEN_KEY) || localStorage.getItem(LEGACY_USER_TOKEN_KEY);
   return fetch(url, {
     ...options,
     headers: { ...(options.headers || {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
@@ -672,7 +673,7 @@ const PageAuth = ({ onLogin, initialTab = "login" }) => {
           </div>
 
           <div style={{ fontSize: 26, fontWeight: 800, color: "#f8fafc", letterSpacing: "-0.03em" }}>
-            Coordage
+            Margsutra
           </div>
           <div style={{ fontSize: 13, color: "rgba(180, 210, 245, 0.65)", marginTop: 4 }}>
             Trip Safety & Emergency Response Platform
@@ -929,7 +930,7 @@ const PageAuth = ({ onLogin, initialTab = "login" }) => {
                   Account Created Successfully!
                 </div>
                 <div style={{ fontSize: 13.5, color: "rgba(180, 210, 245, 0.75)", lineHeight: 1.55 }}>
-                  Welcome to Coordage. Your duty-of-care profile is now active. Launching your expedition console…
+                  Welcome to Margsutra. Your duty-of-care profile is now active. Launching your expedition console…
                 </div>
               </div>
             ) : (
@@ -1695,7 +1696,7 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
           </div>
         </Card>
 
-        {/* 2-Column Grid: Profile Readiness & How Coordage Works */}
+        {/* 2-Column Grid: Profile Readiness & How Margsutra Works */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
           {/* Duty-of-Care Readiness Summary */}
           <Card>
@@ -2096,7 +2097,7 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
 };
 
 const PageLiveTracking = ({ user, joinedTrip, onNavigate, activeSOS, onSOS }) => {
-  const [trackingToken, setTrackingToken] = useState(() => localStorage.getItem("coordage_tracking_token") || "");
+  const [trackingToken, setTrackingToken] = useState(() => localStorage.getItem("margsutra_tracking_token") || "");
   const [tokenState, setTokenState] = useState(trackingToken ? "ready" : "loading");
   const [tokenError, setTokenError] = useState("");
 
@@ -2114,7 +2115,7 @@ const PageLiveTracking = ({ user, joinedTrip, onNavigate, activeSOS, onSOS }) =>
       }
       const data = await response.json();
       if (data.token) {
-        localStorage.setItem("coordage_tracking_token", data.token);
+        localStorage.setItem("margsutra_tracking_token", data.token);
         setTrackingToken(data.token);
         setTokenState("ready");
       } else {
@@ -2127,7 +2128,7 @@ const PageLiveTracking = ({ user, joinedTrip, onNavigate, activeSOS, onSOS }) =>
   };
 
   useEffect(() => {
-    const cached = localStorage.getItem("coordage_tracking_token");
+    const cached = localStorage.getItem("margsutra_tracking_token");
     if (cached && isUsableTrackingToken(cached, user)) {
       setTrackingToken(cached);
       setTokenState("ready");
@@ -2135,7 +2136,7 @@ const PageLiveTracking = ({ user, joinedTrip, onNavigate, activeSOS, onSOS }) =>
     }
 
     if (cached) {
-      localStorage.removeItem("coordage_tracking_token");
+      localStorage.removeItem("margsutra_tracking_token");
       setTrackingToken("");
     }
 
@@ -2831,7 +2832,7 @@ const PageWeatherMaps = ({ joinedTrip, onNavigate }) => {
             No Expedition Selected for Weather Telemetry
           </div>
           <div style={{ fontSize: 13, color: C.muted, maxWidth: 480, margin: "0 auto 22px", lineHeight: 1.6 }}>
-            Coordage pulls hyper-local micro-climate forecasts, summit wind vectors, and barometric storm alerts specifically tailored for your active trek destination. Join an expedition to unlock trail weather.
+            Margsutra pulls hyper-local micro-climate forecasts, summit wind vectors, and barometric storm alerts specifically tailored for your active trek destination. Join an expedition to unlock trail weather.
           </div>
           <Btn variant="primary" onClick={() => onNavigate?.("join-trip")} style={{ padding: "10px 22px" }}>
             🔑 Join Expedition to Unlock Weather →
@@ -3015,7 +3016,7 @@ const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate }) => {
   const [elapsed, setElapsed]         = useState(0);
   const [teamPos, setTeamPos]         = useState({lat:RESCUE_TEAMS[0].lat,lon:RESCUE_TEAMS[0].lon});
   const [navMode, setNavMode]         = useState(false);
-  const [trackingToken, setTrackingToken] = useState(() => localStorage.getItem("coordage_tracking_token") || "");
+  const [trackingToken, setTrackingToken] = useState(() => localStorage.getItem("margsutra_tracking_token") || "");
   const [tokenState, setTokenState] = useState(trackingToken ? "ready" : "loading");
 
   const issueToken = useCallback(async () => {
@@ -3029,7 +3030,7 @@ const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate }) => {
       if (!response.ok) throw new Error(`Token request failed (${response.status})`);
       const data = await response.json();
       if (!data.token) throw new Error("Token missing in response");
-      localStorage.setItem("coordage_tracking_token", data.token);
+      localStorage.setItem("margsutra_tracking_token", data.token);
       setTrackingToken(data.token);
       setTokenState("ready");
     } catch {
@@ -3038,7 +3039,7 @@ const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate }) => {
   }, [user.id, user.name]);
 
   useEffect(() => {
-    const cached = localStorage.getItem("coordage_tracking_token");
+    const cached = localStorage.getItem("margsutra_tracking_token");
     if (cached) {
       setTrackingToken(cached);
       setTokenState("ready");
@@ -3317,7 +3318,7 @@ const PageGeofencing = ({ user, joinedTrip, onNavigate }) => {
   const [alerts, setAlerts]         = useState(true);
   const [vibrate, setVibrate]       = useState(true);
   const [fenceActive, setFenceActive] = useState(true);
-  const [trackingToken, setTrackingToken] = useState(() => localStorage.getItem("coordage_tracking_token") || "");
+  const [trackingToken, setTrackingToken] = useState(() => localStorage.getItem("margsutra_tracking_token") || "");
   const [tokenState, setTokenState] = useState(trackingToken ? "ready" : "loading");
   const [history, setHistory]       = useState([
     {time:"14:22",event:"Entered geofence zone",inside:true},
@@ -3338,7 +3339,7 @@ const PageGeofencing = ({ user, joinedTrip, onNavigate }) => {
         if (!response.ok) throw new Error(`Token request failed (${response.status})`);
         const data = await response.json();
         if (!data.token) throw new Error("Token missing in response");
-        localStorage.setItem("coordage_tracking_token", data.token);
+        localStorage.setItem("margsutra_tracking_token", data.token);
         setTrackingToken(data.token);
         setTokenState("ready");
       } catch {
@@ -3718,7 +3719,7 @@ const PageProfile = ({ user, onUpdateUser, joinedTrip, onNavigate }) => {
       await updateUserProfileInFirestore(user.id, form);
 
       // 2. Backend update if token available
-      const token = localStorage.getItem(USER_TOKEN_KEY);
+      const token = localStorage.getItem(USER_TOKEN_KEY) || localStorage.getItem(LEGACY_USER_TOKEN_KEY);
       if (token && user?.id) {
         await fetch(`${AUTH_API_URL}/api/users/${user.id}`, {
           method: "PUT",
@@ -4273,8 +4274,8 @@ export default function UserDashboard() {
     localStorage.removeItem(USER_SESSION_KEY);
     localStorage.removeItem(USER_PROFILE_KEY);
     localStorage.removeItem(USER_CREDENTIALS_KEY);
-    localStorage.removeItem("coordage_tracking_token");
-    localStorage.removeItem("coordage_joined_trip");
+    localStorage.removeItem("margsutra_tracking_token");
+    localStorage.removeItem("margsutra_joined_trip");
   };
 
   const [user, setUser] = useState(() => {
@@ -4282,7 +4283,7 @@ export default function UserDashboard() {
       const savedProfile = localStorage.getItem(USER_PROFILE_KEY);
       if (!savedProfile) return null;
       const p = JSON.parse(savedProfile);
-      if (p.id === "U001" || p.email === "anirban@coordage.app") return null;
+      if (p.id === "U001" || p.email === "anirban@margsutra.app") return null;
       return p;
     } catch {
       return null;
@@ -4298,13 +4299,13 @@ export default function UserDashboard() {
     setUser(profile);
     localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(profile));
     localStorage.setItem(USER_SESSION_KEY, JSON.stringify({ userId: profile.id, email: profile.email }));
-    const savedTrip = localStorage.getItem("coordage_joined_trip");
+    const savedTrip = localStorage.getItem("margsutra_joined_trip");
     setPage(savedTrip ? "dashboard" : "join-trip");
   };
 
   const [joinedTrip, setJoinedTrip] = useState(() => {
     try {
-      const saved = localStorage.getItem("coordage_joined_trip");
+      const saved = localStorage.getItem("margsutra_joined_trip");
       return saved ? JSON.parse(saved) : null;
     } catch {
       return null;
@@ -4323,10 +4324,10 @@ export default function UserDashboard() {
           approvedAt: activeData.approvedAt,
         };
         setJoinedTrip(fullTrip);
-        localStorage.setItem("coordage_joined_trip", JSON.stringify(fullTrip));
+        localStorage.setItem("margsutra_joined_trip", JSON.stringify(fullTrip));
       } else {
         setJoinedTrip(null);
-        localStorage.removeItem("coordage_joined_trip");
+        localStorage.removeItem("margsutra_joined_trip");
       }
     });
     return () => unsub?.();
@@ -4334,7 +4335,7 @@ export default function UserDashboard() {
 
   // Default page: if user has no joined trip, open "join-trip" by default
   const [page, setPage] = useState(() => {
-    return localStorage.getItem("coordage_joined_trip") ? "dashboard" : "join-trip";
+    return localStorage.getItem("margsutra_joined_trip") ? "dashboard" : "join-trip";
   });
 
   const [activeSOS, setActiveSOS] = useState(() => user?.status === "sos");
@@ -4419,7 +4420,7 @@ export default function UserDashboard() {
     const tripId = targetTrip.id || targetTrip.tripId;
     let joinOk = false;
     try {
-      const token = localStorage.getItem(USER_TOKEN_KEY);
+      const token = localStorage.getItem(USER_TOKEN_KEY) || localStorage.getItem(LEGACY_USER_TOKEN_KEY);
       const res = await fetch(`http://localhost:5050/api/trips/${tripId}/join`, {
         method: "POST",
         headers: {
@@ -4467,7 +4468,7 @@ export default function UserDashboard() {
       tripStatus: "pending_approval",
     };
     setJoinedTrip(tripWithStatus);
-    localStorage.setItem("coordage_joined_trip", JSON.stringify(tripWithStatus));
+    localStorage.setItem("margsutra_joined_trip", JSON.stringify(tripWithStatus));
 
     // Fast-sync from database
     if (user?.id) {
@@ -4480,7 +4481,7 @@ export default function UserDashboard() {
             approvedAt: active.approvedAt,
           };
           setJoinedTrip(synced);
-          localStorage.setItem("coordage_joined_trip", JSON.stringify(synced));
+          localStorage.setItem("margsutra_joined_trip", JSON.stringify(synced));
         }
       }).catch(() => {});
     }
@@ -4493,7 +4494,7 @@ export default function UserDashboard() {
     const tripId = joinedTrip?.id || joinedTrip?.tripId;
     if (tripId && user?.id) {
       try {
-        const token = localStorage.getItem(USER_TOKEN_KEY);
+        const token = localStorage.getItem(USER_TOKEN_KEY) || localStorage.getItem(LEGACY_USER_TOKEN_KEY);
         await fetch(`http://localhost:5050/api/trips/${tripId}/leave`, {
           method: "POST",
           headers: {
@@ -4513,7 +4514,7 @@ export default function UserDashboard() {
     }
 
     setJoinedTrip(null);
-    localStorage.removeItem("coordage_joined_trip");
+    localStorage.removeItem("margsutra_joined_trip");
     if (user?.id) {
       fetchUserActiveTrip(user.id).catch(() => {});
     }
@@ -4565,7 +4566,7 @@ export default function UserDashboard() {
           <div style={{width:32,height:32,borderRadius:"50%",background:"rgba(59,130,246,0.12)",
             border:"1px solid rgba(59,130,246,0.28)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🏔️</div>
           <div>
-            <div style={{fontSize:14,fontWeight:700,color:C.text}}>Coordage</div>
+            <div style={{fontSize:14,fontWeight:700,color:C.text}}>Margsutra</div>
             <div style={{fontSize:10,color:C.muted2}}>Trip Safety Portal</div>
           </div>
         </div>
@@ -4674,7 +4675,7 @@ export default function UserDashboard() {
             🆘 {activeSOS?"SOS ACTIVE":"Quick SOS"}
           </button>
           <div style={{marginTop:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <span style={{fontSize:10,color:C.muted2}}>© 2026 Coordage</span>
+            <span style={{fontSize:10,color:C.muted2}}>© 2026 Margsutra</span>
             <button onClick={signOut} style={{fontSize:11,color:C.muted,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}}>Sign out</button>
           </div>
         </div>

@@ -79,7 +79,7 @@ exports.onSOSEvent = functions.firestore
               .map((c) => `<li>${c.name}: ${c.phone}</li>`)
               .join("")}
           </ul>
-          <a href="https://admin.coordage.app/sos/${context.params.eventId}">
+          <a href="https://admin.margsutra.app/sos/${context.params.eventId}">
             View in Dashboard
           </a>
         `,

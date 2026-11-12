@@ -158,7 +158,7 @@ void updateLCD() {
                     (lastData.pressTrend == -1) ? "↓Fall" : "→Stbl";
 
   if (!lastData.valid) {
-    lcd.setCursor(0, 0); lcd.print("  WELCOME TO COORDAGE  ");
+    lcd.setCursor(0, 0); lcd.print(" WELCOME TO MARGSUTRA ");
     lcd.setCursor(0, 1); lcd.print("Waiting for signal..");
     String wifiLine = "WiFi: ";
     wifiLine.concat(wifiConnected ? "OK  " : "FAIL");

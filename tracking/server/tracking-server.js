@@ -1,6 +1,6 @@
 /**
  * ╔══════════════════════════════════════════════════════════════╗
- *  COORDAGE MOUNTAIN SOS — Real-Time Location Tracking Server
+ *  MARGSUTRA MOUNTAIN SOS — Real-Time Location Tracking Server
  *  Stack : Node.js · Express · Socket.io · (Redis-ready)
  *  HTTPS : Required by browsers for Geolocation API.
  *          In production wrap with nginx TLS or use
@@ -379,7 +379,7 @@ function validateLocation({ lat, lon }) {
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 server.listen(PORT, () => {
-  console.log(`\n🏔️  Coordage Tracking Server`);
+  console.log(`\n🏔️  Margsutra Tracking Server`);
   console.log(`   Listening on http://localhost:${PORT}`);
   console.log(`   CORS origins : ${CORS_ORIGIN.join(", ")}`);
   console.log(`   JWT secret   : ${JWT_SECRET.slice(0, 8)}…`);

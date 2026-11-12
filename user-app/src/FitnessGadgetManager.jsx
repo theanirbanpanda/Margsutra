@@ -1,7 +1,7 @@
 /**
  * FitnessGadgetManager.jsx
  * ─────────────────────────────────────────────────────────────────────────────
- * Fitness Wearable & Gadget Integration for Coordage User App.
+ * Fitness Wearable & Gadget Integration for Margsutra Trekker App.
  *
  * Supports:
  *   • Pairing & managing smartwatches, HR straps, pulse oximeters, smart rings
@@ -115,7 +115,7 @@ export default function FitnessGadgetManager({
 }) {
   const [devices, setDevices] = useState(() => {
     try {
-      const saved = localStorage.getItem("coordage_fitness_devices");
+      const saved = localStorage.getItem("margsutra_fitness_devices") || localStorage.getItem("coordage_fitness_devices");
       return saved ? JSON.parse(saved) : DEFAULT_DEVICES;
     } catch {
       return DEFAULT_DEVICES;
@@ -124,7 +124,7 @@ export default function FitnessGadgetManager({
 
   const [shareWithAdmin, setShareWithAdmin] = useState(() => {
     try {
-      const saved = localStorage.getItem("coordage_share_vitals_admin");
+      const saved = localStorage.getItem("margsutra_share_vitals_admin") ?? localStorage.getItem("coordage_share_vitals_admin");
       return saved !== null ? JSON.parse(saved) : true;
     } catch {
       return true;
@@ -143,13 +143,13 @@ export default function FitnessGadgetManager({
 
   const saveDevices = (newDevices) => {
     setDevices(newDevices);
-    localStorage.setItem("coordage_fitness_devices", JSON.stringify(newDevices));
+    localStorage.setItem("margsutra_fitness_devices", JSON.stringify(newDevices));
   };
 
   const handleToggleShareWithAdmin = () => {
     const nextVal = !shareWithAdmin;
     setShareWithAdmin(nextVal);
-    localStorage.setItem("coordage_share_vitals_admin", JSON.stringify(nextVal));
+    localStorage.setItem("margsutra_share_vitals_admin", JSON.stringify(nextVal));
   };
 
   // Simulate reading BLE characteristics and updating vitals

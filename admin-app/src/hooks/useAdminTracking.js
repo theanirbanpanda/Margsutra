@@ -5,7 +5,7 @@ import io from "socket.io-client";
  * useAdminTracking
  * 
  * Admin-side custom hook to receive real-time user location updates
- * and SOS events from the Coordage tracking server.
+ * and SOS events from the Margsutra tracking server.
  * 
  * Returns: {
  *   liveUsers: Map<userId, { id, name, lat, lon, accuracy, timestamp, ... }>,

@@ -86,7 +86,7 @@ export const adminLogin = async (email, password) => {
 
     if (userDoc.exists() && userDoc.data().role === "admin") {
       const data = userDoc.data();
-      const isSuper = normalizedEmail === "admin@coordage.app";
+      const isSuper = normalizedEmail === "admin@margsutra.app" || normalizedEmail === "admin@coordage.app";
       if (!isSuper && (data.status === "pending_approval" || data.approved === false)) {
         await signOut(auth);
         return {
@@ -105,11 +105,11 @@ export const adminLogin = async (email, password) => {
     }
   } catch (error) {
     // Demo fallback for offline / mock testing
-    if (normalizedEmail === "admin@coordage.app" && (password === "admin123" || password === "Coordage@123")) {
+    if ((normalizedEmail === "admin@margsutra.app" || normalizedEmail === "admin@coordage.app") && (password === "admin123" || password === "Margsutra@123" || password === "Coordage@123")) {
       return {
         success: true,
-        user: { email: "admin@coordage.app", uid: "demo-admin-001" },
-        userData: { id: "demo-admin-001", name: "Super Admin", email: "admin@coordage.app", role: "admin", status: "approved", approved: true },
+        user: { email: "admin@margsutra.app", uid: "demo-admin-001" },
+        userData: { id: "demo-admin-001", name: "Super Admin", email: "admin@margsutra.app", role: "admin", status: "approved", approved: true },
       };
     }
     return { success: false, error: error.message };
@@ -191,14 +191,14 @@ export const fetchPendingAdmins = async () => {
       .map((d) => ({ id: d.id, ...d.data() }))
       .filter((u) => {
         const email = (u.email || "").toLowerCase();
-        return email !== "admin@coordage.app" && (u.status === "pending_approval" || u.approved === false);
+        return email !== "admin@margsutra.app" && email !== "admin@coordage.app" && (u.status === "pending_approval" || u.approved === false);
       });
   } catch {
     return [];
   }
 };
 
-export const approveAdmin = async (adminId, approvedBy = "admin@coordage.app") => {
+export const approveAdmin = async (adminId, approvedBy = "admin@margsutra.app") => {
   try {
     const res = await fetch(`${AUTH_API_URL}/admin/approve-admin/${adminId}`, {
       method: "POST",
@@ -220,7 +220,7 @@ export const approveAdmin = async (adminId, approvedBy = "admin@coordage.app") =
   }
 };
 
-export const rejectAdmin = async (adminId, rejectedBy = "admin@coordage.app") => {
+export const rejectAdmin = async (adminId, rejectedBy = "admin@margsutra.app") => {
   try {
     const res = await fetch(`${AUTH_API_URL}/admin/reject-admin/${adminId}`, {
       method: "POST",
@@ -588,7 +588,7 @@ export const fetchPendingTripRequests = async () => {
   }
 };
 
-export const approveTrekker = async (tripId, userId, approvedBy = "admin@coordage.app") => {
+export const approveTrekker = async (tripId, userId, approvedBy = "admin@margsutra.app") => {
   // 1. Try Backend API
   try {
     const res = await fetch(`${AUTH_API_URL}/admin/trips/${tripId}/approve-user/${userId}`, {
@@ -632,7 +632,7 @@ export const approveTrekker = async (tripId, userId, approvedBy = "admin@coordag
   }
 };
 
-export const removeTrekker = async (tripId, userId, removedBy = "admin@coordage.app") => {
+export const removeTrekker = async (tripId, userId, removedBy = "admin@margsutra.app") => {
   // 1. Try Backend API
   try {
     const res = await fetch(`${AUTH_API_URL}/admin/trips/${tripId}/remove-user/${userId}`, {

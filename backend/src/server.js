@@ -279,7 +279,7 @@ app.post("/api/sos/cancel", optionalAuth, async (req, res) => {
 app.post("/api/sos/:id/resolve", optionalAuth, async (req, res) => {
   try {
     const notes = req.body?.notes || "Resolved by SAR Commander";
-    const resolvedBy = req.body?.resolvedBy || "admin@coordage.app";
+    const resolvedBy = req.body?.resolvedBy || "admin@margsutra.app";
     const result = await resolveSOSEvent(req.params.id, notes, resolvedBy);
     if (result.error) return res.status(404).json({ error: result.error });
     res.json(result);
@@ -407,7 +407,7 @@ app.post("/api/auth/login", async (req, res) => {
     }
 
     // Pending admin approval check
-    const isSuperAdmin = normalizedEmail === "admin@coordage.app";
+    const isSuperAdmin = normalizedEmail === "admin@margsutra.app" || normalizedEmail === "admin@coordage.app";
     if (user.role === "admin" && !isSuperAdmin) {
       if (user.status === "rejected") {
         return res.status(403).json({
@@ -424,12 +424,12 @@ app.post("/api/auth/login", async (req, res) => {
     let isValid = false;
     if (user.passwordHash) {
       isValid = await bcrypt.compare(password, user.passwordHash);
-      if (!isValid && normalizedEmail === "admin@coordage.app" && (password === "Coordage@123" || password === "admin123")) {
+      if (!isValid && (normalizedEmail === "admin@margsutra.app" || normalizedEmail === "admin@coordage.app") && (password === "Margsutra@123" || password === "Coordage@123" || password === "admin123")) {
         isValid = true;
       }
     } else {
       // Handle initial seeded accounts without passwordHash
-      if (password === "Coordage@123" || password === "user123" || password === "admin123") {
+      if (password === "Margsutra@123" || password === "Coordage@123" || password === "user123" || password === "admin123") {
         isValid = true;
         const newHash = await bcrypt.hash(password, 10);
         await updateUser(user.id, { passwordHash: newHash });
@@ -503,9 +503,9 @@ app.post("/api/admin/trips/:tripId/approve-user/:userId", optionalAuth, async (r
     let approvedBy = req.body?.approvedBy;
     if (!approvedBy && req.userId) {
       const adminUser = await findUserById(req.userId);
-      approvedBy = adminUser?.email || "admin@coordage.app";
+      approvedBy = adminUser?.email || "admin@margsutra.app";
     }
-    const result = await approveTripUser(req.params.tripId, req.params.userId, approvedBy || "admin@coordage.app");
+    const result = await approveTripUser(req.params.tripId, req.params.userId, approvedBy || "admin@margsutra.app");
     if (result && result.error) {
       return res.status(400).json({ error: result.error });
     }
@@ -521,9 +521,9 @@ app.post("/api/admin/trips/:tripId/remove-user/:userId", optionalAuth, async (re
     let removedBy = req.body?.removedBy;
     if (!removedBy && req.userId) {
       const adminUser = await findUserById(req.userId);
-      removedBy = adminUser?.email || "admin@coordage.app";
+      removedBy = adminUser?.email || "admin@margsutra.app";
     }
-    const result = await removeTripUser(req.params.tripId, req.params.userId, removedBy || "admin@coordage.app");
+    const result = await removeTripUser(req.params.tripId, req.params.userId, removedBy || "admin@margsutra.app");
     if (result && result.error) {
       return res.status(400).json({ error: result.error });
     }
@@ -740,7 +740,7 @@ async function bootstrap() {
     console.log("✅ Firebase Firestore connected successfully");
 
     app.listen(PORT, () => {
-      console.log(`🚀 Coordage backend listening on http://localhost:${PORT}`);
+      console.log(`🚀 Margsutra backend listening on http://localhost:${PORT}`);
       console.log(`   CORS origins: ${CORS_ORIGIN.join(", ")}`);
     });
   } catch (error) {

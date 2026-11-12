@@ -1,4 +1,4 @@
-// One-time seed script for the Coordage Firebase project.
+// One-time seed script for the Margsutra Firebase project.
 // Setup: npm install firebase-admin
 // Make sure serviceAccountKey.json (downloaded from Firebase console >
 // Project settings > Service accounts > Generate new private key) is
@@ -22,10 +22,10 @@ const db = getFirestore(app);
 const rtdb = getDatabase(app);
 const auth = getAuth(app);
 
-const ADMIN_EMAIL = "admin@coordage.app";
-const ADMIN_PASSWORD = "Coordage@123";
-const USER_EMAIL = "guide@coordage.app";
-const USER_PASSWORD = "Coordage@123";
+const ADMIN_EMAIL = "admin@margsutra.app";
+const ADMIN_PASSWORD = "Margsutra@123";
+const USER_EMAIL = "guide@margsutra.app";
+const USER_PASSWORD = "Margsutra@123";
 
 // Creates the auth user if it doesn't exist yet, or reuses it if it does
 // (safe to re-run this script without getting "email already exists" errors).

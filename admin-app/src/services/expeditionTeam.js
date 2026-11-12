@@ -41,7 +41,7 @@ export const RAJMACHI_ADMIN = {
   name: "Ajay Saini",
   role: "admin",
   badge: "Expedition Leader & Field Guide",
-  email: "ajay.saini@coordage.app",
+  email: "ajay.saini@margsutra.app",
   phone: "+91 98201 11223",
   blood: "O+",
   medical: "Wilderness First Responder (WFR Certified)",

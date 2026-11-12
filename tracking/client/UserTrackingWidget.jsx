@@ -15,7 +15,7 @@
  *
  * Props:
  *   user       — { id, name, role, blood, medical } (from CURRENT_USER)
- *   serverUrl  — tracking server URL, e.g. "https://track.coordage.app"
+ *   serverUrl  — tracking server URL, e.g. "https://track.margsutra.app"
  *   token      — JWT from your auth system
  *   activeSOS  — boolean (from parent state)
  *   onSOS      — (boolean) => void
@@ -262,7 +262,7 @@ export default function UserTrackingWidget({
           <div style={{flex:1}}>
             <div style={{fontSize:13,fontWeight:700,color:C.green}}>🛰️ Live Location Sharing Active</div>
             <div style={{fontSize:11,color:C.muted,marginTop:2}}>
-              Your GPS coordinates are being shared with the Coordage admin in real-time.
+              Your GPS coordinates are being shared with the Margsutra admin in real-time.
               {swRegistered && " Background sync enabled."}
             </div>
           </div>
@@ -280,7 +280,7 @@ export default function UserTrackingWidget({
           <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>Privacy Notice</div>
           <div style={{fontSize:12,color:C.muted,lineHeight:1.7}}>
             Your precise GPS coordinates, accuracy radius, and movement speed are transmitted
-            to the Coordage secure server over an encrypted WebSocket (WSS) connection.
+            to the Margsutra secure server over an encrypted WebSocket (WSS) connection.
             This data is accessible only to authorised admins and rescue teams.
             Location data is not stored permanently — it is held in memory for your active session
             and purged 60 seconds after you disconnect.

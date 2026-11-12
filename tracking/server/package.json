@@ -1,7 +1,7 @@
 {
-  "name": "coordage-tracking-server",
+  "name": "margsutra-tracking-server",
   "version": "1.0.0",
-  "description": "Real-time location tracking server for Coordage mountain SOS system",
+  "description": "Real-time location tracking server for Margsutra mountain SOS system",
   "main": "tracking-server.js",
   "scripts": {
     "start": "node tracking-server.js",
@@ -21,6 +21,6 @@
     "SOS",
     "realtime"
   ],
-  "author": "Coordage Team",
+  "author": "Margsutra Team",
   "license": "MIT"
 }

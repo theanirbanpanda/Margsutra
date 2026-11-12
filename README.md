@@ -1,6 +1,6 @@
-# Coordage
+# Margsutra (मार्गसूत्र)
 
-Trip safety and duty-of-care platform for organizers running groups through areas with little or no cellular coverage — weekend treks, outdoor camps, and organized off-grid events. Live location, offline-capable SOS alerting, and an auditable safety record for every trip.
+Wilderness duty-of-care, real-time expedition tracking, and Search & Rescue (SAR) incident dispatch platform for trek operators, field guides, and mountain safety commanders navigating regions with limited or no cellular coverage. Features real-time GPS telemetry, BLE fitness wearable sync, offline-capable SOS distress beaconing, and an auditable safety record for every trip.
 
 ## Quick start (one shot)
 
@@ -9,8 +9,8 @@ Trip safety and duty-of-care platform for organizers running groups through area
 3. `npm run seed` — creates your demo login and sample data.
 4. `npm run dev` — starts both admin-app and user-app together, prints both localhost URLs.
 
-Admin login: `admin@coordage.app` / `admin123`
-User-app demo login (works offline, no backend needed): `anirban@coordage.app` / `user123`
+Admin login: `admin@margsutra.app` / `admin123` (or `Margsutra@123`)
+User-app demo login (works offline, no backend needed): `anirban@margsutra.app` / `user123`
 
 ## Firebase console — one action required after this update
 
@@ -46,7 +46,7 @@ as `backend/.env` — they verify each other's tokens, so they must match.
 - **Rotate the Firebase API key and JWT_SECRET.** Both have been in this
   repo/zip for local testing; treat them as already exposed.
 - **Remove or gate the demo credentials** (`admin123`, `user123`, and the
-  `anirban@coordage.app` fallback account) behind an environment flag —
+  `anirban@margsutra.app` fallback account) behind an environment flag —
   they currently work in every environment, including a real deployment.
 - **Remove the demo-data fallbacks** marked above, or make them fail loudly
   instead of silently substituting fake data, once real data is expected.

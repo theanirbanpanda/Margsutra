@@ -131,7 +131,7 @@ export function useLocationTracking({
         if ("periodicSync" in reg) {
           navigator.permissions.query({ name: "periodic-background-sync" }).then((ps) => {
             if (ps.state === "granted") {
-              reg.periodicSync.register("coordage-periodic-location", { minInterval: 60_000 })
+              reg.periodicSync.register("margsutra-periodic-location", { minInterval: 60_000 })
                 .then(() => console.log("[SW] Periodic sync registered"))
                 .catch(console.warn);
             }
@@ -279,7 +279,7 @@ export function useLocationTracking({
     const handleVisibilityChange = () => {
       if (document.hidden && isTracking && swRegRef.current && "SyncManager" in window) {
         // Register a one-off sync so the SW can flush any pending positions
-        swRegRef.current.sync.register("coordage-location-sync").catch(() => {});
+        swRegRef.current.sync.register("margsutra-location-sync").catch(() => {});
         console.log("[BG] Tab hidden — registered background sync");
       }
     };

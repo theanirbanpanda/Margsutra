@@ -52,7 +52,7 @@ export default function Layout({ children }) {
         <div className="p-4 border-b border-gray-800">
           <div className="flex items-center justify-center h-12">
             {sidebarOpen ? (
-              <h1 className="text-xl font-bold">Coordage Admin</h1>
+              <h1 className="text-xl font-bold">Margsutra Admin</h1>
             ) : (
               <Cloud size={28} />
             )}
