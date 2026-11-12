@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "seed": "node seed.js",
+    "build": "npm run build --workspace=admin-app && npm run build --workspace=user-app",
     "dev": "concurrently -n ADMIN,USER -c blue,magenta \"npm run dev --workspace=admin-app\" \"npm run dev --workspace=user-app\"",
     "dev:admin": "npm run dev --workspace=admin-app",
     "dev:user": "npm run dev --workspace=user-app",

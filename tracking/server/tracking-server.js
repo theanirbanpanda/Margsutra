@@ -29,7 +29,7 @@ const jwt       = require("jsonwebtoken");
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const PORT        = process.env.PORT || 4000;
-const JWT_SECRET  = process.env.JWT_SECRET || "coordage-dev-secret-change-in-prod";
+const JWT_SECRET  = process.env.JWT_SECRET || "margsutra-dev-secret-change-in-prod";
 const BACKEND_API_URL = process.env.BACKEND_API_URL || "http://localhost:5050/api";
 const CORS_ORIGIN = (process.env.CORS_ORIGIN || "http://localhost:3000,http://localhost:3001,http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:4173").split(",");
 const USE_REDIS   = process.env.USE_REDIS === "true";
