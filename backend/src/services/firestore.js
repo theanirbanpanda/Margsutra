@@ -77,6 +77,10 @@ function toSafeProfile(id, data = {}) {
     speed: typeof data.speed === "number" ? data.speed : null,
     battery: typeof data.battery === "number" ? data.battery : null,
     lastSeenAt: lastSeen ? (lastSeen.toDate ? lastSeen.toDate() : lastSeen) : null,
+    // The console needs the live incident id to tie a trekker's "sos" status
+    // back to the beacon in the dispatch feed.
+    activeSosId: data.activeSosId || null,
+    lastSosAt: data.lastSosAt ? (data.lastSosAt.toDate ? data.lastSosAt.toDate() : data.lastSosAt) : null,
     city: data.city || "",
     phone: data.phone || "",
     trips: typeof data.trips === "number" ? data.trips : 0,

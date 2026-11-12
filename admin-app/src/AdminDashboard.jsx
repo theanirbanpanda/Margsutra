@@ -556,11 +556,16 @@ const PageSOSNavigation = ({
   onTriggerDemo,
   onAcknowledge,
   acknowledgedMap = {},
+  sosFeedLoaded = false,
 }) => {
   // 1. Separate Active Distress Incidents from Resolved Incidents
   const activeIncidents = useMemo(() => {
     const list = [];
     const seenUserIds = new Set();
+    const activeEventUserIds = new Set();
+    sosEvents.forEach((ev) => {
+      if (ev?.status === "active" && ev.userId) activeEventUserIds.add(ev.userId);
+    });
 
     // From sosEvents where status === 'active'
     sosEvents.forEach((ev) => {
@@ -568,6 +573,9 @@ const PageSOSNavigation = ({
       if (ev.status === "active") {
         const u = users.find((item) => item.id === ev.userId || item.name === ev.userName || item.name === ev.name);
         const userId = ev.userId || u?.id || ev.id;
+        // One incident per trekker: the same beacon can arrive over the
+        // socket and over the dispatch feed.
+        if (seenUserIds.has(userId)) return;
         seenUserIds.add(userId);
 
         list.push({
@@ -600,6 +608,10 @@ const PageSOSNavigation = ({
     // Also check live users with status === 'sos'
     users.forEach((u) => {
       if (u.status === "sos" && !seenUserIds.has(u.id)) {
+        // The dispatch feed is authoritative: if it is loaded and has no live
+        // beacon for this trekker, the socket flag is stale (the beacon was
+        // already resolved) and must not raise a phantom incident.
+        if (sosFeedLoaded && !activeEventUserIds.has(u.id)) return;
         seenUserIds.add(u.id);
         list.push({
           id: u.activeSosId || `sos-${u.id}`,
@@ -629,7 +641,7 @@ const PageSOSNavigation = ({
     });
 
     return list;
-  }, [sosEvents, users, acknowledgedMap]);
+  }, [sosEvents, users, acknowledgedMap, sosFeedLoaded]);
 
   // 2. Resolved & Stand-down Historical Incidents Archive
   const resolvedIncidents = useMemo(() => {
@@ -6704,6 +6716,7 @@ export default function AdminPanel() {
   const [page, setPage] = useState("dashboard");
   const [firestoreUsers, setFirestoreUsers] = useState(USERS);
   const [firestoreSosEvents, setFirestoreSosEvents] = useState([]);
+  const [sosFeedLoaded, setSosFeedLoaded] = useState(false);
   const [pendingAdmins, setPendingAdmins] = useState([]);
   const [refreshingPending, setRefreshingPending] = useState(false);
   const [pendingTrekkers, setPendingTrekkers] = useState([]);
@@ -6753,6 +6766,7 @@ export default function AdminPanel() {
           if (Array.isArray(data.events)) {
             setFirestoreSosEvents(data.events);
           }
+          setSosFeedLoaded(true);
           failures = 0;
           if (document.hidden) nextDelay = 120000;
           else if (socketRef.current !== "connected") nextDelay = 10000;
@@ -6799,21 +6813,58 @@ export default function AdminPanel() {
     return Array.from(map.values());
   }, [firestoreSosEvents, sosEvents]);
 
-  const activeSOS = useMemo(() => {
-    const activeFromEvents = allSosEvents.filter((e) => e && e.status === "active").length;
-    const activeFromUsers = displayUsers.filter((u) => u.status === "sos").length;
-    return Math.max(activeFromEvents, activeFromUsers);
-  }, [allSosEvents, displayUsers]);
+  // ── Acknowledgement state ────────────────────────────────────────────────
+  // A duty officer acknowledging a beacon silences the console alarm and the
+  // flashing banner, but the incident stays live until stand-down.
+  const [ackedSos, setAckedSos] = useState({});
+  const ackedSosRef = useRef({});
+  useEffect(() => {
+    ackedSosRef.current = ackedSos;
+  }, [ackedSos]);
+
+  // ── Live incidents (single source of truth) ──────────────────────────────
+  // The dispatch feed is authoritative. A trekker still flagged "sos" over the
+  // socket after their beacon was resolved must not keep the console in an
+  // emergency (that is what used to leave the alarm running forever).
+  const liveIncidents = useMemo(() => {
+    const list = [];
+    const seenUserIds = new Set();
+
+    allSosEvents.forEach((ev) => {
+      if (!ev || ev.status !== "active") return;
+      const id = ev.id || `sos-${ev.userId}`;
+      if (ev.userId) seenUserIds.add(ev.userId);
+      list.push({
+        id,
+        userId: ev.userId,
+        name: ev.name || ev.userName || "Trekker",
+        acknowledged: Boolean(ev.acknowledged) || Boolean(ackedSosRef.current[id]),
+      });
+    });
+
+    // Only trust the socket's "sos" flag while the feed is unavailable.
+    if (!sosFeedLoaded) {
+      displayUsers.forEach((u) => {
+        if (!u || u.status !== "sos" || seenUserIds.has(u.id)) return;
+        const id = u.activeSosId || `sos-${u.id}`;
+        list.push({
+          id,
+          userId: u.id,
+          name: u.name || "Trekker",
+          acknowledged: Boolean(ackedSosRef.current[id]),
+        });
+      });
+    }
+
+    return list;
+  }, [allSosEvents, displayUsers, sosFeedLoaded, ackedSos]);
+
+  const activeSOS = liveIncidents.length;
 
   // Keep the poll cadence informed by the live SOS count.
   useEffect(() => {
     activeSosRef.current = activeSOS;
   }, [activeSOS]);
-
-  // ── Acknowledgement state ────────────────────────────────────────────────
-  // A duty officer acknowledging a beacon silences the console alarm and the
-  // flashing banner, but the incident stays live until stand-down.
-  const [ackedSos, setAckedSos] = useState({});
 
   const handleAcknowledgeSOS = async (eventId, userId) => {
     if (!eventId) return { success: false, errors: ["Missing incident id"] };
@@ -6826,39 +6877,36 @@ export default function AdminPanel() {
         ...prev,
         [eventId]: { by: activeAdmin?.email || activeAdmin?.name || "SAR Command", at: Date.now() },
       }));
+      // Silence the console alarm the moment the incident is acknowledged —
+      // do not wait for the feed to catch up.
+      stopAlarm();
     }
     return result;
   };
 
-  // Incidents that are still waiting for a human to acknowledge them.
-  const unacknowledgedSOSCount = useMemo(() => {
-    const ids = new Set();
-    allSosEvents.forEach((ev) => {
-      if (ev?.status !== "active") return;
-      const id = ev.id || `sos-${ev.userId}`;
-      if (!ev.acknowledged && !ackedSos[id]) ids.add(id);
-    });
-    displayUsers.forEach((u) => {
-      if (u?.status !== "sos") return;
-      const id = u.activeSosId || `sos-${u.id}`;
-      if (!ackedSos[id]) ids.add(id);
-    });
-    return ids.size;
-  }, [allSosEvents, displayUsers, ackedSos]);
+  // ── Alarm controller ─────────────────────────────────────────────────────
+  // The console alarm is driven by an explicit stop handle so that
+  // acknowledging an incident silences it immediately — instead of waiting
+  // for a state change that may never come.
+  const alarmStopRef = useRef(null);
+  const [alarmMuted, setAlarmMuted] = useState(false);
 
-  // SAR Command Audio Alert Chime (plays sound when emergency beacon is received)
-  useEffect(() => {
-    if (unacknowledgedSOSCount <= 0) return;
-    let isCancelled = false;
+  const stopAlarm = useCallback(() => {
+    if (!alarmStopRef.current) return;
+    try { alarmStopRef.current(); } catch { }
+    alarmStopRef.current = null;
+  }, []);
+
+  const startAlarm = useCallback(() => {
+    stopAlarm();
     let audioCtx = null;
     let intervalId = null;
-
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       if (AudioCtx) {
         audioCtx = new AudioCtx();
         const playBeep = () => {
-          if (isCancelled || !audioCtx) return;
+          if (!audioCtx) return;
           try {
             if (audioCtx.state === "suspended") audioCtx.resume();
             const osc = audioCtx.createOscillator();
@@ -6879,13 +6927,40 @@ export default function AdminPanel() {
       }
     } catch { }
 
-    return () => {
-      isCancelled = true;
-      if (intervalId) clearInterval(intervalId);
+    alarmStopRef.current = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
       if (audioCtx) {
         try { audioCtx.close(); } catch { }
+        audioCtx = null;
       }
     };
+  }, [stopAlarm]);
+
+  // Incidents that are still waiting for a human to acknowledge them.
+  const unacknowledgedSOSCount = useMemo(
+    () => liveIncidents.filter((i) => !i.acknowledged).length,
+    [liveIncidents]
+  );
+
+  // SAR Command Audio Alert Chime (plays while a beacon waits for a human)
+  useEffect(() => {
+    if (unacknowledgedSOSCount <= 0 || alarmMuted) {
+      stopAlarm();
+      return;
+    }
+    startAlarm();
+    return () => stopAlarm();
+  }, [unacknowledgedSOSCount, alarmMuted, startAlarm, stopAlarm]);
+
+  // A brand new beacon always re-arms the alarm, even if the operator had
+  // muted it earlier.
+  const prevUnackedRef = useRef(0);
+  useEffect(() => {
+    if (unacknowledgedSOSCount > prevUnackedRef.current) setAlarmMuted(false);
+    prevUnackedRef.current = unacknowledgedSOSCount;
   }, [unacknowledgedSOSCount]);
 
   // Auto-switch view to Realtime SOS Dispatch whenever an active distress incident is detected
@@ -7105,6 +7180,7 @@ export default function AdminPanel() {
         onTriggerDemo={handleTriggerDemoSOS}
         onAcknowledge={handleAcknowledgeSOS}
         acknowledgedMap={ackedSos}
+        sosFeedLoaded={sosFeedLoaded}
       />
     ),
 
@@ -7294,6 +7370,28 @@ export default function AdminPanel() {
               }}
             >
               {offGridSimulation ? "⚡ Restore Online Cloud Mode" : "📶 Simulate 0 Cellular (Off-Grid)"}
+            </button>
+
+            <button
+              onClick={() => setAlarmMuted((v) => !v)}
+              title={alarmMuted ? "Turn the console alarm back on" : "Mute the console alarm"}
+              style={{
+                background: alarmMuted ? "rgba(245,158,11,0.2)" : "rgba(255, 255, 255, 0.04)",
+                border: `1px solid ${alarmMuted ? C.amber : C.border}`,
+                color: alarmMuted ? "#fcd34d" : C.muted,
+                borderRadius: 8,
+                padding: "6px 12px",
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <span>{alarmMuted ? "🔇" : "🔊"}</span>
+              <span>{alarmMuted ? "Alarm muted" : unacknowledgedSOSCount > 0 ? "Alarm sounding" : "Alarm armed"}</span>
             </button>
 
             <button
