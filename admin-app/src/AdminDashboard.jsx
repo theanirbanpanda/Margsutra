@@ -2591,15 +2591,229 @@ const PageAdminApprovals = ({
 };
 
 /* ════════════════════════════════════════════════
+   PAGE: SAFETY PROTOCOL (Consolidated into Expeditions & Rosters)
+════════════════════════════════════════════════ */
+const PageSafetyProtocol = ({ isEmbedded = false }) => {
+  const [protocols, setProtocols] = useState(PROTOCOLS);
+  const [editing, setEditing] = useState(null);
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [showNew, setShowNew] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const unsubscribe = subscribeToSafetyProtocols((items) => {
+      if (!isMounted) return;
+      if (items && items.length > 0) {
+        setProtocols(items);
+      }
+    });
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, []);
+
+  const startEdit = (p) => {
+    setEditing(p.id);
+    setTitle(p.title);
+    setBody(p.body || "");
+    setShowNew(false);
+  };
+
+  const saveP = async () => {
+    if (!title.trim()) return;
+    const payload = { title: title.trim(), body: body.trim(), status: "published", author: "Command Admin" };
+    if (editing) await updateSafetyProtocol(editing, payload);
+    else await createSafetyProtocol(payload);
+    setEditing(null);
+    setShowNew(false);
+    setTitle("");
+    setBody("");
+  };
+
+  return (
+    <div>
+      {!isEmbedded ? (
+        <PageHeader
+          title="Safety Directives & Protocols"
+          sub="Write, publish and enforce mountain safety directives across active rosters"
+          right={
+            <Btn variant="primary" onClick={() => { setShowNew(true); setEditing(null); setTitle(""); setBody(""); }}>
+              + New Protocol
+            </Btn>
+          }
+        />
+      ) : (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 16,
+            padding: "14px 18px",
+            background: "linear-gradient(90deg, rgba(34, 197, 94, 0.08), rgba(16, 185, 129, 0.04))",
+            border: "1px solid rgba(34, 197, 94, 0.25)",
+            borderRadius: 12,
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.text, display: "flex", alignItems: "center", gap: 8 }}>
+              <span>🛡️</span>
+              <span>Expedition Standing Safety Directives & SOPs</span>
+            </div>
+            <div style={{ fontSize: 11.5, color: C.muted, marginTop: 3 }}>
+              Write and publish standing safety guidelines, check-in intervals, and SOS rescue SOPs synchronized across all active trek rosters.
+            </div>
+          </div>
+          <Btn variant="primary" onClick={() => { setShowNew(true); setEditing(null); setTitle(""); setBody(""); }}>
+            + New Protocol
+          </Btn>
+        </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <div>
+          {protocols.map((p) => (
+            <Card key={p.id} style={{ marginBottom: 10, borderColor: p.status === "published" ? "rgba(34,197,94,0.25)" : C.border }}>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{p.title}</div>
+                    <Pill color={p.status === "published" ? "green" : "amber"}>{p.status}</Pill>
+                  </div>
+                  <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5, marginBottom: 6 }}>{p.body}</div>
+                  <div style={{ fontSize: 10.5, color: C.muted2 }}>Updated {p.updated || "Recently"} · Author: {p.author || "Admin"}</div>
+                </div>
+                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                  <Btn onClick={() => startEdit(p)}>Edit</Btn>
+                  {p.status === "draft" && (
+                    <Btn variant="success" onClick={() => updateSafetyProtocol(p.id, { status: "published", title: p.title, body: p.body, author: p.author || "Admin" })}>
+                      Publish
+                    </Btn>
+                  )}
+                  <Btn variant="ghost" onClick={() => deleteSafetyProtocol(p.id)} style={{ color: C.red }}>
+                    ✕
+                  </Btn>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+
+        {(editing || showNew) ? (
+          <div>
+            <Card>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 12 }}>
+                {editing ? "Edit Safety Directive" : "Create New Mountain Safety Directive"}
+              </div>
+              <label style={{ fontSize: 11, color: C.muted, display: "block", marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Protocol Title
+              </label>
+              <Input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g. Flash Flood & Ridge Evacuation SOP"
+                style={{ marginBottom: 12 }}
+              />
+              <label style={{ fontSize: 11, color: C.muted, display: "block", marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Protocol Body & Instructions
+              </label>
+              <textarea
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                rows={9}
+                placeholder={"Step 1: Sound 3 audible whistle blasts.\nStep 2: Group assembled at Base Camp coordinates.\nStep 3: Await SAR clearance via 145.500 MHz."}
+                style={{
+                  width: "100%",
+                  background: "rgba(255,255,255,0.04)",
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 8,
+                  color: C.text,
+                  fontSize: 12.5,
+                  padding: 12,
+                  fontFamily: "inherit",
+                  resize: "vertical",
+                  boxSizing: "border-box",
+                  outline: "none",
+                  lineHeight: 1.6,
+                  marginBottom: 14,
+                }}
+              />
+              <div style={{ display: "flex", gap: 10 }}>
+                <Btn variant="primary" onClick={saveP}>
+                  Save &amp; Publish Directive
+                </Btn>
+                <Btn onClick={() => { setEditing(null); setShowNew(false); }}>
+                  Cancel
+                </Btn>
+              </div>
+            </Card>
+          </div>
+        ) : (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              border: `1px dashed ${C.border}`,
+              borderRadius: 14,
+              color: C.muted2,
+              fontSize: 13,
+              cursor: "pointer",
+              minHeight: 220,
+              gap: 8,
+              padding: 20,
+              textAlign: "center",
+              transition: "border-color 0.2s",
+            }}
+            onClick={() => { setShowNew(true); setTitle(""); setBody(""); }}
+          >
+            <span style={{ fontSize: 24 }}>🛡️</span>
+            <span style={{ fontWeight: 600, color: C.muted }}>+ Add New Safety Directive</span>
+            <span style={{ fontSize: 11, color: C.muted2 }}>Click to compose instructions, trail boundaries, or medical response SOPs</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ════════════════════════════════════════════════
    PAGE: TRIP ROSTERS & EXPEDITION APPROVALS
 ════════════════════════════════════════════════ */
 const PageTripRosters = ({
+  defaultTab = "expeditions",
   pendingTrekkers = [],
   onApprove,
   onRemove,
   refreshing,
   onRefresh,
 }) => {
+  const [activeMainTab, setActiveMainTab] = useState(defaultTab || "expeditions");
+  const [protocols, setProtocols] = useState(PROTOCOLS);
+
+  useEffect(() => {
+    if (defaultTab) {
+      setActiveMainTab(defaultTab);
+    }
+  }, [defaultTab]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const unsub = subscribeToSafetyProtocols((items) => {
+      if (!isMounted) return;
+      if (items && items.length > 0) {
+        setProtocols(items);
+      }
+    });
+    return () => {
+      isMounted = false;
+      unsub();
+    };
+  }, []);
+
   const [trips, setTrips] = useState(TRIPS);
   const [actionLoading, setActionLoading] = useState({});
   const [rosters, setRosters] = useState({});
@@ -3235,8 +3449,64 @@ const PageTripRosters = ({
         </div>
       )}
 
-      {/* SECTION 1: PENDING TREKKER APPLICATIONS QUEUE */}
-      <div style={{ marginBottom: 28 }}>
+      {/* Top Segmented Navigation: Expeditions vs Safety Protocols */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 20, borderBottom: `1px solid ${C.border}`, paddingBottom: 12 }}>
+        <button
+          type="button"
+          onClick={() => setActiveMainTab("expeditions")}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "8px 16px",
+            borderRadius: 8,
+            fontSize: 13,
+            fontWeight: 600,
+            fontFamily: "inherit",
+            cursor: "pointer",
+            background: activeMainTab === "expeditions" ? "rgba(59, 130, 246, 0.18)" : "transparent",
+            border: `1px solid ${activeMainTab === "expeditions" ? C.accent : C.border}`,
+            color: activeMainTab === "expeditions" ? "#93c5fd" : C.muted,
+          }}
+        >
+          <span>🧭</span>
+          <span>Active Expeditions & Rosters</span>
+          <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 10, background: "rgba(255,255,255,0.08)", color: C.text }}>
+            {trips.length}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveMainTab("protocols")}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "8px 16px",
+            borderRadius: 8,
+            fontSize: 13,
+            fontWeight: 600,
+            fontFamily: "inherit",
+            cursor: "pointer",
+            background: activeMainTab === "protocols" ? "rgba(34, 197, 94, 0.18)" : "transparent",
+            border: `1px solid ${activeMainTab === "protocols" ? "#22c55e" : C.border}`,
+            color: activeMainTab === "protocols" ? "#86efac" : C.muted,
+          }}
+        >
+          <span>🛡️</span>
+          <span>Safety Directives & Protocols</span>
+          <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 10, background: "rgba(34, 197, 94, 0.15)", color: "#86efac" }}>
+            {protocols.filter((p) => p.status === "published").length} Active
+          </span>
+        </button>
+      </div>
+
+      {activeMainTab === "protocols" ? (
+        <PageSafetyProtocol isEmbedded={true} />
+      ) : (
+        <>
+          {/* SECTION 1: PENDING TREKKER APPLICATIONS QUEUE */}
+          <div style={{ marginBottom: 28 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 16 }}>⏳</span>
@@ -3693,6 +3963,23 @@ const PageTripRosters = ({
                       >
                         🔒 Geofence & Safety Perimeter
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTabMap((p) => ({ ...p, [tripId]: "protocols" }))}
+                        style={{
+                          background: activeTabMap[tripId] === "protocols" ? "rgba(34, 197, 94, 0.15)" : "transparent",
+                          border: `1px solid ${activeTabMap[tripId] === "protocols" ? "#22c55e" : "transparent"}`,
+                          borderRadius: 8,
+                          padding: "6px 14px",
+                          color: activeTabMap[tripId] === "protocols" ? "#86efac" : C.muted,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          fontFamily: "inherit",
+                        }}
+                      >
+                        🛡️ Safety Directives & SOPs ({protocols.filter((p) => p.status === "published").length})
+                      </button>
                     </div>
 
                     {/* SUB-VIEW 1: ENROLLED TREKKERS ROSTER */}
@@ -3970,6 +4257,73 @@ const PageTripRosters = ({
                         </div>
                       </div>
                     )}
+
+                    {/* SUB-VIEW 3: EXPEDITION SAFETY PROTOCOLS */}
+                    {activeTabMap[tripId] === "protocols" && (
+                      <div>
+                        <div
+                          style={{
+                            fontSize: 13,
+                            fontWeight: 600,
+                            color: C.text,
+                            marginBottom: 10,
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                          }}
+                        >
+                          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span>🛡️</span>
+                            <span>Enforced Safety Directives for {trip.name}</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setActiveMainTab("protocols")}
+                            style={{
+                              background: "transparent",
+                              border: "none",
+                              color: "#60a5fa",
+                              fontSize: 11,
+                              cursor: "pointer",
+                              fontWeight: 600,
+                              textDecoration: "underline",
+                            }}
+                          >
+                            Edit &amp; Manage All Directives →
+                          </button>
+                        </div>
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                            gap: 10,
+                          }}
+                        >
+                          {protocols.map((p) => (
+                            <div
+                              key={p.id}
+                              style={{
+                                padding: "12px 14px",
+                                background: "rgba(255,255,255,0.02)",
+                                border: `1px solid ${p.status === "published" ? "rgba(34,197,94,0.25)" : C.border}`,
+                                borderRadius: 10,
+                              }}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                                <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>{p.title}</div>
+                                <Pill color={p.status === "published" ? "green" : "amber"}>{p.status}</Pill>
+                              </div>
+                              <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.5, marginBottom: 8 }}>
+                                {p.body}
+                              </div>
+                              <div style={{ fontSize: 10, color: C.muted2 }}>
+                                Author: {p.author || "Command Admin"} · Updated: {p.updated || "Recently"}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </Card>
@@ -3977,7 +4331,9 @@ const PageTripRosters = ({
           })}
         </div>
       </div>
-    </div>
+    </>
+  )}
+</div>
   );
 };
 
@@ -5463,75 +5819,7 @@ const PageFeatureAccess = ({ users = [] }) => {
   );
 };
 
-/* ════════════════════════════════════════════════
-   PAGE: SAFETY PROTOCOL
-════════════════════════════════════════════════ */
-const PageSafetyProtocol = () => {
-  const [protocols,setProtocols]=useState(PROTOCOLS);
-  const [editing,setEditing]=useState(null);
-  const [title,setTitle]=useState("");
-  const [body,setBody]=useState("");
-  const [showNew,setShowNew]=useState(false);
-  useEffect(()=>{
-    let isMounted = true;
-    const unsubscribe = subscribeToSafetyProtocols((items)=>{
-      if (!isMounted) return;
-      if (items.length > 0) {
-        setProtocols(items);
-      }
-    });
-    return ()=>{
-      isMounted = false;
-      unsubscribe();
-    };
-  },[]);
-  const startEdit=p=>{setEditing(p.id);setTitle(p.title);setBody(p.body || "");setShowNew(false);};
-  const saveP=async()=>{
-    if(!title.trim()) return;
-    const payload={title:title.trim(),body:body.trim(),status:"published",author:"Admin"};
-    if(editing) await updateSafetyProtocol(editing,payload);
-    else await createSafetyProtocol(payload);
-    setEditing(null);setShowNew(false);setTitle("");setBody("");
-  };
-  return (
-    <div>
-      <PageHeader title="Safety Protocol Editor" sub="Write and publish safety guidelines"
-        right={<Btn variant="primary" onClick={()=>{setShowNew(true);setEditing(null);setTitle("");setBody("");}}>+ New protocol</Btn>}/>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-        <div>
-          {protocols.map(p=>(
-            <Card key={p.id} style={{marginBottom:10,borderColor:p.status==="published"?"rgba(34,197,94,0.2)":C.border}}>
-              <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
-                <div style={{flex:1}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}><div style={{fontSize:13,fontWeight:500,color:C.text}}>{p.title}</div><Pill color={p.status==="published"?"green":"amber"}>{p.status}</Pill></div>
-                  <div style={{fontSize:11,color:C.muted2}}>Updated {p.updated} · by {p.author}</div>
-                </div>
-                <div style={{display:"flex",gap:6,flexShrink:0}}>
-                  <Btn onClick={()=>startEdit(p)}>Edit</Btn>
-                  {p.status==="draft"&&<Btn variant="success" onClick={()=>updateSafetyProtocol(p.id,{status:"published",title:p.title,body:p.body,author:p.author||"Admin"})}>Publish</Btn>}
-                  <Btn variant="ghost" onClick={()=>deleteSafetyProtocol(p.id)} style={{color:C.red}}>✕</Btn>
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
-        {(editing||showNew)?<div>
-          <Card>
-            <label style={{fontSize:11,color:C.muted,display:"block",marginBottom:6}}>Protocol title</label>
-            <Input value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. Emergency weather response" style={{marginBottom:12}}/>
-            <label style={{fontSize:11,color:C.muted,display:"block",marginBottom:6}}>Protocol body</label>
-            <textarea value={body} onChange={e=>setBody(e.target.value)} rows={10} placeholder={"Step 1: ...\nStep 2: ..."}
-              style={{width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:13,padding:12,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box",outline:"none",lineHeight:1.6,marginBottom:14}}/>
-            <div style={{display:"flex",gap:10}}>
-              <Btn variant="primary" onClick={saveP}>Save &amp; Publish</Btn>
-              <Btn onClick={()=>{setEditing(null);setShowNew(false);}}>Cancel</Btn>
-            </div>
-          </Card>
-        </div>:<div style={{display:"flex",alignItems:"center",justifyContent:"center",border:`1px dashed ${C.border}`,borderRadius:14,color:C.muted2,fontSize:13,cursor:"pointer",minHeight:200}} onClick={()=>{setShowNew(true);setTitle("");setBody("");}}>+ Create new protocol</div>}
-      </div>
-    </div>
-  );
-};
+
 
 /* ════════════════════════════════════════════════
    PAGE: BLUETOOTH DEVICES
@@ -6573,10 +6861,9 @@ const NAV = [
     ],
   },
   {
-    section: "Emergency & Directives",
+    section: "Emergency Response",
     items: [
       { id: "sos-navigation", label: "Realtime SOS Dispatch", icon: "🚨", highlight: true },
-      { id: "safety-protocol", label: "Safety Directives & Protocols", icon: "🛡️" },
     ],
   },
 ];
@@ -6932,6 +7219,7 @@ export default function AdminPanel() {
     dashboard:        <PageDashboard navigate={navigate} users={displayUsers} pendingAdmins={pendingAdmins} pendingTrekkers={pendingTrekkers}/>,
     "all-users":      <PageAllUsers users={displayUsers} navigate={navigate}/>,
     "trip-rosters":   <PageTripRosters
+                        defaultTab="expeditions"
                         pendingTrekkers={pendingTrekkers}
                         onApprove={handleApproveTrekker}
                         onRemove={handleRemoveTrekker}
@@ -6950,7 +7238,14 @@ export default function AdminPanel() {
     "wearables-radar":<PageWearablesRadar users={displayUsers}/>,
     "weather-console":<PageMountainWeather/>,
     "live-tracking":  <PageLiveTracking navigate={navigate} users={displayUsers} connectionState={connectionState} error={error}/>,
-    "safety-protocol":<PageSafetyProtocol/>,
+    "safety-protocol":<PageTripRosters
+                        defaultTab="protocols"
+                        pendingTrekkers={pendingTrekkers}
+                        onApprove={handleApproveTrekker}
+                        onRemove={handleRemoveTrekker}
+                        refreshing={refreshingTrekkers}
+                        onRefresh={loadPendingTrekkers}
+                      />,
     "sos-navigation": (
       <PageSOSNavigation
         users={displayUsers}
