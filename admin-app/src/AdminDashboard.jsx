@@ -4131,65 +4131,94 @@ const PageDashboard = ({ navigate, users=USERS, pendingAdmins=[], pendingTrekker
       )}
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
-        <StatCard label="Total users" value={users.length} sub="Registered" color={C.accent} icon="👥"/>
-        <StatCard label="Active now" value={active} sub="On platform" color={C.green} icon="📍"/>
-        <StatCard label="SOS alerts" value={sos} sub="Needs attention" color={C.red} icon="🚨"/>
-        <StatCard label="Teams deployed" value={SOS_TEAMS.filter(t=>t.status==="deployed").length} sub="En route" color={C.amber} icon="🚑"/>
+        <StatCard label="Registered Trekkers" value={users.length} sub="Duty-of-care profiles" color={C.accent} icon="👥"/>
+        <StatCard label="In-Field Active" value={active} sub="Live telemetry streaming" color={C.green} icon="📍"/>
+        <StatCard label="Active SOS Alerts" value={sos} sub={sos > 0 ? "Requires SAR dispatch" : "All sectors clear"} color={sos > 0 ? C.red : C.teal} icon="🚨"/>
+        <StatCard label="Active Expeditions" value={trips.length} sub="Managed batches" color={C.purple} icon="🧭"/>
       </div>
+
       <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:14,marginBottom:14}}>
         <div>
-          <LiveMap points={users} teams={SOS_TEAMS} height={360}/>
+          <LiveMap points={users} teams={[]} height={380}/>
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginTop:12}}>
-            <StatCard label="Active Trips" value={trips.length} sub="In the field" color={C.purple} icon="🧭"/>
-            <StatCard label="Devices" value={DEVICES.length} sub="Linked" color={C.teal} icon="📱"/>
-            <StatCard label="GPS Accuracy" value="±6m" sub="System-wide" color={C.green} icon="🛰️"/>
+            <StatCard label="GPS System Accuracy" value="±6m" sub="Field GNSS / NEO-6M" color={C.green} icon="🛰️"/>
+            <StatCard label="Trail Corridor" value="829m ASL" sub="Rajmachi Fort Sector" color={C.teal} icon="🏔️"/>
+            <StatCard label="LoRa Gateway Mesh" value="865 MHz" sub="IN865 License-Exempt" color={C.purple} icon="📡"/>
           </div>
         </div>
+
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {sos>0&&<Card style={{borderColor:"rgba(239,68,68,0.4)",background:"rgba(239,68,68,0.06)"}}>
-            <div style={{fontSize:12,fontWeight:600,color:C.red,marginBottom:8}}>🚨 Active SOS</div>
-            {users.filter(u=>u.status==="sos").map(u=>(
-              <div key={u.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
-                <Avatar initials={u.avatar} bg={u.color[0]} text={u.color[1]}/>
-                <div style={{flex:1}}><div style={{fontSize:12,fontWeight:500,color:C.text}}>{u.name}</div><div style={{fontSize:10,color:C.muted}}>📍{u.city} · {u.lastSeen}</div></div>
-                <Btn variant="danger" style={{fontSize:10,padding:"4px 8px"}} onClick={()=>navigate("sos-navigation")}>Navigate</Btn>
+          {sos > 0 && (
+            <Card style={{borderColor:"rgba(239,68,68,0.4)",background:"rgba(239,68,68,0.08)",boxShadow:"0 4px 18px rgba(239,68,68,0.2)"}}>
+              <div style={{fontSize:13,fontWeight:800,color:C.red,marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
+                <span>🚨</span>
+                <span>ACTIVE DISTRESS BEACON</span>
               </div>
-            ))}
-          </Card>}
+              {users.filter(u=>u.status==="sos").map(u=>(
+                <div key={u.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
+                  <Avatar initials={u.avatar} bg={u.color[0]} text={u.color[1]}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:12.5,fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div>
+                    <div style={{fontSize:10.5,color:C.muted}}>📍 {u.city} · Blood: <strong style={{color:C.red}}>{u.blood || "B+"}</strong></div>
+                  </div>
+                  <Btn variant="danger" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>navigate("sos-navigation")}>
+                    Dispatch →
+                  </Btn>
+                </div>
+              ))}
+            </Card>
+          )}
+
           <Card>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-              <div style={{fontSize:12,fontWeight:600,color:C.text,display:"flex",alignItems:"center",gap:6}}>Recent trips
-                <span style={{fontSize:9,fontWeight:500,padding:"1px 6px",borderRadius:4,background:tripsAreLive?"rgba(34,197,94,0.15)":"rgba(255,255,255,0.08)",color:tripsAreLive?"#4ade80":C.muted2}}>{tripsAreLive?"LIVE":"DEMO DATA"}</span>
+              <div style={{fontSize:12.5,fontWeight:700,color:C.text,display:"flex",alignItems:"center",gap:6}}>
+                <span>Expedition Batches</span>
+                <span style={{fontSize:9,fontWeight:600,padding:"1px 6px",borderRadius:4,background:tripsAreLive?"rgba(34,197,94,0.15)":"rgba(255,255,255,0.08)",color:tripsAreLive?"#4ade80":C.muted2}}>
+                  {tripsAreLive ? "LIVE SYNC" : "STORED"}
+                </span>
               </div>
-              <button onClick={()=>setShowNewTrip(s=>!s)} style={{fontSize:11,color:C.accent,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}}>{showNewTrip?"Cancel":"+ New trip"}</button>
+              <button onClick={()=>navigate("trip-rosters")} style={{fontSize:11,color:C.accent,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>
+                Manage All →
+              </button>
             </div>
-            {showNewTrip && (
-              <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10,padding:10,background:"rgba(255,255,255,0.03)",borderRadius:8}}>
-                <input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="Trip name, e.g. Lonavala Night Trek" style={{height:32,background:"rgba(255,255,255,0.04)",border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:12,padding:"0 10px",fontFamily:"inherit",outline:"none"}}/>
-                <input value={newDate} onChange={e=>setNewDate(e.target.value)} placeholder="Date, e.g. Jun 14–15, 2026" style={{height:32,background:"rgba(255,255,255,0.04)",border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:12,padding:"0 10px",fontFamily:"inherit",outline:"none"}}/>
-                <Btn variant="primary" style={{justifyContent:"center",fontSize:12}} onClick={createTrip} disabled={creatingTrip}>{creatingTrip?"Creating…":"Create trip & generate code"}</Btn>
-              </div>
-            )}
-            {trips.slice(0,4).map(t=>(
-              <div key={t.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:`1px solid ${C.border}`,fontSize:12}}>
-                <div>
-                  <div style={{color:C.text}}>{t.name}</div>
-                  <div style={{fontSize:10,color:C.muted,marginTop:2}}>Join code: <span style={{fontWeight:600,letterSpacing:1,color:C.accent}}>{t.code}</span></div>
+
+            {trips.slice(0,3).map(t=>(
+              <div key={t.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,fontSize:12}}>
+                <div style={{flex:1,minWidth:0,marginRight:8}}>
+                  <div style={{color:C.text,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.name}</div>
+                  <div style={{fontSize:10.5,color:C.muted,marginTop:2}}>
+                    Code: <span style={{fontWeight:700,color:C.accent}}>{t.code}</span> · {t.rosterCount || 5} Trekkers
+                  </div>
                 </div>
-                <Pill color={t.status==="active"?"green":t.status==="completed"?"amber":"red"}>{t.status}</Pill>
+                <Pill color={t.status==="in-field"||t.isManaged?"green":t.status==="completed"?"amber":"gray"}>
+                  {t.isManaged || t.status==="in-field" ? "In-Field" : (t.status || "Upcoming")}
+                </Pill>
               </div>
             ))}
           </Card>
-          <Card>
-            <div style={{fontSize:12,fontWeight:600,color:C.text,marginBottom:10}}>SOS Teams</div>
-            {SOS_TEAMS.map(t=>(
-              <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:`1px solid ${C.border}`}}>
-                <div style={{width:8,height:8,borderRadius:"50%",background:t.status==="deployed"?C.amber:C.muted2}}/>
-                <div style={{flex:1,fontSize:12,color:C.text}}>{t.name}</div>
-                <div style={{fontSize:11,color:C.muted}}>{t.eta!=="—"?`ETA ${t.eta}`:t.status}</div>
+
+          <Card style={{background:"rgba(59,130,246,0.04)",borderColor:"rgba(59,130,246,0.2)"}}>
+            <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:700,marginBottom:8}}>
+              Field Command &amp; Radio Clearance
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:6,fontSize:11.5,color:C.muted}}>
+              <div style={{display:"flex",justifyContent:"space-between"}}>
+                <span>Lead Field Guide:</span>
+                <span style={{color:C.text,fontWeight:600}}>Ajay Saini (WFR Certified)</span>
               </div>
-            ))}
-            <button onClick={()=>navigate("sos-navigation")} style={{marginTop:10,fontSize:11,color:C.red,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}}>Launch Navigation →</button>
+              <div style={{display:"flex",justifyContent:"space-between"}}>
+                <span>Walkie-Talkie VHF:</span>
+                <span style={{color:"#fbbf24",fontWeight:700}}>145.500 MHz (Ch 1)</span>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between"}}>
+                <span>Local SAR Base:</span>
+                <span style={{color:C.text}}>Shivdurga Rescue (Lonavala)</span>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between"}}>
+                <span>Sector Geofence:</span>
+                <span style={{color:"#34d399",fontWeight:600}}>2.5 km Locked Corridor</span>
+              </div>
+            </div>
           </Card>
         </div>
       </div>
@@ -4919,149 +4948,10 @@ const PageWearablesRadar = ({ users = USERS }) => {
 const PageBluetooth = PageWearablesRadar;
 
 /* ════════════════════════════════════════════════
-   PAGE: SOS ADMIN
+   BACKWARD COMPATIBLE SOS ALIASES
 ════════════════════════════════════════════════ */
-const PageSOSAdmin = ({ navigate, users=USERS }) => {
-  const [resolvedUserIds,setResolvedUserIds]=useState(() => new Set());
-
-  useEffect(() => {
-    setResolvedUserIds((prev) => {
-      const next = new Set(prev);
-      let changed = false;
-      for (const userId of next) {
-        const stillSOS = users.some((user) => user.id === userId && user.status === "sos");
-        if (!stillSOS) {
-          next.delete(userId);
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [users]);
-
-  const events = useMemo(() => {
-    const liveIncidents = users
-      .filter((user) => user.status === "sos" && !resolvedUserIds.has(user.id))
-      .map((user) => {
-        const profile = USERS.find((candidate) => candidate.id === user.id || candidate.name === user.name);
-        const template = SOS_EVENTS.find((incident) => incident.userId === user.id) || SOS_EVENTS[0] || {};
-
-        return {
-          id: `sos-${user.id}`,
-          userId: user.id,
-          user: user.name || profile?.name || "Trekker in Distress",
-          city: user.city || profile?.city || "Rajmachi Fort Trail",
-          lat: typeof user.lat === "number" ? user.lat : (template.lat ?? 18.8286),
-          lon: typeof user.lon === "number" ? user.lon : (template.lon ?? 73.3986),
-          blood: user.blood || profile?.blood || template.blood || "B+",
-          medical: user.medical || profile?.medical || template.medical || "None reported",
-          status: "active",
-          ec: profile?.ec || template.ec || "Emergency Contact",
-          priority: "critical",
-          team: "Team Alpha (Lonavala Mountain SAR)",
-          type: "Manual SOS Beacon",
-          time: "Just now",
-        };
-      });
-
-    const acknowledged = users
-      .filter((user) => resolvedUserIds.has(user.id))
-      .map((user) => {
-        const profile = USERS.find((candidate) => candidate.id === user.id || candidate.name === user.name);
-        const template = SOS_EVENTS.find((incident) => incident.userId === user.id) || SOS_EVENTS[0] || {};
-
-        return {
-          id: `resolved-${user.id}`,
-          userId: user.id,
-          user: user.name || profile?.name || "Trekker",
-          city: user.city || profile?.city || "Rajmachi Fort Trail",
-          lat: typeof user.lat === "number" ? user.lat : (template.lat ?? 18.8286),
-          lon: typeof user.lon === "number" ? user.lon : (template.lon ?? 73.3986),
-          blood: user.blood || profile?.blood || template.blood || "B+",
-          medical: user.medical || profile?.medical || template.medical || "None reported",
-          status: "resolved",
-          ec: profile?.ec || template.ec || "Emergency Contact",
-          priority: "high",
-          team: "Team Alpha (Lonavala Mountain SAR)",
-          type: "Manual SOS Beacon",
-          time: "Acknowledged",
-        };
-      });
-
-    return [...liveIncidents, ...acknowledged];
-  }, [resolvedUserIds, users]);
-
-  const activeCount = useMemo(() => events.filter((event) => event.status === "active").length, [events]);
-  const resolvedCount = useMemo(() => events.filter((event) => event.status === "resolved").length, [events]);
-
-  const resolve = (id) => {
-    const incident = events.find((event) => event.id === id);
-    if (!incident) return;
-    setResolvedUserIds((prev) => new Set(prev).add(incident.userId));
-  };
-  return (
-    <div>
-      <PageHeader title="SOS Admin Service" sub="Manage all emergency SOS events"
-        right={<div style={{display:"flex",gap:8}}><Pill color="red">🚨 {activeCount} active</Pill><button onClick={()=>navigate("sos-navigation")} style={{padding:"7px 14px",borderRadius:8,border:"none",background:`linear-gradient(135deg,${C.red},${C.accent2})`,color:"#fff",fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>🗺 Navigate</button></div>}/>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:16}}>
-        <StatCard label="Active SOS" value={activeCount} sub="Needs response" color={C.red} icon="🚨"/>
-        <StatCard label="Resolved" value={resolvedCount} sub="Closed" color={C.green} icon="✅"/>
-        <StatCard label="Teams deployed" value={SOS_TEAMS.filter(t=>t.status==="deployed").length} sub="En route" color={C.amber} icon="🚑"/>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:14}}>
-        <div>
-          <LiveMap points={users} teams={SOS_TEAMS} height={340}/>
-        </div>
-        <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {events.map(ev=>(
-            <Card key={ev.id} style={{borderColor:ev.status==="active"?"rgba(239,68,68,0.4)":C.border,background:ev.status==="active"?"rgba(239,68,68,0.05)":C.card}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-                <div><div style={{fontSize:13,fontWeight:600,color:C.text,marginBottom:2}}>{ev.user}</div><div style={{fontSize:11,color:C.muted}}>📍{ev.city} · {ev.time}</div></div>
-                <Pill color={ev.priority==="critical"?"red":ev.priority==="high"?"amber":"blue"}>{ev.priority}</Pill>
-              </div>
-              <div style={{fontSize:11,color:C.muted2,marginBottom:8}}>{ev.type} · {ev.team}</div>
-              <div style={{display:"flex",gap:6}}>
-                <Pill color={ev.status==="active"?"red":"green"}>{ev.status}</Pill>
-                {ev.status==="active"&&<>
-                  <Btn style={{fontSize:10,padding:"3px 8px"}} onClick={()=>navigate("sos-navigation")}>🗺 Nav</Btn>
-                  <Btn variant="success" style={{fontSize:10,padding:"3px 8px"}} onClick={()=>resolve(ev.id)}>✓ Resolve</Btn>
-                </>}
-              </div>
-            </Card>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-/* ════════════════════════════════════════════════
-   PAGE: SOS TEAM TRACKING
-════════════════════════════════════════════════ */
-const PageSOSTracking = ({ users=USERS }) => (
-  <div>
-    <PageHeader title="SOS Team Tracking" sub="Live positions of all rescue teams" right={<Pill color="amber">{SOS_TEAMS.filter(t=>t.status==="deployed").length} teams deployed</Pill>}/>
-    <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:14}}>
-      <LiveMap points={users} teams={SOS_TEAMS} height={400}/>
-      <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {SOS_TEAMS.map(t=>(
-          <Card key={t.id} style={{borderColor:t.status==="deployed"?"rgba(245,158,11,0.3)":C.border}}>
-            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-              <div style={{width:38,height:38,borderRadius:"50%",background:"rgba(245,158,11,0.12)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🚑</div>
-              <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600,color:C.text}}>{t.name}</div><div style={{fontSize:11,color:C.muted}}>{t.vehicle} · Lead: {t.lead}</div></div>
-              <Pill color={t.status==="deployed"?"amber":"gray"}>{t.status}</Pill>
-            </div>
-            {[["Members",t.members],["Speed",t.speed],["Heading",`${t.heading}°`],["ETA",t.eta]].map(([k,v])=>(
-              <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"4px 0",borderBottom:`1px solid ${C.border}`}}>
-                <span style={{color:C.muted2}}>{k}</span><span style={{color:C.text,fontFamily:"monospace"}}>{v}</span>
-              </div>
-            ))}
-          </Card>
-        ))}
-      </div>
-    </div>
-  </div>
-);
+const PageSOSAdmin = PageSOSNavigation;
+const PageSOSTracking = PageSOSNavigation;
 
 /* ════════════════════════════════════════════════
    PAGE: LIVE TRACKING

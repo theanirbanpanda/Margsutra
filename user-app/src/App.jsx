@@ -1856,218 +1856,284 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
           <Pill color="green">● Live</Pill>
         </div>}/>
 
-      {/* Active Expedition Hero Card */}
-      <Card style={{ marginBottom: 16, background: "linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(11, 20, 34, 0.95))", borderColor: "rgba(16, 185, 129, 0.35)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-              <Pill color="green">● ACTIVE EXPEDITION</Pill>
-              <span style={{ fontSize: 11, color: "#34d399", fontWeight: 700 }}>{joinedTrip.code}</span>
-              <span style={{ fontSize: 11, color: C.muted }}>· {joinedTrip.difficulty || "Moderate"}</span>
-            </div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: C.text }}>{joinedTrip.name}</div>
-            <div style={{ fontSize: 11.5, color: C.muted, marginTop: 4, display: "flex", gap: 14, flexWrap: "wrap" }}>
-              <span>📍 {joinedTrip.location}</span>
-              <span>📅 {joinedTrip.date}</span>
-              <span>🏔️ {joinedTrip.elevation || "829m"}</span>
-              <span>🧭 Leader: {joinedTrip.leader || "Field Guide"}</span>
-              <span>🔒 Admin Geofence: {joinedTrip.geofence?.radius ? (joinedTrip.geofence.radius/1000).toFixed(1) + ' km' : '2.5 km'}</span>
+      {/* SOS Active Banner */}
+      {sosActive && (
+        <div style={{
+          background: "linear-gradient(90deg, rgba(239, 68, 68, 0.25) 0%, rgba(185, 28, 28, 0.35) 100%)",
+          border: "2px solid #ef4444",
+          borderRadius: 14,
+          padding: "16px 20px",
+          marginBottom: 18,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 14,
+          boxShadow: "0 8px 30px rgba(239, 68, 68, 0.45)",
+          animation: "ud-sos-blink 1.2s infinite"
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ fontSize: 28 }}>🚨</div>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 900, color: "#ffffff", letterSpacing: "0.02em" }}>
+                EMERGENCY DISTRESS BEACON ACTIVE · SIREN EMITTING
+              </div>
+              <div style={{ fontSize: 12.5, color: "#fecaca", marginTop: 2 }}>
+                High-priority telemetry transmitting to Leader Ajay Saini and SAR Command · GPS tracking active
+              </div>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <Btn onClick={() => onNavigate("join-trip")}>Expeditions Hub →</Btn>
+          <div style={{ display: "flex", gap: 10 }}>
+            <Btn variant="danger" onClick={cancelSOS} style={{ padding: "8px 18px", fontWeight: 800 }}>
+              🛑 Cancel SOS (I Am Safe)
+            </Btn>
+            <Btn onClick={() => onNavigate("sos-nav")} style={{ padding: "8px 18px" }}>
+              View Rescue HUD →
+            </Btn>
+          </div>
+        </div>
+      )}
+
+      {/* Unified In-Field Expedition Mission Card */}
+      <Card style={{
+        marginBottom: 18,
+        background: "linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(11, 20, 34, 0.98) 100%)",
+        borderColor: "rgba(16, 185, 129, 0.35)",
+        boxShadow: "0 8px 24px rgba(0, 0, 0, 0.35)"
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 14 }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+              <Pill color="green">● IN-FIELD EXPEDITION ACTIVE</Pill>
+              <span style={{ fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 6, background: "rgba(59, 130, 246, 0.2)", border: "1px solid rgba(59, 130, 246, 0.4)", color: "#60a5fa" }}>
+                {joinedTrip.code}
+              </span>
+              <span style={{ fontSize: 11.5, color: "#34d399", fontWeight: 600 }}>
+                {joinedTrip.difficulty || "Moderate (14 km Trail Circuit)"}
+              </span>
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: C.text, letterSpacing: "-0.01em" }}>
+              {joinedTrip.name}
+            </div>
+            <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
+              📅 {joinedTrip.date || `${joinedTrip.startDate} → ${joinedTrip.endDate}`} · 📍 {joinedTrip.location}
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Btn variant="primary" onClick={() => onNavigate("live-tracking")} style={{ padding: "8px 18px", fontSize: 12.5 }}>
+              🛰️ Open Live Radar Map →
+            </Btn>
+            <Btn onClick={() => onNavigate("join-trip")} style={{ padding: "8px 16px", fontSize: 12.5 }}>
+              🧭 Expeditions Hub
+            </Btn>
+          </div>
+        </div>
+
+        {/* Telemetry quick pills */}
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: 8,
+          marginTop: 16,
+          paddingTop: 14,
+          borderTop: `1px solid ${C.border}`
+        }}>
+          <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 10, color: C.muted2, textTransform: "uppercase" }}>FIELD GUIDE &amp; LEADER</div>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text, marginTop: 2 }}>🧭 {joinedTrip.leader || "Field Guide Ajay Saini"}</div>
+          </div>
+          <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 10, color: C.muted2, textTransform: "uppercase" }}>WALKIE-TALKIE VHF</div>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: "#fbbf24", marginTop: 2 }}>📻 {joinedTrip.vhfChannel || joinedTrip.emergencyFrequency || "145.500 MHz (Ch 1)"}</div>
+          </div>
+          <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 10, color: C.muted2, textTransform: "uppercase" }}>TRAIL ELEVATION &amp; BASE</div>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text, marginTop: 2 }}>🏔️ {joinedTrip.elevation || "829m ASL"} · {joinedTrip.baseLocation || "Udhewadi Camp"}</div>
+          </div>
+          <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 10, color: C.muted2, textTransform: "uppercase" }}>GEOFENCED CORRIDOR</div>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: "#34d399", marginTop: 2 }}>🔒 {joinedTrip.geofence?.radius ? (joinedTrip.geofence.radius / 1000).toFixed(1) + " km Safe Radius" : "2.5 km Safe Radius"}</div>
           </div>
         </div>
       </Card>
 
-      {/* SOS Active Banner */}
-      {sosActive&&(
-        <div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.4)",
-          borderRadius:12,padding:"14px 18px",marginBottom:18,display:"flex",alignItems:"center",gap:14}}>
-          <div style={{width:14,height:14,borderRadius:"50%",background:C.red,
-            animation:"ud-sos-blink 1.2s infinite",flexShrink:0}}/>
-          <div style={{flex:1}}>
-            <div style={{fontSize:14,fontWeight:700,color:C.red}}>🚨 SOS ACTIVE — Emergency Broadcast Sent</div>
-            <div style={{fontSize:12,color:C.muted,marginTop:2}}>
-              Rescue Team Alpha is en route · ETA 12 min · Your GPS is being tracked live
-            </div>
-          </div>
-          <Btn variant="danger" onClick={cancelSOS}>✕ Cancel SOS</Btn>
-          <Btn onClick={()=>onNavigate("sos-nav")}>Navigate →</Btn>
-        </div>
-      )}
-
-      {/* Live Group Radar Quick Bar */}
-      <div
-        style={{
-          background: "linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(11, 20, 34, 0.95))",
-          border: "1px solid rgba(59, 130, 246, 0.28)",
-          borderRadius: 12,
-          padding: "12px 18px",
-          marginBottom: 16,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: 10,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 18 }}>👥</span>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>
-              Team Proximity Radar: Leader Ajay Saini is 365m ahead · 4 Teammates in Formation (&lt; 870m)
-            </div>
-            <div style={{ fontSize: 11, color: C.muted }}>
-              All 6 expedition members are in safe corridor formation along Rajmachi Fort ridge.
-            </div>
-          </div>
-        </div>
-        <Btn variant="primary" onClick={() => onNavigate("live-tracking")} style={{ fontSize: 11, padding: "6px 14px" }}>
-          🛰️ Open Live Radar Map →
-        </Btn>
-      </div>
-
-      <div style={{display:"grid",gridTemplateColumns:"300px 1fr",gap:16,marginBottom:16}}>
-        {/* Left: Expedition Command & Quick Profile */}
-        <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          {/* Expedition Command Card */}
-          <Card style={{background:"linear-gradient(135deg,rgba(16,185,129,0.08),rgba(11,20,34,0.95))",borderColor:"rgba(16,185,129,0.3)"}}>
-            <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>Expedition Details</div>
-            {[
-              ["🏔️ Trail Peak", joinedTrip.name],
-              ["🚌 Assembly", joinedTrip.pickupLocation || "Lonavala Station"],
-              ["🏕️ Base Camp", joinedTrip.baseLocation || "Udhewadi Camp"],
-              ["🧭 Leader", joinedTrip.leader || "Field Guide Ajay Saini"],
-              ["👥 Roster", `${joinedTrip.rosterCount || 0} Trekkers`],
-              ["🚑 SAR Unit", joinedTrip.rescueUnit || "Team Alpha (SAR)"],
-              ["📻 Walkie-Talkie (VHF)", joinedTrip.vhfChannel || joinedTrip.emergencyFrequency || "145.500 MHz (VHF Ch 1)"],
-            ].map(([k,v])=>(
-              <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:12,
-                padding:"6px 0",borderBottom:`1px solid ${C.border}`}}>
-                <span style={{color:C.muted2}}>{k}</span>
-                <span style={{color:C.text,fontWeight:500,maxWidth:160,textAlign:"right"}}>{v}</span>
+      {/* 2-Column Responsive Dashboard Body */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 16, marginBottom: 18 }}>
+        {/* Left: Weather & Barometric Trend */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <Card style={{
+            background: "linear-gradient(135deg, rgba(20, 50, 110, 0.5) 0%, rgba(11, 20, 34, 0.95) 100%)",
+            border: `1px solid ${C.border}`,
+            height: "100%",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between"
+          }}>
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
+                  Mountain Weather &amp; Barometer
+                </div>
+                <Pill color={safetyStatus === "safe" ? "green" : safetyStatus === "caution" ? "amber" : "red"}>
+                  {statusLabel[safetyStatus]}
+                </Pill>
               </div>
-            ))}
-            <Btn style={{marginTop:12,width:"100%",justifyContent:"center",fontSize:11}} onClick={()=>onNavigate("join-trip")}>
-              🧭 View Expedition Roster
-            </Btn>
-          </Card>
 
-          {/* Quick Duty-of-Care Snapshot */}
-          <Card>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-              <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em"}}>Trekker Duty-of-Care</div>
-              <Pill color="green">Verified ✓</Pill>
-            </div>
-            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-              <Avatar initials={user?.avatar || (user?.name || "T").slice(0, 2).toUpperCase()} bg={user?.color?.[0] || "#E6F1FB"} text={user?.color?.[1] || "#0C447C"} size={36}/>
-              <div>
-                <div style={{fontSize:13,fontWeight:600,color:C.text}}>{user?.name}</div>
-                <div style={{fontSize:11,color:C.muted}}>Blood: <strong style={{color:C.red}}>{user?.blood || "B+"}</strong> · {user?.ec1Name ? `EC: ${user.ec1Name}` : "No EC"}</div>
-              </div>
-            </div>
-            <Btn onClick={()=>onNavigate("profile")} style={{width:"100%",justifyContent:"center",fontSize:11}}>
-              👤 Manage Medical Records &amp; Contacts →
-            </Btn>
-          </Card>
-        </div>
-
-        {/* Right: weather + SOS button + safety */}
-        <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          {/* Quick weather strip */}
-          <Card style={{background:"linear-gradient(135deg,rgba(20,50,110,0.55),rgba(11,20,34,0.92))"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
-              <div style={{display:"flex",alignItems:"center",gap:14}}>
-                <div style={{fontSize:50}}>{wxIcon}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16 }}>
+                <div style={{ fontSize: 48, lineHeight: 1 }}>{wxIcon}</div>
                 <div>
-                  <div style={{fontSize:44,fontWeight:700,color:C.text,lineHeight:1}}>
-                    {sensor.temp}<span style={{fontSize:22,color:C.muted}}>°C</span>
+                  <div style={{ fontSize: 40, fontWeight: 800, color: C.text, lineHeight: 1 }}>
+                    {sensor.temp}<span style={{ fontSize: 20, color: C.muted, fontWeight: 400 }}>°C</span>
                   </div>
-                  <div style={{fontSize:13,color:C.muted}}>{wxDesc}</div>
-                  <div style={{fontSize:11,color:C.muted2}}>Feels like {feelsLike(sensor.temp,sensor.humidity)}°C</div>
+                  <div style={{ fontSize: 13, color: C.text, fontWeight: 600, marginTop: 4 }}>{wxDesc}</div>
+                  <div style={{ fontSize: 11.5, color: C.muted }}>Feels like {feelsLike(sensor.temp, sensor.humidity)}°C · {joinedTrip.location}</div>
                 </div>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
                 {[
-                  ["💧","Humidity",`${sensor.humidity}%`],
-                  ["🌬️","Wind",`${sensor.windSpeed} km/h ${windDirLabel(sensor.windDir)}`],
-                  ["🌀","Pressure",`${sensor.pressure?.toFixed(0)} hPa`],
-                  ["☀️","UV Index",`${sensor.uvIndex}`],
-                ].map(([ic,k,v])=>(
-                  <div key={k} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,
-                    borderRadius:9,padding:"7px 11px",minWidth:110}}>
-                    <div style={{fontSize:10,color:C.muted2,marginBottom:1}}>{ic} {k}</div>
-                    <div style={{fontSize:14,fontWeight:600,color:C.text}}>{v}</div>
+                  ["💧", "Humidity", `${sensor.humidity}%`],
+                  ["🌬️", "Wind", `${sensor.windSpeed} km/h ${windDirLabel(sensor.windDir)}`],
+                  ["🌀", "Pressure", `${sensor.pressure?.toFixed(0)} hPa`],
+                  ["☀️", "UV Index", `${sensor.uvIndex}`],
+                ].map(([ic, k, v]) => (
+                  <div key={k} style={{ background: "rgba(255, 255, 255, 0.04)", border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px" }}>
+                    <div style={{ fontSize: 10, color: C.muted2 }}>{ic} {k}</div>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: C.text, marginTop: 2 }}>{v}</div>
                   </div>
                 ))}
               </div>
-              <div>
-                {/* Safety status pill */}
-                <div style={{background:`rgba(${safetyStatus==="safe"?"34,197,94":safetyStatus==="caution"?"245,158,11":"239,68,68"},0.12)`,
-                  border:`1px solid rgba(${safetyStatus==="safe"?"34,197,94":safetyStatus==="caution"?"245,158,11":"239,68,68"},0.35)`,
-                  borderRadius:10,padding:"10px 16px",textAlign:"center",minWidth:130}}>
-                  <div style={{fontSize:11,color:C.muted,marginBottom:3}}>Trail Safety Status</div>
-                  <div style={{fontSize:14,fontWeight:700,color:statusColor[safetyStatus]}}>{statusLabel[safetyStatus]}</div>
-                  <div style={{fontSize:10,color:C.muted2,marginTop:3}}>
-                    {pressureTrend>0?"↑ Pressure rising":"↓ Pressure dropping"} {Math.abs(pressureTrend).toFixed(1)} hPa
-                  </div>
-                </div>
-                <button onClick={()=>onNavigate("weather")}
-                  style={{marginTop:8,width:"100%",padding:"6px",background:"transparent",border:`1px solid ${C.border}`,
-                    borderRadius:8,color:C.muted,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
-                  View full weather →
-                </button>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 11, color: C.muted }}>
+                {pressureTrend >= 0 ? "↑ Barometer stable/rising" : "↓ Barometer dropping"} ({Math.abs(pressureTrend).toFixed(1)} hPa)
               </div>
+              <button
+                onClick={() => onNavigate("weather")}
+                style={{ background: "transparent", border: "none", color: C.accent, fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+              >
+                7-Day Forecast &amp; Maps →
+              </button>
             </div>
           </Card>
+        </div>
 
-          {/* SOS Button — hero */}
-          <Card style={{background:"rgba(239,68,68,0.04)",border:`1px solid rgba(239,68,68,0.2)`,padding:"22px 24px"}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:16}}>
-              <div>
-                <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:4}}>🚨 Emergency SOS</div>
-                <div style={{fontSize:12,color:C.muted,maxWidth:360,lineHeight:1.5}}>
-                  One tap broadcasts your GPS coordinates, blood group, medical profile, and emergency contacts
-                  to the nearest rescue team. <strong style={{color:"#fca5a5"}}>Use only in genuine emergencies.</strong>
-                </div>
-                {sosConfirm&&(
-                  <div style={{marginTop:10,padding:"8px 12px",background:"rgba(239,68,68,0.1)",
-                    border:"1px solid rgba(239,68,68,0.3)",borderRadius:8,fontSize:12,color:"#fca5a5",fontWeight:500}}>
-                    ⚠️ Are you sure? Tap SOS again to confirm broadcast.
-                  </div>
-                )}
+        {/* Right: Duty-of-Care & Emergency SOS */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* Duty-of-Care Casualty Profile Card */}
+          <Card>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
+                Trekker Duty-of-Care Readiness
               </div>
-              <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
-                <button onClick={sosActive?cancelSOS:handleSOSTrigger}
+              <Pill color="green">● Verified for Field</Pill>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+              <Avatar
+                initials={user?.avatar || (user?.name || "T").slice(0, 2).toUpperCase()}
+                bg={user?.color?.[0] || "#E6F1FB"}
+                text={user?.color?.[1] || "#0C447C"}
+                size={40}
+              />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {user?.name}
+                </div>
+                <div style={{ fontSize: 11.5, color: C.muted }}>
+                  {user?.phone || "+91 86375 40813"} · {user?.city || "Western Ghats"}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+              <div style={{ background: "rgba(239, 68, 68, 0.08)", border: "1px solid rgba(239, 68, 68, 0.25)", borderRadius: 8, padding: "8px 12px" }}>
+                <div style={{ fontSize: 10, color: "#fca5a5", fontWeight: 700 }}>BLOOD GROUP</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: "#ef4444", marginTop: 2 }}>🩸 {user?.blood || "B+"}</div>
+              </div>
+              <div style={{ background: "rgba(255, 255, 255, 0.03)", border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px" }}>
+                <div style={{ fontSize: 10, color: C.muted2, fontWeight: 700 }}>EMERGENCY CONTACT</div>
+                <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>
+                  {user?.ec1Name ? `${user.ec1Name} (${user.ec1Rel || "Family"})` : "Family · +91 91531 91902"}
+                </div>
+              </div>
+            </div>
+
+            <Btn onClick={() => onNavigate("profile")} style={{ width: "100%", justifyContent: "center", fontSize: 11.5 }}>
+              👤 View &amp; Update Medical Records →
+            </Btn>
+          </Card>
+
+          {/* Rapid Emergency SOS Action Card */}
+          <Card style={{
+            background: sosActive
+              ? "linear-gradient(135deg, rgba(239, 68, 68, 0.25) 0%, rgba(185, 28, 28, 0.3) 100%)"
+              : "rgba(239, 68, 68, 0.05)",
+            border: sosActive ? "2px solid #ef4444" : "1px solid rgba(239, 68, 68, 0.25)",
+            padding: "16px 20px"
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: sosActive ? "#f87171" : C.text, display: "flex", alignItems: "center", gap: 6 }}>
+                <span>🚨</span>
+                <span>Mountain Emergency Distress Beacon</span>
+              </div>
+              <Pill color={sosActive ? "red" : "gray"}>
+                {sosActive ? "● ACTIVE DISTRESS" : "Standby (Safe)"}
+              </Pill>
+            </div>
+            <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.5, marginBottom: 14 }}>
+              Broadcasts real-time GPS telemetry, blood group, and emergency contacts to SAR Command. Two-step confirmation guards against accidental false alarms.
+            </div>
+
+            <div style={{ display: "flex", gap: 10 }}>
+              {sosActive ? (
+                <button
+                  onClick={cancelSOS}
                   style={{
-                    width:100,height:100,borderRadius:"50%",border:"none",cursor:"pointer",
-                    background:sosActive
-                      ? `radial-gradient(circle,rgba(239,68,68,0.9),rgba(185,28,28,1))`
-                      : sosConfirm
-                        ? `radial-gradient(circle,rgba(245,158,11,0.9),rgba(180,100,0,1))`
-                        : `radial-gradient(circle,rgba(239,68,68,0.75),rgba(185,28,28,0.9))`,
-                    boxShadow: sosActive
-                      ? "0 0 0 8px rgba(239,68,68,0.2),0 0 0 18px rgba(239,68,68,0.08),0 0 40px rgba(239,68,68,0.4)"
-                      : "0 0 0 6px rgba(239,68,68,0.15),0 4px 24px rgba(239,68,68,0.3)",
-                    fontFamily:"inherit", animation: sosActive?"ud-sos-blink 1.2s infinite":undefined,
-                  }}>
-                  <div style={{fontSize:28,lineHeight:1}}>🆘</div>
-                  <div style={{fontSize:11,fontWeight:800,color:"#fff",letterSpacing:"0.1em",marginTop:4}}>
-                    {sosActive?"ACTIVE":sosConfirm?"CONFIRM":"SOS"}
-                  </div>
+                    flex: 1,
+                    padding: "10px",
+                    borderRadius: 8,
+                    background: "linear-gradient(135deg, #10b981, #059669)",
+                    border: "none",
+                    color: "#ffffff",
+                    fontSize: 12.5,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    boxShadow: "0 2px 10px rgba(16, 185, 129, 0.4)",
+                    fontFamily: "inherit"
+                  }}
+                >
+                  🛑 Cancel SOS (I Am Safe / False Alarm)
                 </button>
-                {(sosActive||sosConfirm)&&(
-                  <button onClick={()=>{setSosConfirm(false);setSosActive(false);onSOS(false);}}
-                    style={{padding:"5px 14px",background:"transparent",border:`1px solid ${C.border}`,
-                      borderRadius:8,color:C.muted,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
-                    Cancel
-                  </button>
-                )}
-              </div>
+              ) : (
+                <button
+                  onClick={handleSOSTrigger}
+                  style={{
+                    flex: 1,
+                    padding: "10px",
+                    borderRadius: 8,
+                    background: "linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)",
+                    border: "none",
+                    color: "#ffffff",
+                    fontSize: 12.5,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    boxShadow: "0 4px 14px rgba(239, 68, 68, 0.4)",
+                    fontFamily: "inherit",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8
+                  }}
+                >
+                  <span>🚨</span>
+                  <span>TRIGGER SOS (2-STEP VERIFICATION)</span>
+                </button>
+              )}
             </div>
           </Card>
-
         </div>
       </div>
 
@@ -3729,7 +3795,7 @@ const PageProfile = ({ user, onUpdateUser, joinedTrip, onNavigate }) => {
       // 2. Backend update if token available
       const token = localStorage.getItem(USER_TOKEN_KEY) || localStorage.getItem(LEGACY_USER_TOKEN_KEY);
       if (token && user?.id) {
-        await fetch(`${AUTH_API_URL}/api/users/${user.id}`, {
+        await fetch(`${AUTH_API_URL}/users/${user.id}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -4291,7 +4357,7 @@ export default function UserDashboard() {
       const savedProfile = localStorage.getItem(USER_PROFILE_KEY);
       if (!savedProfile) return null;
       const p = JSON.parse(savedProfile);
-      if (p.id === "U001" || p.email === "anirban@margsutra.app") return null;
+      if (p.id === "U001") return null; // clears stale mock
       return p;
     } catch {
       return null;
@@ -4320,9 +4386,37 @@ export default function UserDashboard() {
     }
   });
 
-  // Real-time synchronization of Active Trip from Firestore
+  // Real-time synchronization of Active Trip from Firestore & Backend API
   useEffect(() => {
     if (!user?.id) return;
+
+    // 1. Backend REST fast sync every 3s (guarantees update even if client rules or network fluctuate)
+    const syncActiveTripFromBackend = async () => {
+      try {
+        const res = await fetch(`http://localhost:5050/api/users/${user.id}/active-trip`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.activeTrip?.trip) {
+            const fullTrip = {
+              ...data.activeTrip.trip,
+              tripStatus: data.activeTrip.status || "pending_approval",
+              requestedAt: data.activeTrip.requestedAt,
+              approvedAt: data.activeTrip.approvedAt,
+            };
+            setJoinedTrip(fullTrip);
+            localStorage.setItem("margsutra_joined_trip", JSON.stringify(fullTrip));
+          } else if (data?.success && !data.activeTrip) {
+            setJoinedTrip(null);
+            localStorage.removeItem("margsutra_joined_trip");
+          }
+        }
+      } catch {}
+    };
+
+    syncActiveTripFromBackend();
+    const interval = setInterval(syncActiveTripFromBackend, 3000);
+
+    // 2. Firestore real-time snapshot listener
     const unsub = subscribeToUserActiveTrip(user.id, (activeData) => {
       if (activeData && activeData.trip) {
         const fullTrip = {
@@ -4338,7 +4432,11 @@ export default function UserDashboard() {
         localStorage.removeItem("margsutra_joined_trip");
       }
     });
-    return () => unsub?.();
+
+    return () => {
+      clearInterval(interval);
+      unsub?.();
+    };
   }, [user?.id]);
 
   // Default page: if user has no joined trip, open "join-trip" by default
