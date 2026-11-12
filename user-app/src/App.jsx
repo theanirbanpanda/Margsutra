@@ -2169,10 +2169,11 @@ const PageLiveTracking = ({ user, joinedTrip, onNavigate, activeSOS, onSOS }) =>
     setTokenState("loading");
     setTokenError("");
     try {
-      const response = await fetch(`${TRACKING_SERVER_URL}/auth/token`, {
+      // The tracking server derives the identity from the API token, so the
+      // request must be authenticated — no client-supplied identity.
+      const response = await authFetch(`${TRACKING_SERVER_URL}/auth/token`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id, name: user.name, role: "user" }),
       });
       if (!response.ok) {
         throw new Error(`Token request failed (${response.status})`);
@@ -3033,10 +3034,11 @@ const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate }) => {
   const issueToken = useCallback(async () => {
     setTokenState("loading");
     try {
-      const response = await fetch(`${TRACKING_SERVER_URL}/auth/token`, {
+      // The tracking server derives the identity from the API token, so the
+      // request must be authenticated — no client-supplied identity.
+      const response = await authFetch(`${TRACKING_SERVER_URL}/auth/token`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id, name: user.name, role: "user" }),
       });
       if (!response.ok) throw new Error(`Token request failed (${response.status})`);
       const data = await response.json();
@@ -3354,10 +3356,9 @@ const PageGeofencing = ({ user, joinedTrip, onNavigate }) => {
     if (trackingToken || !joinedTrip) return;
     const fetchToken = async () => {
       try {
-        const response = await fetch(`${TRACKING_SERVER_URL}/auth/token`, {
+        const response = await authFetch(`${TRACKING_SERVER_URL}/auth/token`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId: user.id, name: user.name, role: "user" }),
         });
         if (!response.ok) throw new Error(`Token request failed (${response.status})`);
         const data = await response.json();

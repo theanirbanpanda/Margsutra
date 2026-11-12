@@ -10,14 +10,15 @@
   "scripts": {
     "seed": "node seed.js",
     "build": "npm run build --workspace=admin-app && npm run build --workspace=user-app",
-    "dev": "concurrently -n ADMIN,USER -c blue,magenta \"npm run dev --workspace=admin-app\" \"npm run dev --workspace=user-app\"",
+    "dev": "npm run dev:local",
     "emulator": "sh scripts/start-emulator.sh",
-    "dev:local": "concurrently -n EMU,API,ADMIN,USER -c red,green,blue,magenta \"npm run emulator\" \"npm run dev:local --workspace=backend\" \"npm run dev --workspace=admin-app\" \"npm run dev --workspace=user-app\"",
+    "dev:local": "concurrently -n EMU,API,ADMIN,USER,TRACK -c red,green,blue,magenta,yellow \"npm run emulator\" \"npm run dev:local --workspace=backend\" \"npm run dev --workspace=admin-app\" \"npm run dev --workspace=user-app\" \"npm run dev --workspace=tracking/server\"",
     "dev:admin": "npm run dev --workspace=admin-app",
     "dev:user": "npm run dev --workspace=user-app",
     "dev:backend": "npm run dev --workspace=backend",
     "dev:tracking": "npm run dev --workspace=tracking/server",
-    "dev:all": "concurrently -n ADMIN,USER,API,TRACK -c blue,magenta,green,yellow \"npm run dev --workspace=admin-app\" \"npm run dev --workspace=user-app\" \"npm run dev --workspace=backend\" \"npm run dev --workspace=tracking/server\""
+    "dev:all": "npm run dev:local",
+    "dev:prod": "concurrently -n API,ADMIN,USER,TRACK -c green,blue,magenta,yellow \"npm run dev --workspace=backend\" \"VITE_USE_FIRESTORE_EMULATOR=false VITE_FIREBASE_PROJECT_ID=coordage-416a1 npm run dev --workspace=admin-app\" \"VITE_USE_FIRESTORE_EMULATOR=false VITE_FIREBASE_PROJECT_ID=coordage-416a1 npm run dev --workspace=user-app\" \"npm run dev --workspace=tracking/server\""
   },
   "dependencies": {
     "firebase-admin": "^13.0.0"

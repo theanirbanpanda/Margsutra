@@ -5,10 +5,10 @@ Two ways to run the stack locally:
 ## A. Local Firestore emulator (default, recommended while the production quota is exhausted)
 
 ```bash
-npm run dev:local      # emulator + backend + admin app + user app
+npm run dev           # or: npm run dev:all — both start the emulator stack
 ```
 
-That runs four processes together:
+That runs five processes together:
 
 | Process | Port | Notes |
 |---|---|---|
@@ -16,6 +16,10 @@ That runs four processes together:
 | Backend API | 5050 | Auto-detects the emulator, no credentials needed |
 | Admin console | 5174 | `admin@margsutra.app / admin123` |
 | Trekker app | 5173 | `anirban@margsutra.app / user123` (also `guide@margsutra.app / guide123`) |
+| Tracking server | 4000 | Live locations + SOS relay |
+
+Only one stack can run at a time — the second one fails with
+`EADDRINUSE` on port 5050. Stop the first stack (Ctrl+C) before starting another.
 
 How the emulator is selected:
 
@@ -38,13 +42,17 @@ state above.
 
 ## B. Production Firebase
 
-Comment out the two lines in `user-app/.env.development` and
-`admin-app/.env.development`, then run the normal commands:
-
 ```bash
-npm run dev:backend   # production Firestore (service account key)
-npm run dev           # admin app + user app
+npm run dev:prod
 ```
+
+This runs the backend against the real Firebase project (service account key) and
+starts both apps with the emulator switches overridden
+(`VITE_USE_FIRESTORE_EMULATOR=false VITE_FIREBASE_PROJECT_ID=coordage-416a1`).
+
+Production currently needs the Firestore read quota to be available; when it is
+exhausted the API answers `503 { quotaExceeded: true }` and `/api/trips` keeps
+serving the last known trip list.
 
 The backend uses `serviceAccountKey.json` unless `FIRESTORE_EMULATOR_HOST` is set.
 
@@ -61,3 +69,16 @@ streaming everywhere:
 
 If the quota is hit anyway, the API answers `503` with `quotaExceeded: true` and
 `/api/trips` keeps serving the last known trip list.
+
+## Authentication
+
+* The API signs a JWT on login (`/api/auth/login`); every protected route needs
+  `Authorization: Bearer <token>`.
+* Demo accounts sign in with their published password only — a wrong password is
+  rejected (`401`) instead of silently re-keying the account.
+* The tracking server issues its own short-lived token from `/auth/token` and
+  only after verifying the API token; the role is resolved server-side. The old
+  `?isAdmin=true` shortcut and unauthenticated token minting are gone.
+* A socket without a valid token can only raise an SOS beacon: it cannot post
+  locations and never joins the admin room.
+

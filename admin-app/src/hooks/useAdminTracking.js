@@ -21,6 +21,7 @@ export function useAdminTracking({ serverUrl = "http://localhost:4000" } = {}) {
   const [connectionState, setConnectionState] = useState("disconnected");
   const [error, setError] = useState(null);
   const socketRef = useRef(null);
+  const heartbeatRef = useRef(null);
 
   useEffect(() => {
     let mounted = true;
@@ -28,15 +29,39 @@ export function useAdminTracking({ serverUrl = "http://localhost:4000" } = {}) {
     const MAX_RECONNECT_ATTEMPTS = 5;
     const RECONNECT_DELAY_MS = 2000;
 
-    const connect = () => {
+    const connect = async () => {
       if (!mounted) return;
 
-      // For admin, we connect without needing a JWT.
-      // Send admin flag via query parameter (works reliably with WebSocket transport).
+      // The tracking server requires a real token: the admin's API token is
+      // exchanged for a tracking token whose role is resolved server-side.
+      // (The old `?isAdmin=true` shortcut let anyone join the admin room.)
+      let trackingToken = "";
+      try {
+        const apiToken = localStorage.getItem("margsutra_admin_token") || "";
+        const res = await fetch(`${serverUrl}/auth/token`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(apiToken ? { Authorization: `Bearer ${apiToken}` } : {}),
+          },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          trackingToken = data?.token || "";
+        }
+      } catch (err) {
+        console.warn("[Admin] Could not obtain tracking token:", err?.message || err);
+      }
+
+      if (!mounted) return;
+      if (!trackingToken) {
+        setConnectionState("error");
+        setError("Not authorised for the live tracking feed.");
+        return;
+      }
+
       const socket = io(`${serverUrl}`, {
-        query: {
-          isAdmin: "true", // Query parameter to identify admin client
-        },
+        auth: { token: trackingToken },
         transports: ["websocket", "polling"],
         reconnection: true,
         reconnectionDelay: RECONNECT_DELAY_MS,
@@ -237,21 +262,21 @@ export function useAdminTracking({ serverUrl = "http://localhost:4000" } = {}) {
       });
 
       // Heartbeat: emit ping every 30s to keep connection alive
-      const heartbeat = setInterval(() => {
+      heartbeatRef.current = setInterval(() => {
         if (socketRef.current?.connected) {
           socketRef.current.emit("ping");
         }
       }, 30000);
-
-      return () => {
-        clearInterval(heartbeat);
-      };
     };
 
     connect();
 
     return () => {
       mounted = false;
+      if (heartbeatRef.current) {
+        clearInterval(heartbeatRef.current);
+        heartbeatRef.current = null;
+      }
       if (socketRef.current) {
         socketRef.current.off("connect");
         socketRef.current.off("connect_error");

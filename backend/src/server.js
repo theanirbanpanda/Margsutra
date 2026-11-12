@@ -586,28 +586,31 @@ app.post("/api/auth/login", async (req, res) => {
       }
     }
 
+    // Known demo accounts may sign in with their published demo password.
+    // Everything else must match the stored bcrypt hash — the account is
+    // never re-keyed just because someone typed a different password.
+    const DEMO_PASSWORDS = {
+      "admin@margsutra.app": ["admin123", "Margsutra@123"],
+      "guide@margsutra.app": ["guide123", "user123"],
+      "anirban@margsutra.app": ["user123", "Margsutra@123"],
+      "anirbanpandaxyz@gmail.com": ["user123", "Margsutra@123"],
+    };
+
     let isValid = false;
     if (user.passwordHash) {
       isValid = await bcrypt.compare(password, user.passwordHash);
-      if (!isValid && normalizedEmail === "admin@margsutra.app" && (password === "Margsutra@123" || password === "admin123")) {
+      const demoPasswords = DEMO_PASSWORDS[normalizedEmail];
+      if (!isValid && Array.isArray(demoPasswords) && demoPasswords.includes(password)) {
         isValid = true;
-      }
-      const isAnirban =
-        normalizedEmail === "anirban@margsutra.app" ||
-        normalizedEmail === "anirbanpandaxyz@gmail.com" ||
-        normalizedEmail === "guide@margsutra.app";
-      if (!isValid && isAnirban) {
-        // Automatically accept and update password for Anirban's primary trekker account
-        isValid = true;
-        const newHash = await bcrypt.hash(password, 10);
-        await updateUser(user.id, { passwordHash: newHash });
-        console.log(`[Auth] Auto-synced new password for Anirban: ${user.id} (${normalizedEmail})`);
+        // Keep the stored hash aligned with the demo password that was used.
+        await updateUser(user.id, { passwordHash: await bcrypt.hash(password, 10) });
+        console.log(`[Auth] Demo password accepted for ${normalizedEmail}`);
       }
     } else {
-      // Handle initial seeded accounts without passwordHash
+      // Legacy seeded account without a stored hash: set it from this login.
       isValid = true;
-      const newHash = await bcrypt.hash(password, 10);
-      await updateUser(user.id, { passwordHash: newHash });
+      await updateUser(user.id, { passwordHash: await bcrypt.hash(password, 10) });
+      console.log(`[Auth] Initial password set for ${normalizedEmail}`);
     }
 
     if (!isValid) {
@@ -973,6 +976,14 @@ async function bootstrap() {
   app.listen(PORT, () => {
     console.log(`🚀 Margsutra backend listening on http://localhost:${PORT}`);
     console.log(`   CORS origins: ${CORS_ORIGIN.join(", ")}`);
+  }).on("error", (error) => {
+    if (error?.code === "EADDRINUSE") {
+      console.error(`❌ Port ${PORT} is already in use — another backend is running.`);
+      console.error("   Stop the other stack (Ctrl+C) or start this one on a different port: PORT=5051 npm run dev");
+      process.exit(1);
+    }
+    console.error("❌ Backend failed to start:", error);
+    process.exit(1);
   });
 }
 

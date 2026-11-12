@@ -44,13 +44,43 @@ app.use(express.json());
 // Health-check endpoint (useful for load balancers / uptime monitors)
 app.get("/health", (_req, res) => res.json({ status: "ok", uptime: process.uptime() }));
 
-// Minimal token-issue endpoint for demo purposes.
-// Replace with your real auth system (Firebase Auth, Passport, etc.)
-app.post("/auth/token", (req, res) => {
-  const { userId, name, role } = req.body;
-  if (!userId || !name) return res.status(400).json({ error: "userId and name required" });
-  const token = jwt.sign({ userId, name, role: role || "user" }, JWT_SECRET, { expiresIn: "12h" });
-  res.json({ token });
+// Issues a short-lived tracking token.
+//
+// The caller must present the same JWT the main API issued (both services
+// share JWT_SECRET), so a tracking token can no longer be minted for an
+// arbitrary identity — the role is resolved from the API, never from the
+// request body.
+app.post("/auth/token", async (req, res) => {
+  const authHeader = req.header("authorization") || "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  if (!token) return res.status(401).json({ error: "AUTH_MISSING", message: "Bearer token required" });
+
+  let decoded;
+  try {
+    decoded = jwt.verify(token, JWT_SECRET);
+  } catch (err) {
+    return res.status(401).json({ error: "AUTH_INVALID", message: err.message });
+  }
+
+  const userId = decoded.userId;
+  if (!userId) return res.status(400).json({ error: "USER_ID_REQUIRED", message: "Token has no user" });
+
+  // Ask the API who this person is so the role is server-derived.
+  let profile = null;
+  try {
+    const apiRes = await fetch(`${BACKEND_API_URL}/users/${encodeURIComponent(userId)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (apiRes.ok) profile = await apiRes.json();
+  } catch (err) {
+    console.warn("[Auth] Profile lookup failed, falling back to non-admin role:", err.message);
+  }
+
+  const user = profile?.user || {};
+  const role = user.role === "admin" ? "admin" : "user";
+  const name = user.name || decoded.name || "Trekker";
+  const trackingToken = jwt.sign({ userId, name, role }, JWT_SECRET, { expiresIn: "12h" });
+  res.json({ token: trackingToken, role, name });
 });
 
 app.post("/api/location-batch", (req, res) => {
@@ -136,39 +166,33 @@ app.post("/api/sos/broadcast", (req, res) => {
 
 // ─── JWT middleware for Socket.io ─────────────────────────────────────────────
 io.use((socket, next) => {
-  // Admin clients can connect without JWT by providing isAdmin=true query parameter
-  const isAdmin = socket.handshake.query?.isAdmin === "true";
-  if (isAdmin) {
-    socket.data.userId = "admin";
-    socket.data.name   = "Admin";
-    socket.data.role   = "admin";
-    console.log("[Auth] Admin client connected via query parameter");
-    return next();
-  }
-
-  // Regular users can provide JWT token
+  // A tracking token (or the API token) proves the identity.
   const token = socket.handshake.auth?.token || socket.handshake.query?.token;
   if (token) {
     try {
       const decoded = jwt.verify(token, JWT_SECRET);
       socket.data.userId = decoded.userId;
-      socket.data.name   = decoded.name;
-      socket.data.role   = decoded.role || "user";
-      console.log(`[Auth] User token verified: ${decoded.userId} (${decoded.name})`);
+      socket.data.name   = decoded.name || "Trekker";
+      socket.data.role   = decoded.role === "admin" ? "admin" : "user";
+      console.log("[Auth] Token verified:", socket.data.userId, `(${socket.data.role})`);
       return next();
     } catch (err) {
-      console.warn("[Auth] Token verification failed, checking emergency fallback:", err.message);
+      console.warn("[Auth] Token verification failed:", err.message);
+      // Fall through to the beacon-only fallback below: an expired session
+      // must still be able to raise an SOS.
     }
   }
 
-  // Emergency fallback: Never drop or reject an emergency beacon socket
+  // Emergency beacon fallback: a trekker whose session expired can still open
+  // a socket to raise an SOS. The connection is restricted to beacon events
+  // only — it can never post locations or join the admin room.
   const fallbackId = socket.handshake.auth?.userId || socket.handshake.query?.userId;
-  const fallbackName = socket.handshake.auth?.name || socket.handshake.query?.name || "Trekker";
   if (fallbackId) {
+    const fallbackName = socket.handshake.auth?.name || socket.handshake.query?.name || "Trekker";
     socket.data.userId = fallbackId;
     socket.data.name   = fallbackName;
-    socket.data.role   = "user";
-    console.log(`[Auth] User connected via emergency fallback: ${fallbackId} (${fallbackName})`);
+    socket.data.role   = "guest";
+    console.log("[Auth] Emergency beacon connection:", fallbackId);
     return next();
   }
 
@@ -216,6 +240,12 @@ io.on("connection", (socket) => {
   // ── location-update ────────────────────────────────────────────────────────
   // Payload: { lat, lon, accuracy, heading?, speed?, battery?, timestamp }
   socket.on("location-update", (payload) => {
+    // Emergency ("guest") connections may only raise a beacon — they never
+    // publish positions or join the admin room.
+    if (role === "guest") {
+      socket.emit("error", { code: "GUEST_READ_ONLY", message: "Beacon-only connection" });
+      return;
+    }
     if (!validateLocation(payload)) {
       socket.emit("error", { code: "BAD_LOCATION", message: "Invalid lat/lon" });
       return;
@@ -225,6 +255,7 @@ io.on("connection", (socket) => {
 
   // ── tracking-start / tracking-stop ────────────────────────────────────────
   socket.on("tracking-start", () => {
+    if (role === "guest") return;
     const user = onlineUsers.get(userId);
     if (user) { user.isTracking = true; user.lastSeen = new Date(); }
     broadcastToAdmins("tracking-status", { userId, isTracking: true });
