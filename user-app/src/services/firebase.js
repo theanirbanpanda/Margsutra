@@ -54,7 +54,7 @@ export const subscribeToTrips = (callback) => {
     },
     (err) => {
       console.warn("Trips subscription error:", err);
-      callback([]);
+      callback(null); // signal a read failure instead of wiping the list
     }
   );
 };

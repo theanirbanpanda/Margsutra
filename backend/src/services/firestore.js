@@ -668,6 +668,18 @@ async function approveTripUser(tripId, userId, approvedBy = "admin@margsutra.app
   const rDoc = await rosterRef.get();
   if (!rDoc.exists) return { error: "User is not in the expedition roster." };
 
+  const tripData = tripDoc.data();
+  const baseCount = Number(tripData.baseRosterCount) || 0;
+  const maxRoster = Number(tripData.maxRoster) || 25;
+
+  // Never approve past capacity, even if several pending requests exist.
+  if ((rDoc.data()?.status || "") !== "approved") {
+    const approvedSnap = await tripRef.collection("roster").where("status", "==", "approved").get();
+    if (baseCount + approvedSnap.size >= maxRoster) {
+      return { error: "This expedition is full — raise the slots or remove a trekker before approving." };
+    }
+  }
+
   // Enforce strict single-trip policy: remove user from any other trip's roster
   const allTripsSnap = await db.collection("trips").get();
   for (const tDoc of allTripsSnap.docs) {
@@ -692,8 +704,8 @@ async function approveTripUser(tripId, userId, approvedBy = "admin@margsutra.app
   const userRef = db.collection("users").doc(userId);
   await userRef.set({
     activeTripId: tripId,
-    activeTripCode: tripDoc.data().code || "",
-    activeTripName: tripDoc.data().name || "Expedition",
+    activeTripCode: tripData.code || "",
+    activeTripName: tripData.name || "Expedition",
     tripStatus: "approved",
     tripApprovedAt: now,
     tripApprovedBy: approvedBy || "admin@margsutra.app",
@@ -701,13 +713,13 @@ async function approveTripUser(tripId, userId, approvedBy = "admin@margsutra.app
   }, { merge: true });
 
   const approvedSnap = await tripRef.collection("roster").where("status", "==", "approved").get();
-  await tripRef.update({ rosterCount: (Number(tripDoc.data()?.baseRosterCount) || 0) + approvedSnap.size });
+  await tripRef.update({ rosterCount: baseCount + approvedSnap.size });
 
   return {
     success: true,
     tripId,
     userId,
-    rosterCount: (Number(tripDoc.data()?.baseRosterCount) || 0) + approvedSnap.size,
+    rosterCount: baseCount + approvedSnap.size,
   };
 }
 
@@ -924,10 +936,11 @@ async function seedDemoTrip() {
     const approvedSnap = await doc.ref.collection("roster").where("status", "==", "approved").get();
     const admins = Array.isArray(data.admins) && data.admins.length ? data.admins : [adminProfile];
 
+    // Keep exactly one open slot while never evicting real approved trekkers.
     await doc.ref.set({
       demoRoster: true,
       baseRosterCount: 5,
-      maxRoster: 6,
+      maxRoster: 5 + approvedSnap.size + 1,
       rosterCount: 5 + approvedSnap.size,
       adminInCharge: data.adminInCharge || adminProfile.id,
       adminInChargeName: data.adminInChargeName || adminProfile.name,

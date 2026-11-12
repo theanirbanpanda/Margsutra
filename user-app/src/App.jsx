@@ -2383,7 +2383,8 @@ const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) 
   useEffect(() => {
     loadTrips();
     const unsub = subscribeToTrips((trips) => {
-      if (trips && trips.length > 0) {
+      // `null` means the live read failed — keep the API-backed list.
+      if (Array.isArray(trips)) {
         setAvailableTrips(trips.filter((t) => (t.status || "upcoming") !== "cancelled"));
         setLoading(false);
       }

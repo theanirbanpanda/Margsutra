@@ -3065,7 +3065,8 @@ const PageTripRosters = ({
 
   useEffect(() => {
     const unsub = subscribeToTrips((liveTrips) => {
-      if (liveTrips && liveTrips.length > 0) setTrips(liveTrips);
+      // `null` means the read failed — keep whatever the API returned.
+      if (Array.isArray(liveTrips)) setTrips(liveTrips);
     });
     return () => unsub && unsub();
   }, []);
@@ -3179,9 +3180,12 @@ const PageTripRosters = ({
           })
         );
         flash(`In-field command is now on "${trip.name}".`);
+      } else {
+        flash(res?.error || "Could not switch in-field command.", "error");
       }
     } catch (err) {
       console.error("Failed to switch active managed expedition:", err);
+      flash("Could not switch in-field command.", "error");
     } finally {
       setActionLoading((p) => ({ ...p, [`manage-${tripId}`]: false }));
     }
@@ -3202,9 +3206,12 @@ const PageTripRosters = ({
         });
         if (drawerTripId === tripId) setDrawerTripId(null);
         flash(`Expedition "${deleteModalTrip.name}" deleted.`);
+      } else {
+        flash(res?.error || "Could not delete that expedition.", "error");
       }
     } catch (err) {
       console.error("Failed to delete trip:", err);
+      flash("Could not delete that expedition.", "error");
     } finally {
       setDeletingTrip(false);
       setDeleteModalTrip(null);
