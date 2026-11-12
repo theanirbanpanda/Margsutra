@@ -1,4 +1,6 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+
+const HOLD_MS = 3000;
 
 export default function SOSConfirmModal({
   isOpen,
@@ -9,21 +11,91 @@ export default function SOSConfirmModal({
   location = {},
 }) {
   const [step, setStep] = useState(1);
+  const [holdPct, setHoldPct] = useState(0);
+  const holdTimer = useRef(null);
+  const holdStart = useRef(0);
+  const firedRef = useRef(false);
+
+  const stopHold = () => {
+    if (holdTimer.current) {
+      clearInterval(holdTimer.current);
+      holdTimer.current = null;
+    }
+    holdStart.current = 0;
+    firedRef.current = false;
+    setHoldPct(0);
+  };
+
+  useEffect(() => {
+    stopHold();
+    if (!isOpen) setStep(1);
+    return () => {
+      if (holdTimer.current) {
+        clearInterval(holdTimer.current);
+        holdTimer.current = null;
+      }
+    };
+  }, [isOpen, step]);
 
   if (!isOpen) return null;
 
-  const lat = Number(location.lat || user?.lat || 18.8286).toFixed(5);
-  const lon = Number(location.lon || user?.lon || 73.3986).toFixed(5);
-  const alt = Math.round(Number(location.altitude || user?.altitude || 829));
+  // Real fix only — never invent coordinates for a rescue payload.
+  const asNum = (v) => {
+    if (v === null || v === undefined || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const lat = asNum(location?.lat);
+  const lon = asNum(location?.lon);
+  const hasFix =
+    lat !== null &&
+    lon !== null &&
+    !(Math.abs(lat) < 1e-6 && Math.abs(lon) < 1e-6) &&
+    (location?.source || "live") !== "none";
+  const fixSource = hasFix ? location?.source || "live" : "none";
+  const ageSec = asNum(location?.ageSec);
+  const accuracy = asNum(location?.accuracy);
+  const altRaw = asNum(location?.altitude) ?? asNum(user?.altitude);
+  const alt = altRaw === null ? null : Math.round(altRaw);
+
+  const profileLat = asNum(user?.lat);
+  const profileLon = asNum(user?.lon);
+  const profileCoords =
+    profileLat !== null &&
+    profileLon !== null &&
+    !(Math.abs(profileLat) < 1e-6 && Math.abs(profileLon) < 1e-6)
+      ? { lat: profileLat, lon: profileLon }
+      : null;
 
   const handleClose = () => {
+    stopHold();
     setStep(1);
     onClose();
   };
 
   const handleFinalConfirm = () => {
+    stopHold();
     setStep(1);
     onConfirm();
+  };
+
+  const startHold = (e) => {
+    e?.preventDefault?.();
+    if (holdTimer.current) return;
+    firedRef.current = false;
+    holdStart.current = Date.now();
+    holdTimer.current = setInterval(() => {
+      const pct = Math.min(100, ((Date.now() - holdStart.current) / HOLD_MS) * 100);
+      setHoldPct(pct);
+      if (pct >= 100 && !firedRef.current) {
+        firedRef.current = true;
+        if (holdTimer.current) {
+          clearInterval(holdTimer.current);
+          holdTimer.current = null;
+        }
+        handleFinalConfirm();
+      }
+    }, 40);
   };
 
   return (
@@ -228,8 +300,36 @@ export default function SOSConfirmModal({
 
               <div>
                 <span style={{ color: "#94a3b8", fontSize: 10, display: "block" }}>GPS LOCATION</span>
-                <strong style={{ color: "#38bdf8", fontSize: 12 }}>{lat}, {lon}</strong>
-                <span style={{ color: "#94a3b8", marginLeft: 4 }}>({alt}m)</span>
+                {hasFix ? (
+                  <>
+                    <strong style={{ color: "#38bdf8", fontSize: 12 }}>
+                      {lat.toFixed(5)}, {lon.toFixed(5)}
+                    </strong>
+                    <span style={{ color: "#94a3b8", marginLeft: 4 }}>
+                      {alt !== null ? `(${alt}m)` : ""}
+                      {accuracy !== null ? ` ±${Math.round(accuracy)}m` : ""}
+                    </span>
+                    <div style={{ color: fixSource === "live" ? "#86efac" : "#fbbf24", fontSize: 10, marginTop: 2 }}>
+                      {fixSource === "live"
+                        ? `● Live GPS fix${ageSec !== null ? ` · ${ageSec}s old` : ""}`
+                        : `◐ Last known fix${ageSec !== null ? ` · ${ageSec}s old` : ""} — may be stale`}
+                    </div>
+                  </>
+                ) : profileCoords ? (
+                  <>
+                    <strong style={{ color: "#fbbf24", fontSize: 12 }}>
+                      {profileCoords.lat.toFixed(5)}, {profileCoords.lon.toFixed(5)}
+                    </strong>
+                    <div style={{ color: "#fbbf24", fontSize: 10, marginTop: 2 }}>
+                      ◐ No live fix — sending your registered profile position. This may be the trailhead,
+                      not where you are now.
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ color: "#f87171", fontSize: 11, fontWeight: 700, marginTop: 2 }}>
+                    NO GPS FIX ACQUIRED
+                  </div>
+                )}
               </div>
 
               <div>
@@ -258,10 +358,44 @@ export default function SOSConfirmModal({
               📢 <strong>Immediate Actions on Confirm:</strong> Your phone will sound a continuous high-decibel mountain siren, vibrate violently, and transmit this beacon to SAR Command & Field Guide Ajay Saini.
             </div>
 
+            {!hasFix && (
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "#fca5a5",
+                  lineHeight: 1.45,
+                  background: "rgba(239, 68, 68, 0.15)",
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid rgba(239, 68, 68, 0.4)",
+                  marginBottom: 14,
+                }}
+              >
+                ⚠️ <strong>No live GPS fix.</strong>{" "}
+                {profileCoords
+                  ? "Your registered profile position and medical details will be sent, but that position may not be where you are right now."
+                  : "Your medical profile will still be transmitted, but SAR will not know where you are."}{" "}
+                If you can, move to open sky or enable location services before transmitting.
+              </div>
+            )}
+
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <button
-                onClick={handleFinalConfirm}
+                type="button"
+                onPointerDown={startHold}
+                onPointerUp={stopHold}
+                onPointerLeave={stopHold}
+                onPointerCancel={stopHold}
+                onKeyDown={(e) => {
+                  if ((e.key === " " || e.key === "Enter") && !e.repeat) startHold(e);
+                }}
+                onKeyUp={(e) => {
+                  if (e.key === " " || e.key === "Enter") stopHold();
+                }}
+                aria-label="Press and hold for three seconds to transmit the SOS beacon"
                 style={{
+                  position: "relative",
+                  overflow: "hidden",
                   width: "100%",
                   padding: "14px 18px",
                   borderRadius: 12,
@@ -277,11 +411,34 @@ export default function SOSConfirmModal({
                   alignItems: "center",
                   justifyContent: "center",
                   gap: 8,
+                  userSelect: "none",
+                  touchAction: "none",
                 }}
               >
-                <span>🚨</span>
-                <span>CONFIRM &amp; TRANSMIT SOS BEACON NOW</span>
+                <span
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    bottom: 0,
+                    left: 0,
+                    width: `${holdPct}%`,
+                    background: "rgba(255, 255, 255, 0.25)",
+                    transition: "width 40ms linear",
+                    pointerEvents: "none",
+                  }}
+                />
+                <span style={{ position: "relative", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span>🚨</span>
+                  <span>
+                    {holdPct > 0
+                      ? `HOLD… ${Math.max(0, (HOLD_MS * (100 - holdPct)) / 100 / 1000).toFixed(1)}s`
+                      : "PRESS & HOLD 3s TO TRANSMIT SOS"}
+                  </span>
+                </span>
               </button>
+              <div style={{ fontSize: 11, color: "#94a3b8", textAlign: "center" }}>
+                Release early to abort — nothing is transmitted until the hold completes.
+              </div>
 
               <button
                 onClick={() => setStep(1)}

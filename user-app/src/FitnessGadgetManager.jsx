@@ -195,7 +195,7 @@ export default function FitnessGadgetManager({
 
       saveDevices(updatedDevices);
       setSyncing(false);
-      setSyncFeedback(`✓ Synced at ${nowStr} · Broadcasted to Guide Ajay Saini`);
+      setSyncFeedback(`✓ Demo sync at ${nowStr} · simulated vitals (not transmitted)`);
 
       setTimeout(() => setSyncFeedback(""), 4000);
       onSync?.(updatedDevices[0]?.vitals);
@@ -231,7 +231,7 @@ export default function FitnessGadgetManager({
     saveDevices([newDev, ...devices]);
     setShowAddModal(false);
     setCustomDeviceName("");
-    setSyncFeedback(`✓ ${name} paired successfully.`);
+    setSyncFeedback(`✓ ${name} added as a demo device (simulated vitals).`);
     setTimeout(() => setSyncFeedback(""), 3500);
   };
 
@@ -242,6 +242,22 @@ export default function FitnessGadgetManager({
 
   return (
     <div style={{ fontFamily: "inherit" }}>
+      {/* Simulation disclosure — this module has no Web Bluetooth transport */}
+      <div
+        style={{
+          background: "rgba(245, 158, 11, 0.1)",
+          border: "1px solid rgba(245, 158, 11, 0.35)",
+          borderRadius: 10,
+          padding: "9px 12px",
+          marginBottom: 12,
+          fontSize: 11.5,
+          color: "#fbbf24",
+          lineHeight: 1.45,
+        }}
+      >
+        ◐ <strong>Simulated wearable.</strong> No band is connected. Vitals below are generated on this device for
+        demonstration and are <strong>not</strong> transmitted to any guide or command portal.
+      </div>
       {/* ── MAIN GADGET CARD ── */}
       <div
         style={{
@@ -277,8 +293,8 @@ export default function FitnessGadgetManager({
                   Fitness Gadgets & Biometric Telemetry
                 </span>
                 {primaryDevice ? (
-                  <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 10, background: "rgba(34, 197, 94, 0.18)", color: "#86efac", fontWeight: 700 }}>
-                    ● {primaryDevice.name}
+                  <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 10, background: "rgba(245, 158, 11, 0.18)", color: "#fbbf24", fontWeight: 700 }}>
+                    ◐ {primaryDevice.name} · DEMO
                   </span>
                 ) : (
                   <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 10, background: "rgba(245, 158, 11, 0.2)", color: "#fbbf24", fontWeight: 700 }}>
@@ -287,7 +303,7 @@ export default function FitnessGadgetManager({
                 )}
               </div>
               <div style={{ fontSize: 11.5, color: C.muted }}>
-                Sync heart rate, SpO2 & elevation with Expedition Leader <strong style={{ color: "#fbbf24" }}>Ajay Saini</strong> for mountain safety
+                Demo device simulator · vitals are generated locally, not read from hardware or sent to a guide
               </div>
             </div>
           </div>
@@ -525,10 +541,10 @@ export default function FitnessGadgetManager({
               <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>
                 Share Live Biometrics with Expedition Leader Ajay Saini
               </div>
-              <div style={{ fontSize: 11, color: shareWithAdmin ? "#86efac" : C.muted }}>
+              <div style={{ fontSize: 11, color: shareWithAdmin ? "#fbbf24" : C.muted }}>
                 {shareWithAdmin
-                  ? "✓ Broadcasting Heart Rate & SpO2 to leader's command portal for mountain duty-of-care"
-                  : "Transmission paused. Leader cannot view your real-time heart rate or SpO2 telemetry."}
+                  ? "◐ Demo toggle is ON. Nothing is leaving this device — wire this to real telemetry before relying on it."
+                  : "Demo toggle. No biometrics are transmitted either way."}
               </div>
             </div>
           </div>
@@ -561,7 +577,7 @@ export default function FitnessGadgetManager({
                   boxShadow: shareWithAdmin ? "0 0 8px #22c55e" : "none",
                 }}
               />
-              {shareWithAdmin ? "Sharing ON" : "Sharing OFF"}
+              {shareWithAdmin ? "Demo ON" : "Demo OFF"}
             </button>
           </div>
         </div>

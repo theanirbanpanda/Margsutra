@@ -2,10 +2,13 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import UserTrackingWidget from "./UserTrackingWidget";
 import FitnessGadgetManager from "./FitnessGadgetManager";
 import { useLocationTracking } from "./useLocationTracking";
+import { useLivePosition } from "./useLivePosition";
 import SOSConfirmModal from "./components/SOSConfirmModal";
 import {
   broadcastSOSBeacon,
   cancelSOSBeacon,
+  flushSOSOutbox,
+  getSOSOutboxCount,
   subscribeToSOSResolution,
   alarmEngine,
 } from "./services/sosService";
@@ -1543,10 +1546,10 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
   const [wx, setWx] = useState(null);
   const [wxLoading, setWxLoading] = useState(true);
   const [sensor, setSensor] = useState({
-    temp:27.4, humidity:68, pressure:1013.2, windSpeed:9.8, windDir:210,
-    uvIndex:5.8, rainfall:0.0, aqi:52,
+    temp:null, humidity:null, pressure:null, windSpeed:null, windDir:null,
+    uvIndex:null, rainfall:null, aqi:null,
   });
-  const [pressureHistory, setPressureHistory] = useState([1013,1013,1012,1012,1011,1011,1010]);
+  const [pressureHistory, setPressureHistory] = useState([]);
   const [sosConfirm, setSosConfirm] = useState(false);
   const [sosActive, setSosActive] = useState(activeSOS);
 
@@ -1589,22 +1592,7 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
     return ()=>clearInterval(t);
   },[joinedTrip]);
 
-  /* Sensor micro-drift */
-  useEffect(()=>{
-    const t = setInterval(()=>{
-      setSensor(p=>({...p,
-        temp:+(p.temp+(Math.random()-.5)*.15).toFixed(1),
-        windSpeed:+Math.max(0,(p.windSpeed+(Math.random()-.5)*1.2)).toFixed(1),
-        aqi:Math.min(200,Math.max(10,Math.round(p.aqi+(Math.random()-.5)*2))),
-      }));
-      setPressureHistory(h=>{
-        const last = h[h.length-1];
-        const next = +(last+(Math.random()-.5)*0.3).toFixed(1);
-        return [...h.slice(1), next];
-      });
-    }, 3000);
-    return ()=>clearInterval(t);
-  },[]);
+  /* Weather values are only ever what the API returned — no synthetic drift. */
 
   useEffect(() => {
     const unsubscribe = subscribeToSafetyProtocols((protocols) => {
@@ -1636,10 +1624,12 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
 
   const wxCode = wx?.current?.weather_code??0;
   const [wxIcon, wxDesc] = WX_CODES[wxCode]??["🌤️","—"];
-  const pressureTrend = pressureHistory[pressureHistory.length-1] - pressureHistory[0];
-  const safetyStatus  = pressureTrend < -2 ? "unsafe" : pressureTrend < -0.5 ? "caution" : "safe";
-  const statusColor   = {safe:C.green, caution:C.amber, unsafe:C.red};
-  const statusLabel   = {safe:"Safe to Trek ✓", caution:"Use Caution ⚠️", unsafe:"Unsafe Conditions ✗"};
+  const pressureTrend = pressureHistory.length >= 2
+    ? pressureHistory[pressureHistory.length-1] - pressureHistory[0]
+    : null;
+  const safetyStatus  = pressureTrend === null ? "unknown" : pressureTrend < -2 ? "unsafe" : pressureTrend < -0.5 ? "caution" : "safe";
+  const statusColor   = {safe:C.green, caution:C.amber, unsafe:C.red, unknown:C.muted};
+  const statusLabel   = {safe:"Safe to Trek ✓", caution:"Use Caution ⚠️", unsafe:"Unsafe Conditions ✗", unknown:"Conditions Unverified"};
 
   const handleSOSTrigger = () => {
     onSOS(true);
@@ -2780,10 +2770,10 @@ const PageWeatherMaps = ({ joinedTrip, onNavigate }) => {
   const [wx, setWx]             = useState(null);
   const [loading, setLoading]   = useState(true);
   const [sensor, setSensor]     = useState({
-    temp:27.4, humidity:68, pressure:1013.2, windSpeed:9.8, windDir:210,
-    uvIndex:5.8, rainfall:0.0, altitude: joinedTrip?.elevation ? parseInt(joinedTrip.elevation) || 829 : 580,
-    co2:415, aqi:52,
-    lastSync:new Date().toLocaleTimeString("en-IN"),
+    temp:null, humidity:null, pressure:null, windSpeed:null, windDir:null,
+    uvIndex:null, rainfall:null, altitude: null,
+    co2:null, aqi:null, pm25:null,
+    lastSync:null,
   });
 
   const tripLat = joinedTrip?.lat || 18.8286;
@@ -2803,11 +2793,24 @@ const PageWeatherMaps = ({ joinedTrip, onNavigate }) => {
         );
         const d = await r.json();
         setWx(d);
+        let air = null;
+        try {
+          const aqRes = await fetch(
+            `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${tripLat}&longitude=${tripLon}` +
+            "&current=us_aqi,european_aqi,pm2_5,pm10&timezone=Asia%2FKolkata"
+          );
+          if (aqRes.ok) air = (await aqRes.json())?.current || null;
+        } catch {
+          air = null;
+        }
         if(d.current) setSensor(p=>({...p,
           temp:d.current.temperature_2m, humidity:d.current.relative_humidity_2m,
           pressure:d.current.pressure_msl, windSpeed:d.current.wind_speed_10m,
           windDir:d.current.wind_direction_10m, uvIndex:d.current.uv_index??p.uvIndex,
-          rainfall:d.current.precipitation, lastSync:new Date().toLocaleTimeString("en-IN"),
+          rainfall:d.current.precipitation,
+          aqi: air?.us_aqi ?? air?.european_aqi ?? null,
+          pm25: air?.pm2_5 ?? null,
+          lastSync:new Date().toLocaleTimeString("en-IN"),
         }));
         setLoading(false);
       } catch { setLoading(false); }
@@ -2815,17 +2818,7 @@ const PageWeatherMaps = ({ joinedTrip, onNavigate }) => {
     go(); const t = setInterval(go,300_000); return()=>clearInterval(t);
   },[joinedTrip, tripLat, tripLon]);
 
-  useEffect(()=>{
-    if (!joinedTrip) return;
-    const t = setInterval(()=>setSensor(p=>({...p,
-      temp:+(p.temp+(Math.random()-.5)*.18).toFixed(1),
-      windSpeed:+Math.max(0,(p.windSpeed+(Math.random()-.5)*1.4)).toFixed(1),
-      co2:Math.round(p.co2+(Math.random()-.5)*3),
-      aqi:Math.min(200,Math.max(10,Math.round(p.aqi+(Math.random()-.5)*2))),
-      lastSync:new Date().toLocaleTimeString("en-IN"),
-    })),2000);
-    return()=>clearInterval(t);
-  },[joinedTrip]);
+  /* Weather / air-quality values are only ever what the APIs returned. */
 
   /* Leaflet with geofence layer */
   const LeafletWeatherMap = ({ height, tileType, perspective:tilted, extraMarkers=[] }) => {
@@ -2997,20 +2990,23 @@ const PageWeatherMaps = ({ joinedTrip, onNavigate }) => {
             ))}
           </Card>
           <Card>
-            <div style={{fontSize:12,fontWeight:500,color:C.text,marginBottom:10}}>📊 Air Quality</div>
-            {[["AQI",sensor.aqi,200,sensor.aqi<50?C.green:sensor.aqi<100?C.amber:C.red],
-              ["CO₂",sensor.co2-350,200,sensor.co2<450?C.green:C.amber],
-              ["Humidity",sensor.humidity,100,C.teal]].map(([label,val,max,col])=>(
+            <div style={{fontSize:12,fontWeight:500,color:C.text,marginBottom:10}}>📊 Air Quality · Open-Meteo</div>
+            {[
+              ["AQI", sensor.aqi, 200, sensor.aqi==null?C.muted:sensor.aqi<50?C.green:sensor.aqi<100?C.amber:C.red, ""],
+              ["PM2.5", sensor.pm25, 100, sensor.pm25==null?C.muted:sensor.pm25<30?C.green:sensor.pm25<60?C.amber:C.red, " µg/m³"],
+              ["Humidity", sensor.humidity, 100, C.teal, "%"],
+            ].map(([label,val,max,col,unit])=>(
               <div key={label} style={{marginBottom:10}}>
                 <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:3}}>
                   <span style={{color:C.muted}}>{label}</span>
-                  <span style={{color:col,fontWeight:600}}>{label==="CO₂"?sensor.co2+" ppm":label==="AQI"?sensor.aqi:sensor.humidity+"%"}</span>
+                  <span style={{color:col,fontWeight:600}}>{val==null?"—":`${Math.round(val)}${unit}`}</span>
                 </div>
                 <div style={{height:5,borderRadius:4,background:"rgba(255,255,255,0.07)"}}>
-                  <div style={{height:"100%",width:`${Math.min(100,(val/max)*100)}%`,borderRadius:4,background:col,transition:"width 0.5s"}}/>
+                  <div style={{height:"100%",width:val==null?"0%":`${Math.min(100,(val/max)*100)}%`,borderRadius:4,background:col,transition:"width 0.5s"}}/>
                 </div>
               </div>
             ))}
+            <div style={{fontSize:10,color:C.muted2,marginTop:2}}>CO₂ is not measured — no field sensor or API source is linked.</div>
           </Card>
         </div>
       </div>}
@@ -3144,15 +3140,24 @@ const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate }) => {
   };
 
   const steps    = TURN_BY_TURN_USER;
-  const myPos    = position || { lat: user?.lat || 18.5196, lon: user?.lon || 73.8554 };
+  const hasOwnFix =
+    position?.lat != null &&
+    position?.lon != null &&
+    Number.isFinite(Number(position.lat)) &&
+    Number.isFinite(Number(position.lon)) &&
+    !(Math.abs(position.lat) < 1e-6 && Math.abs(position.lon) < 1e-6);
+  // Only ever use the device's own fix — a profile coordinate is not a live position.
+  const myPos    = hasOwnFix ? position : null;
   const team     = RESCUE_TEAMS[0];
   const etaMin   = Math.max(0, 12 - Math.floor(elapsed/60));
   const step     = steps[currentStep];
   const pct      = (currentStep/(steps.length-1))*100;
-  const liveDistanceKm = Math.sqrt(
-    Math.pow((teamPos.lat - myPos.lat) * 111, 2) +
-    Math.pow((teamPos.lon - myPos.lon) * 111, 2)
-  ).toFixed(1);
+  const liveDistanceKm = myPos
+    ? Math.sqrt(
+        Math.pow((teamPos.lat - myPos.lat) * 111, 2) +
+        Math.pow((teamPos.lon - myPos.lon) * 111, 2)
+      ).toFixed(1)
+    : null;
 
   useEffect(() => {
     if (!activeSOS || tokenState !== "ready") {
@@ -3163,18 +3168,18 @@ const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate }) => {
     return () => stopTracking();
   }, [activeSOS, tokenState, startTracking, stopTracking]);
 
-  /* Animate team toward user */
+  /* Animate the simulated team toward the trekker's real fix (if we have one) */
   useEffect(()=>{
-    if(!activeSOS) return;
+    if(!activeSOS || !hasOwnFix) return;
     const t = setInterval(()=>{
       setTeamPos(p=>({
         lat: p.lat + (myPos.lat - p.lat)*0.012,
         lon: p.lon + (myPos.lon - p.lon)*0.012,
       }));
-      setElapsed(e=>e+4);
+      setElapsed(e=>e+1);
     },1000);
     return()=>clearInterval(t);
-  },[activeSOS]);
+  },[activeSOS, hasOwnFix, myPos?.lat, myPos?.lon]);
 
   useEffect(()=>{
     if(!navMode) return;
@@ -3247,8 +3252,8 @@ const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate }) => {
           <SOSMap height={500}/>
           <div style={{position:"absolute",bottom:20,left:20,background:"rgba(8,15,26,0.92)",
             border:`1px solid ${C.border}`,borderRadius:12,padding:"10px 18px",textAlign:"center"}}>
-            <div style={{fontSize:26,fontWeight:800,color:C.text}}>45</div>
-            <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em"}}>KM/H</div>
+            <div style={{fontSize:26,fontWeight:800,color:C.text}}>—</div>
+            <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em"}}>SPEED</div>
           </div>
         </div>
         <div style={{background:"#0b1422",borderLeft:`1px solid ${C.border}`,display:"flex",flexDirection:"column",overflow:"hidden"}}>
@@ -3259,7 +3264,7 @@ const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate }) => {
             {step?.road&&<div style={{fontSize:12,color:C.muted,textAlign:"center"}}>{step.road}</div>}
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:1,background:C.border}}>
-            {[["ETA",`${etaMin} min`,C.green],["Distance",`${liveDistanceKm} km`,C.accent]].map(([l,v,col])=>(
+            {[["ETA",`${etaMin} min`,C.green],["Distance",liveDistanceKm ? `${liveDistanceKm} km` : "—",C.accent]].map(([l,v,col])=>(
               <div key={l} style={{background:"#0b1422",padding:"14px 18px",textAlign:"center"}}>
                 <div style={{fontSize:22,fontWeight:800,color:col}}>{v}</div>
                 <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginTop:2}}>{l}</div>
@@ -3313,11 +3318,11 @@ const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate }) => {
   return (
     <div>
       <PageHeader title="SOS Navigation"
-        sub="Rescue team en route — live tracking"
+        sub="Rescue routing preview"
         right={
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             <Pill color="red">🚨 SOS Active</Pill>
-            <Pill color="green">● Live</Pill>
+            <Pill color="amber">◐ Demo rescue assets</Pill>
             <Btn onClick={handleExitSOS}>✕ Exit</Btn>
           </div>
         }/>
@@ -3326,10 +3331,13 @@ const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate }) => {
         borderRadius:12,padding:"14px 18px",marginBottom:16,display:"flex",alignItems:"center",gap:14}}>
         <div style={{width:12,height:12,borderRadius:"50%",background:C.red,animation:"ud-sos-blink 1.2s infinite",flexShrink:0}}/>
         <div style={{flex:1}}>
-          <div style={{fontSize:14,fontWeight:700,color:C.red}}>Emergency broadcast active — Team Alpha dispatched</div>
-          <div style={{fontSize:12,color:C.muted,marginTop:2}}>Your blood group, medical profile and GPS shared with rescue team</div>
+          <div style={{fontSize:14,fontWeight:700,color:C.red}}>Emergency broadcast active</div>
+          <div style={{fontSize:12,color:C.muted,marginTop:2}}>
+            Your beacon is sent to SAR Command. The team, ETA and route below are a simulated preview of the dispatch
+            experience — not a live rescue asset assignment.
+          </div>
         </div>
-        <Pill color="amber">ETA {etaMin} min</Pill>
+        <Pill color="amber">Demo ETA {etaMin} min</Pill>
         <Btn variant="danger" onClick={handleExitSOS} style={{padding:"6px 14px",fontSize:12}}>✕ Exit &amp; Stop SOS</Btn>
       </div>
 
@@ -3337,10 +3345,10 @@ const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate }) => {
         <div>
           <SOSMap height={380}/>
           <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginTop:12}}>
-            <StatCard label="ETA" value={`${etaMin} min`} sub="Rescue team" color={C.green} icon="⏱"/>
-            <StatCard label="Distance" value={`${liveDistanceKm} km`} sub="Team to you" color={C.accent} icon="📏"/>
-            <StatCard label="Team Speed" value="45 km/h" sub="Current" color={C.amber} icon="🚑"/>
-            <StatCard label="GPS Acc." value="±6m" sub="Real-time" color={C.purple} icon="🛰"/>
+            <StatCard label="ETA" value={`${etaMin} min`} sub="Simulated" color={C.green} icon="⏱"/>
+            <StatCard label="Distance" value={liveDistanceKm ? `${liveDistanceKm} km` : "—"} sub={liveDistanceKm ? "To demo team" : "No GPS fix"} color={C.accent} icon="📏"/>
+            <StatCard label="Team Speed" value="—" sub="Not tracked" color={C.amber} icon="🚑"/>
+            <StatCard label="GPS Acc." value="device" sub="Own fix" color={C.purple} icon="🛰"/>
           </div>
           <button onClick={()=>{setNavMode(true);setCurrentStep(0);}}
             style={{marginTop:14,width:"100%",padding:"14px",
@@ -4448,6 +4456,9 @@ export default function UserDashboard() {
   const [activeSosId, setActiveSosId] = useState(() => user?.activeSosId || null);
   const [joinError, setJoinError] = useState("");
   const [showSOSConfirmModal, setShowSOSConfirmModal] = useState(false);
+  const liveFix = useLivePosition();
+  const [sosDelivery, setSosDelivery] = useState(null);
+  const [outboxCount, setOutboxCount] = useState(() => getSOSOutboxCount());
 
   // Subscribe to remote stand-down (e.g. if Admin stands down SOS from command console)
   useEffect(() => {
@@ -4459,6 +4470,29 @@ export default function UserDashboard() {
     });
     return () => unsub?.();
   }, [user?.id]);
+
+  // Retry any SOS beacon that could not be delivered while offline.
+  useEffect(() => {
+    let cancelled = false;
+    const retry = async () => {
+      const result = await flushSOSOutbox();
+      if (cancelled) return;
+      setOutboxCount(result.remaining);
+      if (result.flushed > 0) {
+        setSosDelivery((prev) =>
+          prev ? { ...prev, delivered: true, pending: false, queued: result.remaining } : prev
+        );
+      }
+    };
+    retry();
+    const timer = setInterval(retry, 30_000);
+    window.addEventListener("online", retry);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      window.removeEventListener("online", retry);
+    };
+  }, []);
 
   const handleSOSToggle = async (activate) => {
     if (activate) {
@@ -4475,6 +4509,8 @@ export default function UserDashboard() {
         console.warn("Failed to cancel SOS in database:", e);
       }
       setActiveSosId(null);
+      setSosDelivery(null);
+      setOutboxCount(getSOSOutboxCount());
     }
   };
 
@@ -4482,17 +4518,35 @@ export default function UserDashboard() {
     setShowSOSConfirmModal(false);
     setActiveSOS(true);
     setPage("sos-nav");
+    setSosDelivery({ pending: true, delivered: false, channels: {}, queued: 0 });
     try {
       const res = await broadcastSOSBeacon(user, joinedTrip, {
-        lat: user?.lat || 18.8286,
-        lon: user?.lon || 73.3986,
-        altitude: user?.altitude || 829,
+        lat: liveFix.meta.lat,
+        lon: liveFix.meta.lon,
+        altitude: liveFix.meta.altitude,
+        accuracy: liveFix.meta.accuracy,
+        ageSec: liveFix.meta.ageSec,
+        source: liveFix.meta.source,
       });
-      if (res?.eventId) {
-        setActiveSosId(res.eventId);
-      }
+      if (res?.eventId) setActiveSosId(res.eventId);
+      setSosDelivery({
+        pending: false,
+        delivered: Boolean(res?.delivered),
+        channels: res?.channels || {},
+        queued: res?.queued || 0,
+        locationSource: res?.locationSource,
+        errors: res?.errors || [],
+      });
+      setOutboxCount(res?.queued || 0);
     } catch (e) {
       console.warn("Failed to trigger SOS:", e);
+      setSosDelivery({
+        pending: false,
+        delivered: false,
+        channels: {},
+        queued: getSOSOutboxCount(),
+        errors: [e?.message || "unknown error"],
+      });
     }
   };
 
@@ -4665,7 +4719,7 @@ export default function UserDashboard() {
         <PageHeader
           title="Fitness Wearables & Gadgets"
           sub="Pair smartwatches, biometric sensors, and manage live telemetry broadcasts to expedition leaders"
-          right={<Pill color="green">● BLE Telemetry Active</Pill>}
+          right={<Pill color="amber">◐ Demo BLE · simulated</Pill>}
         />
         <FitnessGadgetManager user={user} joinedTrip={joinedTrip} compact={false} onNavigate={navigate} />
       </div>
@@ -4681,6 +4735,17 @@ export default function UserDashboard() {
     setJoinedTrip(null);
     setPage("join-trip");
   };
+
+  const deliveryLabel =
+    !sosDelivery || sosDelivery.pending
+      ? "TRANSMITTING TO SAR COMMAND…"
+      : sosDelivery.delivered
+        ? "DELIVERED TO SAR COMMAND"
+        : "NOT DELIVERED — QUEUED & RETRYING";
+
+  const deliveredChannels = sosDelivery
+    ? Object.entries(sosDelivery.channels || {}).filter(([, ok]) => ok).map(([name]) => name)
+    : [];
 
   return (
     <div style={{display:"grid",gridTemplateColumns:"220px 1fr",minHeight:"780px",
@@ -4837,10 +4902,14 @@ export default function UserDashboard() {
               <span style={{ fontSize: 20 }}>🚨</span>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: "0.04em" }}>
-                  EMERGENCY DISTRESS BEACON ACTIVE · TRANSMITTING GPS &amp; MEDICAL PROFILE
+                  EMERGENCY DISTRESS BEACON ACTIVE · {deliveryLabel}
                 </div>
-                <div style={{ fontSize: 11, opacity: 0.9 }}>
-                  SAR Incident Command &amp; Field Guide Ajay Saini alerted · Mountain Siren Buzzing
+                <div style={{ fontSize: 11, opacity: 0.92 }}>
+                  {sosDelivery?.pending
+                    ? "Siren active · contacting SAR Incident Command and Field Guide"
+                    : sosDelivery?.delivered
+                      ? `Siren active · reached via ${deliveredChannels.join(" + ") || "dispatch"}${sosDelivery?.locationSource && sosDelivery.locationSource !== "live" ? ` · position source: ${sosDelivery.locationSource}` : " · live GPS attached"}`
+                      : `Siren active · no transport reachable. ${outboxCount} beacon${outboxCount === 1 ? "" : "s"} persisted and retried automatically — keep this screen open.`}
                 </div>
               </div>
             </div>
@@ -4896,11 +4965,7 @@ export default function UserDashboard() {
         onConfirm={handleConfirmedSOSBroadcast}
         user={user}
         trip={joinedTrip}
-        location={{
-          lat: user?.lat || 18.8286,
-          lon: user?.lon || 73.3986,
-          altitude: user?.altitude || 829,
-        }}
+        location={liveFix.meta}
       />
     </div>
   );

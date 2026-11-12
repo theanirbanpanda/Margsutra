@@ -133,14 +133,109 @@ function getSocket(user) {
 }
 
 // ── 3. SOS Trigger Dispatch ──────────────────────────────────────────────────
+// Safety rule: an SOS is only reported as delivered when at least one transport
+// actually accepted it. If every transport fails (the classic 0-signal mountain
+// case), the payload is persisted locally and retried on reconnect.
+const SOS_OUTBOX_KEY = "margsutra_sos_outbox";
+const SOS_TIMEOUT_MS = 8000;
+
+const readOutbox = () => {
+  try {
+    const raw = localStorage.getItem(SOS_OUTBOX_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const writeOutbox = (items) => {
+  try {
+    localStorage.setItem(SOS_OUTBOX_KEY, JSON.stringify(items));
+  } catch {
+    /* storage unavailable — delivery state is still surfaced to the UI */
+  }
+};
+
+const queueForRetry = (payload) => {
+  const outbox = readOutbox().filter((item) => item?.id !== payload.id);
+  outbox.push({ ...payload, queuedAt: new Date().toISOString() });
+  writeOutbox(outbox);
+  return outbox.length;
+};
+
+const postWithTimeout = async (url, body) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SOS_TIMEOUT_MS);
+  try {
+    return await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+export const getSOSOutboxCount = () => readOutbox().length;
+
+export const flushSOSOutbox = async () => {
+  const outbox = readOutbox();
+  if (!outbox.length) return { flushed: 0, remaining: 0 };
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return { flushed: 0, remaining: outbox.length };
+  }
+
+  const remaining = [];
+  let flushed = 0;
+  for (const item of outbox) {
+    try {
+      const res = await postWithTimeout(`${BACKEND_URL}/api/sos/trigger`, item);
+      if (res.ok) flushed += 1;
+      else remaining.push(item);
+    } catch {
+      remaining.push(item);
+    }
+  }
+  writeOutbox(remaining);
+  return { flushed, remaining: remaining.length };
+};
+
 export const broadcastSOSBeacon = async (user, trip, location = {}) => {
-  if (!user?.id) return { success: false, error: "No user authenticated" };
-  
+  if (!user?.id) return { success: false, delivered: false, error: "No user authenticated" };
+
   // 1. Immediately sound alarm & vibration buzzer on phone
   alarmEngine.start();
 
   const now = new Date().toISOString();
   const eventId = `sos_${user.id}_${Date.now()}`;
+
+  // Location provenance — never present a fallback as a live GPS fix.
+  const asNum = (v) => {
+    if (v === null || v === undefined || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const usableCoord = (la, lo) =>
+    la !== null && lo !== null && !(Math.abs(la) < 1e-6 && Math.abs(lo) < 1e-6);
+
+  const lat = asNum(location?.lat);
+  const lon = asNum(location?.lon);
+  const hasFix = usableCoord(lat, lon) && (location?.source || "live") !== "none";
+  const profileLat = asNum(user?.lat);
+  const profileLon = asNum(user?.lon);
+  const hasProfile = usableCoord(profileLat, profileLon);
+  const locationSource = hasFix
+    ? location?.source || "live"
+    : hasProfile
+      ? "profile"
+      : "unknown";
+  const resolvedLat = hasFix ? lat : hasProfile ? profileLat : null;
+  const resolvedLon = hasFix ? lon : hasProfile ? profileLon : null;
+  const resolvedAlt = asNum(location?.altitude) ?? asNum(user?.altitude);
+
   const payload = {
     id: eventId,
     userId: user.id,
@@ -152,12 +247,15 @@ export const broadcastSOSBeacon = async (user, trip, location = {}) => {
     ec1Name: user.ec1Name || "",
     ec1Rel: user.ec1Rel || "Family",
     ec1Ph: user.ec1Ph || "",
-    lat: Number(location.lat) || user.lat || 18.8286,
-    lon: Number(location.lon) || user.lon || 73.3986,
-    altitude: Number(location.altitude) || user.altitude || 829,
-    tripId: trip?.id || trip?.tripId || "trip-001",
+    lat: resolvedLat,
+    lon: resolvedLon,
+    altitude: resolvedAlt,
+    locationSource,
+    locationAgeSec: asNum(location?.ageSec),
+    accuracy: asNum(location?.accuracy),
+    tripId: trip?.id || trip?.tripId || null,
     tripName: trip?.name || "Rajmachi Fort Expedition",
-    tripCode: trip?.code || "RAJM26",
+    tripCode: trip?.code || null,
     status: "active",
     type: "Manual SOS Beacon",
     priority: "critical",
@@ -167,26 +265,29 @@ export const broadcastSOSBeacon = async (user, trip, location = {}) => {
     updatedAt: now,
   };
 
-  // 2. Emit instantly over Socket.IO to port 4000 (reaches admin in <30ms)
+  const channels = { socket: false, api: false, firestore: false };
+  const errors = [];
+
+  // 2. Emit over Socket.IO to port 4000 (buffered by the client if reconnecting)
   try {
     const socket = getSocket(user);
     socket.emit("sos-trigger", {
       ...payload,
-      meta: { source: "user-app-sos-button" }
+      meta: { source: "user-app-sos-button", locationSource },
     });
+    channels.socket = Boolean(socket?.connected);
+    if (!channels.socket) errors.push("socket offline (event buffered)");
   } catch (err) {
-    console.warn("[SOS Socket] Emit failed:", err);
+    errors.push(`socket: ${err?.message || "emit failed"}`);
   }
 
   // 3. Post to Core REST API (port 5050)
   try {
-    await fetch(`${BACKEND_URL}/api/sos/trigger`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    const res = await postWithTimeout(`${BACKEND_URL}/api/sos/trigger`, payload);
+    channels.api = res.ok;
+    if (!res.ok) errors.push(`api: HTTP ${res.status}`);
   } catch (err) {
-    console.warn("[SOS API] Post failed:", err);
+    errors.push(`api: ${err?.name === "AbortError" ? "timeout" : err?.message || "failed"}`);
   }
 
   // 4. Update Firestore directly as backup
@@ -198,11 +299,28 @@ export const broadcastSOSBeacon = async (user, trip, location = {}) => {
       lastSosAt: now,
       updatedAt: now,
     }, { merge: true });
+    channels.firestore = true;
   } catch (err) {
-    console.warn("[SOS Firestore] Direct write backup error:", err);
+    errors.push(`firestore: ${err?.message || "write failed"}`);
   }
 
-  return { success: true, eventId, payload };
+  const delivered = channels.api || channels.firestore || channels.socket;
+  let queued = 0;
+  if (!delivered) {
+    queued = queueForRetry(payload);
+    console.warn("[SOS] All transports failed — queued for retry:", payload.id);
+  }
+
+  return {
+    success: delivered,
+    delivered,
+    eventId,
+    payload,
+    channels,
+    queued,
+    errors,
+    locationSource,
+  };
 };
 
 // ── 4. SOS Cancellation & Stand-Down ─────────────────────────────────────────
@@ -216,23 +334,33 @@ export const cancelSOSBeacon = async (user, activeSosId = null, reason = "user_c
 
   const now = new Date().toISOString();
 
+  const channels = { socket: false, api: false, firestore: false };
+
   // 2. Emit cancel event over Socket.IO to port 4000
   try {
     const socket = getSocket(user);
     socket.emit("sos-cancel");
+    channels.socket = Boolean(socket?.connected);
   } catch (err) {
     console.warn("[SOS Socket] Cancel emit failed:", err);
   }
 
   // 3. Post cancellation to REST API
   try {
-    await fetch(`${BACKEND_URL}/api/sos/cancel`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, activeSosId, reason }),
+    const res = await postWithTimeout(`${BACKEND_URL}/api/sos/cancel`, {
+      userId,
+      activeSosId,
+      reason,
     });
+    channels.api = res.ok;
   } catch (err) {
     console.warn("[SOS API] Cancel post failed:", err);
+  }
+
+  // Remove any queued beacon for this incident so a stand-down is never
+  // resurrected by the retry loop.
+  if (activeSosId) {
+    writeOutbox(readOutbox().filter((item) => item?.id !== activeSosId));
   }
 
   // 4. Update Firestore directly as backup
@@ -268,11 +396,13 @@ export const cancelSOSBeacon = async (user, activeSosId = null, reason = "user_c
       activeSosId: null,
       updatedAt: now,
     }, { merge: true });
+    channels.firestore = true;
   } catch (err) {
     console.warn("[SOS Firestore] Cancel write error:", err);
   }
 
-  return { success: true };
+  const confirmed = channels.api || channels.firestore || channels.socket;
+  return { success: confirmed, confirmed, channels };
 };
 
 // ── 5. Real-Time Remote Stand-Down Listener ──────────────────────────────────

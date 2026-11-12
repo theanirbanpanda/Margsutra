@@ -414,9 +414,8 @@ export default function UserTrackingWidget({
   };
 
   const handleSOS = () => {
-    if (!sosConfirm) { setSosConfirm(true); return; }
+    // Single SOS path: the root safety modal (2 steps + 3s hold) owns dispatch.
     setSosConfirm(false);
-    triggerSOS({ blood: user?.blood, medical: user?.medical });
     onSOS?.(true);
   };
 
@@ -426,15 +425,21 @@ export default function UserTrackingWidget({
     onSOS?.(false);
   };
 
-  const fmtTs = (ts) => ts ? new Date(ts).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit",second:"2-digit"}) : "Just now";
+  const fmtTs = (ts) => ts ? new Date(ts).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit",second:"2-digit"}) : "Never";
 
-  // Effective user coordinates
-  const userLat = position?.lat ?? 18.8286;
-  const userLon = position?.lon ?? 73.3986;
+  // Real position only — never place the trekker on the map at a guess.
+  const userLat = position?.lat != null && Number.isFinite(Number(position.lat)) ? position.lat : null;
+  const userLon = position?.lon != null && Number.isFinite(Number(position.lon)) ? position.lon : null;
+  const hasUserFix =
+    userLat !== null &&
+    userLon !== null &&
+    !(Math.abs(userLat) < 1e-6 && Math.abs(userLon) < 1e-6);
 
   // Calculate distance from user to leader Ajay Saini
-  const distToLeader = calculateDistanceMeters(userLat, userLon, RAJMACHI_ADMIN.lat, RAJMACHI_ADMIN.lon);
-  const dirToLeader = getRelativeTrailDirection(RAJMACHI_ADMIN.lat, userLat);
+  const distToLeader = hasUserFix
+    ? calculateDistanceMeters(userLat, userLon, RAJMACHI_ADMIN.lat, RAJMACHI_ADMIN.lon)
+    : null;
+  const dirToLeader = hasUserFix ? getRelativeTrailDirection(RAJMACHI_ADMIN.lat, userLat) : "";
 
   return (
     <div style={{fontFamily:"system-ui,sans-serif",color:C.text}}>
@@ -484,12 +489,19 @@ export default function UserTrackingWidget({
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
               <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>
-                Rajmachi Team Formation · All 6 Accounted For
+                Rajmachi Team Formation · sample roster
               </span>
-              <Pill color="green">● Formation Tight</Pill>
+              <Pill color="amber">◐ Demo formation</Pill>
             </div>
             <div style={{ fontSize: 12, color: C.muted }}>
-              Expedition Leader <strong style={{ color: "#fbbf24" }}>Ajay Saini</strong> is <strong>{formatDistance(distToLeader)} {dirToLeader}</strong> · 4 other trekkers are within <strong>870m</strong>
+              {hasUserFix ? (
+                <>
+                  Expedition Leader <strong style={{ color: "#fbbf24" }}>Ajay Saini</strong> is <strong>{formatDistance(distToLeader)} {dirToLeader}</strong> · 4 other trekkers within <strong>870m</strong>{" "}
+                </>
+              ) : (
+                <>Your own GPS fix is pending, so distances are unknown. </>
+              )}
+              <span style={{ color: "#fcd34d" }}>(sample data — only your own marker is live)</span>
             </div>
           </div>
         </div>
@@ -517,7 +529,9 @@ export default function UserTrackingWidget({
           </button>
           <button
             type="button"
-            onClick={() => setFocusTarget({ lat: userLat, lon: userLon, id: "user" })}
+            onClick={() => hasUserFix && setFocusTarget({ lat: userLat, lon: userLon, id: "user" })}
+            disabled={!hasUserFix}
+            title={hasUserFix ? "Centre the map on your live position" : "Waiting for a GPS fix"}
             style={{
               background: "rgba(59, 130, 246, 0.15)",
               border: "1px solid rgba(59, 130, 246, 0.4)",
@@ -553,9 +567,14 @@ export default function UserTrackingWidget({
           />
           {/* Coordinates and timestamp strip */}
           <div style={{ display: "flex", gap: 16, marginTop: 8, fontSize: 11, color: C.muted2, flexWrap: "wrap", alignItems: "center" }}>
-            <span>Your Coords: <strong style={{ color: C.text, fontFamily: "monospace" }}>{userLat.toFixed(5)}°N, {userLon.toFixed(5)}°E</strong></span>
+            <span>
+              Your Coords:{" "}
+              <strong style={{ color: hasUserFix ? C.text : "#fca5a5", fontFamily: "monospace" }}>
+                {hasUserFix ? `${userLat.toFixed(5)}°N, ${userLon.toFixed(5)}°E` : "No GPS fix yet"}
+              </strong>
+            </span>
             {accuracy && <span>Accuracy: ±<strong style={{ color: C.amber }}>{accuracy.toFixed(0)}m</strong></span>}
-            <span>Elevation: <strong style={{ color: "#34d399" }}>829m ASL</strong></span>
+            <span>Elevation: <strong style={{ color: "#34d399" }}>{Number.isFinite(Number(position?.altitude)) ? `${Math.round(position.altitude)}m ASL` : "—"}</strong></span>
             <span style={{ marginLeft: "auto" }}>Last sync: <strong style={{ color: C.text }}>{fmtTs(lastUpdateTs)}</strong></span>
           </div>
         </div>
@@ -609,7 +628,7 @@ export default function UserTrackingWidget({
               <div style={{ fontSize: 11, color: "#fbbf24", textTransform: "uppercase", letterSpacing: "0.07em", fontWeight: 700 }}>
                 Expedition Leader
               </div>
-              <span style={{ fontSize: 10, color: "#86efac", fontWeight: 600 }}>● Online</span>
+              <span style={{ fontSize: 10, color: "#fcd34d", fontWeight: 600 }}>◐ Sample</span>
             </div>
             <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 2 }}>
               Ajay Saini
@@ -626,6 +645,9 @@ export default function UserTrackingWidget({
               <div>HR: <strong style={{ color: C.text }}>76 bpm</strong></div>
               <div>VHF: <strong style={{ color: C.text }}>145.500</strong></div>
             </div>
+            <div style={{ fontSize: 10, color: "#fcd34d", marginTop: 6 }}>
+              ◐ Sample leader telemetry — no live link to the guide device.
+            </div>
           </Card>
 
           {/* Emergency SOS button */}
@@ -635,7 +657,7 @@ export default function UserTrackingWidget({
             </div>
             {sosConfirm && (
               <div style={{ marginBottom: 8, background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 6, padding: "6px 8px", fontSize: 11, color: "#fcd34d" }}>
-                ⚠️ Confirm SOS broadcast to Leader Ajay Saini and SAR Alpha?
+                ⚠️ Opens the safety confirmation and 3-second hold before anything is transmitted.
               </div>
             )}
             <button
@@ -653,7 +675,7 @@ export default function UserTrackingWidget({
                 fontFamily: "inherit",
               }}
             >
-              {(sosActive || activeSOS) ? "🚨 SOS Broadcast Active" : sosConfirm ? "Confirm Emergency SOS" : "🆘 Emergency SOS Beacon"}
+              {(sosActive || activeSOS) ? "🚨 SOS Broadcast Active" : "🆘 Emergency SOS Beacon"}
             </button>
           </Card>
         </div>
@@ -774,26 +796,29 @@ export default function UserTrackingWidget({
                   </div>
                 </div>
               </div>
-              <Pill color="blue">● You are Here</Pill>
+              <Pill color={hasUserFix ? "blue" : "amber"}>{hasUserFix ? "● You are Here" : "◐ GPS fix pending"}</Pill>
             </div>
 
             <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 8, lineHeight: 1.5 }}>
-              Status: <strong style={{ color: "#93c5fd" }}>On Trail (Mid Group Formation)</strong><br/>
-              Alt: <strong>829m</strong> · 🔋 <strong>88%</strong> · ❤️ <strong>84 bpm</strong>
+              Status: <strong style={{ color: "#93c5fd" }}>{isTracking ? "Tracking on (location sharing)" : "Tracking paused"}</strong><br/>
+              Alt: <strong>{Number.isFinite(Number(position?.altitude)) ? `${Math.round(position.altitude)}m` : "—"}</strong> · 🔋 <strong>—</strong> · ❤️ <strong>—</strong>{" "}
+              <span style={{ color: "#fcd34d" }}>(no device linked)</span>
             </div>
 
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
               <span style={{ fontSize: 11, color: C.muted2 }}>🩸 Blood: {user?.blood || "B+"}</span>
               <button
                 type="button"
-                onClick={() => setFocusTarget({ lat: userLat, lon: userLon, id: "user" })}
+                onClick={() => hasUserFix && setFocusTarget({ lat: userLat, lon: userLon, id: "user" })}
+                disabled={!hasUserFix}
                 style={{
                   background: "transparent",
                   border: "none",
                   color: "#60a5fa",
                   fontSize: 11,
                   fontWeight: 600,
-                  cursor: "pointer",
+                  cursor: hasUserFix ? "pointer" : "not-allowed",
+                  opacity: hasUserFix ? 1 : 0.5,
                 }}
               >
                 🎯 Show on Map →
@@ -803,8 +828,8 @@ export default function UserTrackingWidget({
 
           {/* Cards 3 to 6: The 4 other expedition members */}
           {RAJMACHI_MEMBERS.filter((m) => m.id !== user?.id && m.userId !== user?.id).map((member) => {
-            const dist = calculateDistanceMeters(userLat, userLon, member.lat, member.lon);
-            const dir = getRelativeTrailDirection(member.lat, userLat);
+            const dist = hasUserFix ? calculateDistanceMeters(userLat, userLon, member.lat, member.lon) : null;
+            const dir = hasUserFix ? getRelativeTrailDirection(member.lat, userLat) : "";
             const color = member.color ? member.color[0] : "#10b981";
 
             return (
