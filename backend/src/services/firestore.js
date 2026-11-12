@@ -245,6 +245,36 @@ function genTripCode() {
   return out;
 }
 
+class HttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+// One admin can be in charge of at most one expedition at a time.
+async function findInChargeConflict(adminId, exceptTripId = null) {
+  if (!adminId) return null;
+  const snap = await db.collection("trips").where("adminInCharge", "==", adminId).limit(5).get();
+  for (const d of snap.docs) {
+    if (d.id === exceptTripId) continue;
+    const t = d.data();
+    return { id: d.id, name: t.name || "another expedition" };
+  }
+  return null;
+}
+
+async function assertAdminUser(adminId) {
+  if (!adminId) throw new HttpError(400, "An admin in charge is required — an expedition can never have zero admins.");
+  const doc = await db.collection("users").doc(adminId).get();
+  if (!doc.exists) throw new HttpError(400, "Selected admin account was not found.");
+  const data = doc.data();
+  if ((data.role || "").toLowerCase() !== "admin") {
+    throw new HttpError(400, `${data.name || "That account"} is not an admin and cannot be in charge of an expedition.`);
+  }
+  return { id: doc.id, name: data.name || data.email || "Admin", email: data.email || "" };
+}
+
 async function listTrips() {
   const snapshot = await db.collection("trips").get();
   return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -258,16 +288,59 @@ async function findTripByCode(code) {
   return { id: doc.id, ...doc.data() };
 }
 
+function normalizeGearList(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value.map((v) => String(v).trim()).filter(Boolean);
+  }
+  return String(value)
+    .split(/\r?\n|,/)
+    .map((v) => v.trim())
+    .filter(Boolean);
+}
+
+function normalizeAdminIds(values, fallback = null) {
+  const list = Array.isArray(values) ? values : values ? [values] : [];
+  const out = [];
+  for (const v of [...list, fallback]) {
+    const id = typeof v === "object" && v ? v.id || v.uid : v;
+    if (id && !out.includes(String(id))) out.push(String(id));
+  }
+  return out;
+}
+
 async function createTrip(tripData = {}) {
   const code = tripData.code ? String(tripData.code).trim().toUpperCase() : genTripCode();
   const now = new Date();
-  
+
   const startDate = tripData.startDate || (tripData.date ? tripData.date.split("–")[0].trim() : "May 3, 2026");
   const startTime = tripData.startTime || "06:30 AM";
   const endDate = tripData.endDate || (tripData.date && tripData.date.includes("–") ? tripData.date.split("–")[1].trim() : "May 4, 2026");
   const endTime = tripData.endTime || "05:00 PM";
   const formattedDate = tripData.date || `${startDate} · ${startTime} – ${endDate} · ${endTime}`;
 
+  // An expedition can never have zero admins. The creator is admin-in-charge
+  // by default; an admin can only be in charge of one expedition at a time.
+  const createdBy = tripData.createdBy || tripData.creatorId || null;
+  const adminInCharge = tripData.adminInCharge || tripData.inChargeId || createdBy;
+  const inChargeProfile = await assertAdminUser(adminInCharge);
+
+  const conflict = await findInChargeConflict(adminInCharge);
+  if (conflict) {
+    throw new HttpError(
+      409,
+      `${inChargeProfile.name} is already in charge of "${conflict.name}". An admin can only be in charge of one expedition at a time.`
+    );
+  }
+
+  const adminIds = normalizeAdminIds(tripData.admins, adminInCharge);
+  const admins = [];
+  for (const id of adminIds) {
+    const profile = id === inChargeProfile.id ? inChargeProfile : await assertAdminUser(id);
+    admins.push({ id: profile.id, name: profile.name, email: profile.email });
+  }
+
+  const maxRoster = Number(tripData.maxRoster);
   const newTrip = {
     name: tripData.name || "Sahyadri Mountain Expedition",
     date: formattedDate,
@@ -281,13 +354,22 @@ async function createTrip(tripData = {}) {
     location: tripData.location || "Rajmachi Fort, Maharashtra",
     elevation: tripData.elevation || "829m ASL",
     difficulty: tripData.difficulty || "Moderate (14 km Trail Circuit)",
-    leader: tripData.leader || "Field Guide Ajay Saini",
+    leader: tripData.leader || inChargeProfile.name,
     vhfChannel: tripData.vhfChannel || "145.500 MHz (VHF Ch 1)",
+    instructions: String(tripData.instructions || "").trim(),
+    gearList: normalizeGearList(tripData.gearList || tripData.gear),
+    notes: String(tripData.notes || "").trim(),
     code,
     isManaged: !!tripData.isManaged,
     status: tripData.status || (tripData.isManaged ? "in-field" : "upcoming"),
-    rosterCount: 0,
-    maxRoster: Number(tripData.maxRoster) || 25,
+    rosterCount: Number(tripData.baseRosterCount) || 0,
+    baseRosterCount: Number(tripData.baseRosterCount) || 0,
+    demoRoster: !!tripData.demoRoster,
+    maxRoster: maxRoster > 0 ? maxRoster : 25,
+    admins,
+    adminInCharge: inChargeProfile.id,
+    adminInChargeName: inChargeProfile.name,
+    createdBy: createdBy || inChargeProfile.id,
     lat: Number(tripData.lat) || 18.8286,
     lon: Number(tripData.lon) || 73.3986,
     geofence: {
@@ -372,20 +454,81 @@ async function updateTrip(tripId, updates = {}) {
   const docRef = db.collection("trips").doc(tripId);
   const doc = await docRef.get();
   if (!doc.exists) return null;
+  const existing = doc.data();
 
   const dataToUpdate = {
     ...updates,
     updatedAt: new Date(),
   };
 
-  // If geofence is updated, merge cleanly
-  if (updates.geofence) {
-    const existingGeofence = doc.data().geofence || {};
-    dataToUpdate.geofence = {
-      ...existingGeofence,
-      ...updates.geofence,
-      radius: typeof updates.geofence.radius === "number" ? updates.geofence.radius : existingGeofence.radius || 2500,
-    };
+  // Never let the roster count be written directly by a client.
+  delete dataToUpdate.rosterCount;
+
+  if (updates.maxRoster !== undefined || updates.slots !== undefined) {
+    const slots = Number(updates.maxRoster ?? updates.slots);
+    if (!Number.isFinite(slots) || slots < 1) {
+      throw new HttpError(400, "Expedition slots must be at least 1.");
+    }
+    dataToUpdate.maxRoster = slots;
+    delete dataToUpdate.slots;
+  }
+
+  if (updates.gearList !== undefined || updates.gear !== undefined) {
+    dataToUpdate.gearList = normalizeGearList(updates.gearList ?? updates.gear);
+    delete dataToUpdate.gear;
+  }
+
+  if (updates.instructions !== undefined) {
+    dataToUpdate.instructions = String(updates.instructions || "").trim();
+  }
+  if (updates.notes !== undefined) {
+    dataToUpdate.notes = String(updates.notes || "").trim();
+  }
+
+  const adminsTouched = updates.admins !== undefined || updates.adminInCharge !== undefined
+    || updates.inChargeId !== undefined;
+
+  if (adminsTouched) {
+    const currentInCharge = existing.adminInCharge || null;
+    const requestedInCharge = updates.adminInCharge || updates.inChargeId || null;
+    const targetInCharge = requestedInCharge || currentInCharge;
+
+    let adminIds = updates.admins !== undefined
+      ? normalizeAdminIds(updates.admins, targetInCharge)
+      : normalizeAdminIds((existing.admins || []).map((a) => a.id || a), targetInCharge);
+
+    if (targetInCharge) adminIds = normalizeAdminIds(adminIds, targetInCharge);
+
+    if (adminIds.length === 0) {
+      throw new HttpError(400, "An expedition must always have at least one admin.");
+    }
+
+    const inChargeId = targetInCharge || adminIds[0];
+    if (!adminIds.includes(inChargeId)) adminIds.push(inChargeId);
+
+    const inChargeProfile = await assertAdminUser(inChargeId);
+    if (inChargeId !== currentInCharge) {
+      const conflict = await findInChargeConflict(inChargeId, tripId);
+      if (conflict) {
+        throw new HttpError(
+          409,
+          `${inChargeProfile.name} is already in charge of "${conflict.name}". An admin can only be in charge of one expedition at a time.`
+        );
+      }
+    }
+
+    const admins = [];
+    for (const id of adminIds) {
+      const profile = id === inChargeProfile.id ? inChargeProfile : await assertAdminUser(id);
+      admins.push({ id: profile.id, name: profile.name, email: profile.email });
+    }
+
+    dataToUpdate.admins = admins;
+    dataToUpdate.adminInCharge = inChargeProfile.id;
+    dataToUpdate.adminInChargeName = inChargeProfile.name;
+    if (!existing.leader && !updates.leader) dataToUpdate.leader = inChargeProfile.name;
+
+    delete dataToUpdate.inChargeId;
   }
 
   await docRef.set(dataToUpdate, { merge: true });
@@ -412,6 +555,14 @@ async function joinTrip(tripId, userId, userData = {}) {
   const tripData = tripDoc.data();
   const rosterRef = tripRef.collection("roster").doc(userId);
   const now = new Date();
+  const baseCount = Number(tripData.baseRosterCount) || 0;
+  const maxRoster = Number(tripData.maxRoster) || 25;
+
+  // Capacity check (base roster counts mocked/demo members for demo trips).
+  const existingApproved = await tripRef.collection("roster").where("status", "==", "approved").get();
+  if (baseCount + existingApproved.size >= maxRoster) {
+    return { error: "This expedition is full — all slots have been taken." };
+  }
 
   const rosterEntry = {
     userId,
@@ -445,12 +596,12 @@ async function joinTrip(tripId, userId, userData = {}) {
 
   // Count approved members for public roster count
   const approvedSnap = await tripRef.collection("roster").where("status", "==", "approved").get();
-  await tripRef.update({ rosterCount: approvedSnap.size });
+  await tripRef.update({ rosterCount: (Number(tripDoc.data()?.baseRosterCount) || 0) + approvedSnap.size });
 
   return {
     success: true,
     status: "pending_approval",
-    trip: { id: tripDoc.id, ...tripData, rosterCount: approvedSnap.size },
+    trip: { id: tripDoc.id, ...tripData, rosterCount: baseCount + existingApproved.size },
     rosterEntry,
   };
 }
@@ -461,7 +612,7 @@ async function leaveTrip(tripId, userId) {
   if (tripDoc.exists) {
     await tripRef.collection("roster").doc(userId).delete();
     const approvedSnap = await tripRef.collection("roster").where("status", "==", "approved").get();
-    await tripRef.update({ rosterCount: approvedSnap.size });
+    await tripRef.update({ rosterCount: (Number(tripDoc.data()?.baseRosterCount) || 0) + approvedSnap.size });
   }
 
   // Clear active trip from user document in Firestore
@@ -526,7 +677,7 @@ async function approveTripUser(tripId, userId, approvedBy = "admin@margsutra.app
       if (otherDoc.exists) {
         await otherRosterRef.delete();
         const otherApprovedSnap = await tDoc.ref.collection("roster").where("status", "==", "approved").get();
-        await tDoc.ref.update({ rosterCount: otherApprovedSnap.size });
+        await tDoc.ref.update({ rosterCount: (Number(tDoc.data()?.baseRosterCount) || 0) + otherApprovedSnap.size });
       }
     }
   }
@@ -550,13 +701,13 @@ async function approveTripUser(tripId, userId, approvedBy = "admin@margsutra.app
   }, { merge: true });
 
   const approvedSnap = await tripRef.collection("roster").where("status", "==", "approved").get();
-  await tripRef.update({ rosterCount: approvedSnap.size });
+  await tripRef.update({ rosterCount: (Number(tripDoc.data()?.baseRosterCount) || 0) + approvedSnap.size });
 
   return {
     success: true,
     tripId,
     userId,
-    rosterCount: approvedSnap.size,
+    rosterCount: (Number(tripDoc.data()?.baseRosterCount) || 0) + approvedSnap.size,
   };
 }
 
@@ -566,7 +717,7 @@ async function removeTripUser(tripId, userId, removedBy = "admin@margsutra.app")
   if (tripDoc.exists) {
     await tripRef.collection("roster").doc(userId).delete();
     const approvedSnap = await tripRef.collection("roster").where("status", "==", "approved").get();
-    await tripRef.update({ rosterCount: approvedSnap.size });
+    await tripRef.update({ rosterCount: (Number(tripDoc.data()?.baseRosterCount) || 0) + approvedSnap.size });
   }
 
   // Clear active trip from user doc
@@ -722,9 +873,95 @@ async function listSOSEvents(limitCount = 50) {
   }
 }
 
+const DEMO_TRIP_CODE = "RAJM26";
+const DEMO_TRIP_FIELDS = {
+  name: "Rajmachi Fort Night Trek",
+  startDate: "Dec 12, 2026",
+  startTime: "06:30 AM",
+  endDate: "Dec 13, 2026",
+  endTime: "05:00 PM",
+  duration: "2 Days / 1 Night",
+  location: "Rajmachi Fort, Lonavala",
+  elevation: "826m ASL",
+  difficulty: "Moderate · 14 km trail circuit",
+  pickupLocation: "Lonavala Railway Station, Platform 1 exit",
+  baseLocation: "Udhewadi Base Village Camp",
+  instructions:
+    "Report at Lonavala station by 06:00 AM. Carry a valid photo ID for the forest checkpoint. " +
+    "Follow the trek lead at all times and stay within the marked corridor. Night navigation " +
+    "sections require a headlamp — no phone flashlights. Camp is dry: no alcohol or open fires.",
+  gearList: [
+    "Trekking shoes with grip",
+    "2L water minimum",
+    "Headlamp + spare batteries",
+    "Rain shell / poncho",
+    "Warm layer for the night",
+    "Personal medication + ID",
+  ],
+  notes: "1 slot left. Confirmation and payment are handled by the Margsutra team over WhatsApp.",
+  maxRoster: 6,
+  baseRosterCount: 5,
+  demoRoster: true,
+};
+
+async function seedDemoTrip() {
+  const existing = await db.collection("trips").where("code", "==", DEMO_TRIP_CODE).limit(1).get();
+
+  const adminSnap = await db.collection("users").where("email", "==", "admin@margsutra.app").limit(1).get();
+  if (adminSnap.empty) {
+    console.warn("⚠️  Skipping demo trip seed — no admin@margsutra.app account found.");
+    return { created: false, skipped: true };
+  }
+  const adminDoc = adminSnap.docs[0];
+  const adminProfile = { id: adminDoc.id, name: adminDoc.data().name || "Super Admin", email: adminDoc.data().email || "" };
+
+  if (!existing.empty) {
+    const doc = existing.docs[0];
+    const data = doc.data();
+    // Already upgraded (or created by this seed): never overwrite live edits.
+    if (data.demoRoster === true) return { created: false, id: doc.id };
+
+    const approvedSnap = await doc.ref.collection("roster").where("status", "==", "approved").get();
+    const admins = Array.isArray(data.admins) && data.admins.length ? data.admins : [adminProfile];
+
+    await doc.ref.set({
+      demoRoster: true,
+      baseRosterCount: 5,
+      maxRoster: 6,
+      rosterCount: 5 + approvedSnap.size,
+      adminInCharge: data.adminInCharge || adminProfile.id,
+      adminInChargeName: data.adminInChargeName || adminProfile.name,
+      admins,
+      createdBy: data.createdBy || adminProfile.id,
+      instructions: data.instructions || DEMO_TRIP_FIELDS.instructions,
+      gearList: Array.isArray(data.gearList) && data.gearList.length ? data.gearList : DEMO_TRIP_FIELDS.gearList,
+      notes: data.notes || DEMO_TRIP_FIELDS.notes,
+      updatedAt: new Date(),
+    }, { merge: true });
+
+    console.log(`🌱 Upgraded existing ${DEMO_TRIP_CODE} to the Rajmachi demo expedition`);
+    return { created: false, upgraded: true, id: doc.id };
+  }
+
+  const trip = await createTrip({
+    ...DEMO_TRIP_FIELDS,
+    code: DEMO_TRIP_CODE,
+    createdBy: adminProfile.id,
+    adminInCharge: adminProfile.id,
+    status: "upcoming",
+    lat: 18.8286,
+    lon: 73.3986,
+    geofence: { lat: 18.8286, lon: 73.3986, radius: 2500, zoneName: "Rajmachi Safe Trek Corridor" },
+  });
+
+  console.log(`🌱 Seeded demo expedition "${trip.name}" (${trip.code})`);
+  return { created: true, id: trip.id };
+}
+
 module.exports = {
   db,
   toSafeProfile,
+  HttpError,
   findUserByEmail,
   findUserById,
   createUser,
@@ -735,6 +972,7 @@ module.exports = {
   listTrips,
   findTripByCode,
   createTrip,
+  seedDemoTrip,
   deleteTrip,
   setActiveManagedTrip,
   updateTrip,

@@ -408,6 +408,12 @@ export const createTrip = async (nameOrData, dateArg, locationArg) => {
     status: (isObj && nameOrData.status) || "upcoming",
     rosterCount: (isObj && Number(nameOrData.rosterCount)) || 0,
     maxRoster: (isObj && Number(nameOrData.maxRoster)) || 25,
+    instructions: (isObj && nameOrData.instructions) || "",
+    gearList: (isObj && nameOrData.gearList) || [],
+    notes: (isObj && nameOrData.notes) || "",
+    admins: (isObj && nameOrData.admins) || [],
+    adminInCharge: (isObj && nameOrData.adminInCharge) || null,
+    createdBy: (isObj && nameOrData.createdBy) || null,
     lat: (isObj && Number(nameOrData.lat)) || 18.8286,
     lon: (isObj && Number(nameOrData.lon)) || 73.3986,
     geofence: {
@@ -431,6 +437,11 @@ export const createTrip = async (nameOrData, dateArg, locationArg) => {
       const data = await res.json();
       return { success: true, id: data.trip?.id, code: data.trip?.code || code, trip: data.trip };
     }
+    // A validation / invariant rejection (4xx) must surface to the admin.
+    if (res.status >= 400 && res.status < 500) {
+      const data = await res.json().catch(() => ({}));
+      return { success: false, error: data.error || `Request rejected (${res.status}).` };
+    }
   } catch {}
 
   // 2. Direct Firestore fallback
@@ -453,6 +464,10 @@ export const updateTrip = async (tripId, updates = {}) => {
     if (res.ok) {
       const data = await res.json();
       return { success: true, trip: data.trip };
+    }
+    if (res.status >= 400 && res.status < 500) {
+      const data = await res.json().catch(() => ({}));
+      return { success: false, error: data.error || `Request rejected (${res.status}).` };
     }
   } catch {}
 

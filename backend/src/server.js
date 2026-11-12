@@ -21,6 +21,8 @@ const {
   listTrips,
   findTripByCode,
   createTrip,
+  seedDemoTrip,
+  HttpError,
   deleteTrip,
   setActiveManagedTrip,
   updateTrip,
@@ -130,13 +132,18 @@ app.get("/api/trips", async (_req, res) => {
 
 app.post("/api/trips", optionalAuth, async (req, res) => {
   try {
-    const tripData = req.body || {};
+    const tripData = { ...(req.body || {}) };
     if (!tripData.name) {
       return res.status(400).json({ error: "Expedition name is required." });
     }
+    if (!tripData.createdBy) tripData.createdBy = req.userId || tripData.adminInCharge || null;
+    if (!tripData.adminInCharge) tripData.adminInCharge = tripData.createdBy;
     const newTrip = await createTrip(tripData);
     res.status(201).json({ success: true, trip: newTrip });
   } catch (error) {
+    if (error instanceof HttpError || typeof error?.status === "number") {
+      return res.status(error.status || 400).json({ error: error.message });
+    }
     console.error("Create trip error:", error);
     res.status(500).json({ error: "Failed to create expedition." });
   }
@@ -148,6 +155,9 @@ app.patch("/api/trips/:tripId", optionalAuth, async (req, res) => {
     if (!updated) return res.status(404).json({ error: "Expedition not found." });
     res.json({ success: true, trip: updated });
   } catch (error) {
+    if (error instanceof HttpError || typeof error?.status === "number") {
+      return res.status(error.status || 400).json({ error: error.message });
+    }
     console.error("Update trip error:", error);
     res.status(500).json({ error: "Failed to update expedition." });
   }
@@ -159,6 +169,9 @@ app.put("/api/trips/:tripId", optionalAuth, async (req, res) => {
     if (!updated) return res.status(404).json({ error: "Expedition not found." });
     res.json({ success: true, trip: updated });
   } catch (error) {
+    if (error instanceof HttpError || typeof error?.status === "number") {
+      return res.status(error.status || 400).json({ error: error.message });
+    }
     console.error("Update trip error:", error);
     res.status(500).json({ error: "Failed to update expedition." });
   }
@@ -882,18 +895,24 @@ app.delete("/api/users/:id/devices/:deviceId", requireSelf, async (req, res) => 
 
 async function bootstrap() {
   try {
-    // Verify Firestore connection
+    // Verify Firestore connection (non-fatal: the API still starts and
+    // individual routes report their own errors if Firestore is unavailable).
     await db.collection("users").limit(1).get();
     console.log("✅ Firebase Firestore connected successfully");
 
-    app.listen(PORT, () => {
-      console.log(`🚀 Margsutra backend listening on http://localhost:${PORT}`);
-      console.log(`   CORS origins: ${CORS_ORIGIN.join(", ")}`);
-    });
+    try {
+      await seedDemoTrip();
+    } catch (seedError) {
+      console.warn("⚠️  Demo trip seed skipped:", seedError?.message || seedError);
+    }
   } catch (error) {
-    console.error("❌ Failed to start backend", error);
-    process.exit(1);
+    console.warn("⚠️  Firestore probe failed:", error?.message || error);
   }
+
+  app.listen(PORT, () => {
+    console.log(`🚀 Margsutra backend listening on http://localhost:${PORT}`);
+    console.log(`   CORS origins: ${CORS_ORIGIN.join(", ")}`);
+  });
 }
 
 bootstrap();

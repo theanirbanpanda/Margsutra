@@ -63,14 +63,14 @@ export const fetchUserActiveTrip = async (userId) => {
   if (!userId) return null;
   try {
     const res = await fetch(`http://localhost:5050/api/users/${userId}/active-trip`);
-    if (res.ok) {
-      const data = await res.json();
-      return data.activeTrip || null;
-    }
+    if (!res.ok) return undefined; // transient failure — don't clear local state
+    const data = await res.json();
+    if (data && data.success) return data.activeTrip || null;
+    return undefined;
   } catch (err) {
     console.warn("fetchUserActiveTrip error:", err);
+    return undefined;
   }
-  return null;
 };
 
 export const subscribeToUserActiveTrip = (userId, callback) => {
@@ -97,7 +97,7 @@ export const subscribeToUserActiveTrip = (userId, callback) => {
   pullActiveTrip();
 
   // Fast polling every 2 seconds so admin approval/removal reflects in real time!
-  const pollTimer = setInterval(pullActiveTrip, 2000);
+  const pollTimer = setInterval(pullActiveTrip, 10000);
 
   // Also listen for browser tab focus/visibility
   const onFocus = () => pullActiveTrip();

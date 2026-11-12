@@ -245,7 +245,7 @@ const Btn = ({ children, onClick, variant="default", disabled=false, type="butto
   );
 };
 const PageHeader = ({ title, sub, right }) => (
-  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:22}}>
+  <div className="page-header" style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:22}}>
     <div>
       <h1 style={{fontSize:20,fontWeight:600,color:C.text,margin:0}}>{title}</h1>
       {sub&&<div style={{fontSize:12,color:C.muted,marginTop:3}}>{sub}</div>}
@@ -2353,141 +2353,213 @@ const FALLBACK_TRIPS = [
 ];
 
 const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) => {
-  const [code, setCode] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const [availableTrips, setAvailableTrips] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [submittingId, setSubmittingId] = useState(null);
   const [localErr, setLocalErr] = useState("");
-  const [availableTrips, setAvailableTrips] = useState(FALLBACK_TRIPS);
   const [confirmLeave, setConfirmLeave] = useState(false);
+  const [openInfoId, setOpenInfoId] = useState(null);
 
+  const joinedId = joinedTrip?.id || joinedTrip?.tripId;
   const isPending = joinedTrip?.tripStatus === "pending_approval";
-  const isApproved = joinedTrip && joinedTrip?.tripStatus !== "pending_approval";
+  const isApproved = !!joinedTrip && !isPending;
+
+  const loadTrips = async () => {
+    setLoadError("");
+    try {
+      const res = await fetch(`${AUTH_API_URL}/trips`);
+      if (!res.ok) throw new Error(`Server responded ${res.status}`);
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : (data.trips || []);
+      setAvailableTrips(list.filter((t) => (t.status || "upcoming") !== "cancelled"));
+    } catch (e) {
+      setLoadError("Could not load expeditions right now. Check your connection and retry.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
+    loadTrips();
     const unsub = subscribeToTrips((trips) => {
       if (trips && trips.length > 0) {
-        setAvailableTrips(trips);
+        setAvailableTrips(trips.filter((t) => (t.status || "upcoming") !== "cancelled"));
+        setLoading(false);
       }
     });
-    return () => unsub?.();
+    const onFocus = () => loadTrips();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      unsub?.();
+      window.removeEventListener("focus", onFocus);
+    };
   }, []);
 
-  const handleCodeSubmit = async (e) => {
-    e?.preventDefault();
+  const handleJoinTrip = async (trip) => {
     setLocalErr("");
     if (joinedTrip) {
-      setLocalErr("You are already enrolled in an expedition. Leave your current expedition before applying to another.");
+      setLocalErr("You are already part of an expedition. Leave it before joining another.");
       return;
     }
-    const cleanCode = code.trim().toUpperCase();
-    if (!cleanCode) {
-      setLocalErr("Please enter a valid expedition code (e.g. RAJM26).");
-      return;
-    }
-    setSubmitting(true);
-    const ok = await onJoin(cleanCode);
-    setSubmitting(false);
+    setSubmittingId(trip.id || trip.tripId);
+    const ok = await onJoin(trip);
+    setSubmittingId(null);
     if (!ok) {
-      setLocalErr("No active expedition matches that code. Please check with your organizer.");
+      setLocalErr("Your join request could not be sent. Please try again.");
     }
   };
 
-  const handleCardJoin = async (trip) => {
-    setLocalErr("");
-    if (joinedTrip && (joinedTrip.id === trip.id || joinedTrip.code === trip.code)) {
-      onNavigate?.("dashboard");
-      return;
+  const isFull = (t) => Number(t.maxRoster) > 0 && Number(t.rosterCount || 0) >= Number(t.maxRoster);
+
+  const renderJoinButton = (trip) => {
+    const tripId = trip.id || trip.tripId;
+    const mine = joinedId && (joinedId === tripId || joinedTrip?.code === trip.code);
+
+    if (mine && isPending) {
+      return (
+        <span style={{ padding: "8px 14px", borderRadius: 8, background: "rgba(245,158,11,0.14)", border: "1px solid rgba(245,158,11,0.35)", color: "#fbbf24", fontSize: 12, fontWeight: 700 }}>
+          ⏳ Request pending
+        </span>
+      );
+    }
+    if (mine && isApproved) {
+      return (
+        <span style={{ padding: "8px 14px", borderRadius: 8, background: "rgba(34,197,94,0.14)", border: "1px solid rgba(34,197,94,0.35)", color: "#86efac", fontSize: 12, fontWeight: 700 }}>
+          ✓ You're in
+        </span>
+      );
     }
     if (joinedTrip) {
-      setLocalErr("You are already enrolled in an expedition. Leave your current expedition before applying to another.");
-      return;
+      return (
+        <span title="Leave your current expedition to join another" style={{ padding: "8px 14px", borderRadius: 8, background: "rgba(255,255,255,0.03)", border: `1px solid ${C.border}`, color: C.muted2, fontSize: 11.5, fontWeight: 600, cursor: "not-allowed" }}>
+          🔒 Locked
+        </span>
+      );
     }
-    setSubmitting(true);
-    await onJoin(trip);
-    setSubmitting(false);
+    if (isFull(trip)) {
+      return (
+        <span style={{ padding: "8px 14px", borderRadius: 8, background: "rgba(255,255,255,0.03)", border: `1px solid ${C.border}`, color: C.muted2, fontSize: 11.5, fontWeight: 600 }}>
+          Roster full
+        </span>
+      );
+    }
+    return (
+      <Btn
+        variant="primary"
+        disabled={submittingId === tripId}
+        onClick={() => handleJoinTrip(trip)}
+        style={{ padding: "8px 18px", fontSize: 12.5 }}
+      >
+        {submittingId === tripId ? "Sending request…" : "Join expedition"}
+      </Btn>
+    );
   };
 
-  const [showLogistics, setShowLogistics] = useState(false);
+  const InfoBlock = ({ label, value }) => (
+    <div style={{ background: "rgba(255,255,255,0.03)", padding: "9px 12px", borderRadius: 9, border: `1px solid ${C.border}`, minWidth: 0 }}>
+      <div style={{ fontSize: 10, color: C.muted2, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700 }}>{label}</div>
+      <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text, marginTop: 3, overflowWrap: "anywhere" }}>{value}</div>
+    </div>
+  );
 
-  const isCurrentTrip = (t) => joinedTrip && (joinedTrip.id === t.id || joinedTrip.code === t.code || joinedTrip.tripId === t.id);
-
-  // Other available trips excluding the active one to prevent ugly repetition
-  const otherTrips = availableTrips.filter((t) => !isCurrentTrip(t));
+  const TripInfo = ({ trip }) => {
+    const gear = Array.isArray(trip.gearList) ? trip.gearList : [];
+    const hasInfo = trip.instructions || gear.length > 0 || trip.notes;
+    if (!hasInfo) return null;
+    return (
+      <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.border}`, display: "flex", flexDirection: "column", gap: 10 }}>
+        {trip.instructions && (
+          <div>
+            <div style={{ fontSize: 10, color: C.muted2, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700, marginBottom: 3 }}>Instructions</div>
+            <div style={{ fontSize: 12, color: C.text, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{trip.instructions}</div>
+          </div>
+        )}
+        {gear.length > 0 && (
+          <div>
+            <div style={{ fontSize: 10, color: C.muted2, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700, marginBottom: 5 }}>Things to carry</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+              {gear.map((g, i) => (
+                <span key={`${g}-${i}`} style={{ fontSize: 11, padding: "3px 9px", borderRadius: 20, background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.22)", color: "#93c5fd" }}>{g}</span>
+              ))}
+            </div>
+          </div>
+        )}
+        {trip.notes && (
+          <div>
+            <div style={{ fontSize: 10, color: C.muted2, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700, marginBottom: 3 }}>Notes</div>
+            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{trip.notes}</div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto" }}>
       <PageHeader
-        title="Expeditions & Treks"
-        sub="Field expedition management and upcoming mountain departures"
+        title="Expeditions & Trips"
+        sub="Trips are published by the Margsutra team. Send a join request and you'll be enrolled once an admin approves it."
         right={
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <Pill color={isApproved ? "green" : isPending ? "amber" : "gray"}>
-              {isApproved ? `● Enrolled: ${joinedTrip.code}` : isPending ? `⏳ Pending: ${joinedTrip.code}` : "Not Enrolled"}
-            </Pill>
-            <Pill color="blue">{availableTrips.length} Active Expeditions</Pill>
-          </div>
+          <Pill color={isApproved ? "green" : isPending ? "amber" : "gray"}>
+            {isApproved ? "● Enrolled" : isPending ? "⏳ Approval pending" : "Not enrolled"}
+          </Pill>
         }
       />
 
-      {/* ── SECTION 1: ACTIVE ENROLLED EXPEDITION ─────────────────────────── */}
+      {(localErr || error) && (
+        <div style={{ marginBottom: 14, color: "#fca5a5", fontSize: 12, background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", padding: "9px 14px", borderRadius: 9 }}>
+          ⚠️ {localErr || error}
+        </div>
+      )}
+
+      {/* ── Your current expedition ─────────────────────────────────────── */}
       {joinedTrip && (
-        <div style={{ marginBottom: 28 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>
-            Your Active Expedition
+        <div style={{ marginBottom: 26 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>
+            Your expedition
           </div>
 
           <div
             style={{
-              background: "linear-gradient(145deg, rgba(16, 185, 129, 0.1) 0%, rgba(11, 20, 34, 0.98) 100%)",
-              border: isPending ? "1px solid rgba(245, 158, 11, 0.45)" : "1px solid rgba(16, 185, 129, 0.35)",
               borderRadius: 16,
-              padding: "24px 28px",
-              boxShadow: "0 12px 35px rgba(0, 0, 0, 0.45)",
+              padding: "20px 22px",
+              background: isPending
+                ? "linear-gradient(150deg, rgba(245,158,11,0.12), rgba(11,20,34,0.98))"
+                : "linear-gradient(150deg, rgba(34,197,94,0.1), rgba(11,20,34,0.98))",
+              border: `1px solid ${isPending ? "rgba(245,158,11,0.4)" : "rgba(34,197,94,0.32)"}`,
+              boxShadow: "0 12px 32px rgba(0,0,0,0.4)",
             }}
           >
-            {/* Header row */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16, marginBottom: 16 }}>
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-                  <Pill color={isPending ? "amber" : "green"}>
-                    {isPending ? "⏳ APPLICATION PENDING APPROVAL" : "● IN-FIELD EXPEDITION ACTIVE"}
-                  </Pill>
-                  <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 9px", borderRadius: 6, background: "rgba(59, 130, 246, 0.2)", border: "1px solid rgba(59, 130, 246, 0.4)", color: "#60a5fa" }}>
-                    {joinedTrip.code}
-                  </span>
-                  <span style={{ fontSize: 12, color: "#34d399", fontWeight: 600 }}>
-                    {joinedTrip.difficulty || "Moderate (14 km Trail Circuit)"}
-                  </span>
-                </div>
-
-                <div style={{ fontSize: 24, fontWeight: 800, color: C.text, letterSpacing: "-0.01em" }}>
-                  {joinedTrip.name}
-                </div>
-                <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>
-                  📍 {joinedTrip.location} · 🏔️ {joinedTrip.elevation || "829m ASL"}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 14, flexWrap: "wrap", marginBottom: 14 }}>
+              <div style={{ minWidth: 0 }}>
+                <Pill color={isPending ? "amber" : "green"}>
+                  {isPending ? "⏳ Request sent — awaiting admin approval" : "● Enrolled — admin approved"}
+                </Pill>
+                <div style={{ fontSize: 21, fontWeight: 800, color: C.text, marginTop: 8, lineHeight: 1.3 }}>{joinedTrip.name}</div>
+                <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4 }}>
+                  📍 {joinedTrip.location || "Location TBD"}
+                  {joinedTrip.startDate ? ` · 📅 ${joinedTrip.startDate}` : ""}
+                  {joinedTrip.duration ? ` · ${joinedTrip.duration}` : ""}
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <Btn variant="primary" onClick={() => onNavigate("dashboard")} style={{ padding: "10px 20px", fontSize: 13 }}>
-                  Go to Live Dashboard →
-                </Btn>
-                <Btn onClick={() => onNavigate("live-tracking")} style={{ padding: "10px 18px", fontSize: 13 }}>
-                  View Trail Map
-                </Btn>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                {isApproved && (
+                  <Btn variant="primary" onClick={() => onNavigate?.("dashboard")} style={{ padding: "9px 16px", fontSize: 12.5 }}>
+                    Go to dashboard →
+                  </Btn>
+                )}
                 {confirmLeave ? (
-                  <div style={{ display: "flex", gap: 6, alignItems: "center", background: "rgba(239, 68, 68, 0.15)", padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(239, 68, 68, 0.4)" }}>
-                    <span style={{ fontSize: 12, color: "#fca5a5" }}>{isPending ? "Cancel request?" : "Leave trek?"}</span>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", background: "rgba(239,68,68,0.12)", padding: "5px 9px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.35)", flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 11.5, color: "#fca5a5" }}>{isPending ? "Cancel request?" : "Leave this trip?"}</span>
                     <button
                       onClick={() => { setConfirmLeave(false); onLeave?.(); }}
-                      style={{ background: "#ef4444", color: "#fff", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}
+                      style={{ background: "#ef4444", color: "#fff", border: "none", borderRadius: 6, padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
                     >
-                      {isPending ? "Yes, Cancel" : "Yes, Leave"}
+                      {isPending ? "Yes, cancel" : "Yes, leave"}
                     </button>
-                    <button
-                      onClick={() => setConfirmLeave(false)}
-                      style={{ background: "transparent", color: C.muted, border: "none", padding: "5px 8px", fontSize: 11.5, cursor: "pointer" }}
-                    >
+                    <button onClick={() => setConfirmLeave(false)} style={{ background: "transparent", color: C.muted, border: "none", padding: "4px 6px", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>
                       Back
                     </button>
                   </div>
@@ -2495,267 +2567,135 @@ const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) 
                   <button
                     type="button"
                     onClick={() => setConfirmLeave(true)}
-                    style={{
-                      background: "transparent",
-                      border: "1px solid rgba(239, 68, 68, 0.35)",
-                      borderRadius: 8,
-                      color: "#fca5a5",
-                      fontSize: 12.5,
-                      padding: "8px 14px",
-                      cursor: "pointer",
-                      fontFamily: "inherit",
-                    }}
+                    style={{ background: "transparent", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 8, color: "#fca5a5", fontSize: 12, padding: "8px 13px", cursor: "pointer", fontFamily: "inherit" }}
                   >
-                    {isPending ? "✕ Cancel Request" : "✕ Leave Expedition"}
+                    {isPending ? "✕ Cancel request" : "✕ Leave expedition"}
                   </button>
                 )}
               </div>
             </div>
 
-            {/* Key Telemetry Metrics */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10, marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
-              <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "10px 14px", borderRadius: 10, border: `1px solid ${C.border}` }}>
-                <div style={{ fontSize: 10.5, color: C.muted2, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700 }}>SCHEDULE &amp; DURATION</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginTop: 3 }}>
-                  {joinedTrip.startDate || joinedTrip.date} {joinedTrip.duration ? `(${joinedTrip.duration})` : ""}
+            {isPending ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "12px 14px", borderRadius: 10, background: "rgba(0,0,0,0.22)", border: "1px solid rgba(245,158,11,0.22)" }}>
+                <div style={{ fontSize: 12, color: "#fcd34d", fontWeight: 600 }}>
+                  Your request is in the admin queue.
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 11, color: C.muted }}>
+                  <span>1 · Request sent ✓</span>
+                  <span>2 · Admin review (now)</span>
+                  <span>3 · Enrolled</span>
+                </div>
+                <div style={{ fontSize: 11, color: C.muted2, lineHeight: 1.55 }}>
+                  This page updates automatically when an admin approves or declines. You can cancel the request any time.
                 </div>
               </div>
-
-              <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "10px 14px", borderRadius: 10, border: `1px solid ${C.border}` }}>
-                <div style={{ fontSize: 10.5, color: C.muted2, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700 }}>EXPEDITION BASE CAMP</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginTop: 3 }}>
-                  {joinedTrip.baseLocation || "Udhewadi Base Camp (829m ASL)"}
-                </div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
+                <InfoBlock label="Dates" value={`${joinedTrip.startDate || joinedTrip.date || "TBD"}${joinedTrip.endDate ? ` – ${joinedTrip.endDate}` : ""}`} />
+                <InfoBlock label="Pickup" value={joinedTrip.pickupLocation || "Shared by admin"} />
+                <InfoBlock label="Base / camp" value={joinedTrip.baseLocation || "Shared by admin"} />
+                <InfoBlock label="Admin in charge" value={joinedTrip.adminInChargeName || joinedTrip.leader || "Margsutra team"} />
               </div>
+            )}
 
-              <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "10px 14px", borderRadius: 10, border: `1px solid ${C.border}` }}>
-                <div style={{ fontSize: 10.5, color: C.muted2, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700 }}>FIELD GUIDE &amp; LEADER</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginTop: 3 }}>
-                  🧭 {joinedTrip.leader || "Field Guide Ajay Saini"}
-                </div>
-              </div>
-
-              <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "10px 14px", borderRadius: 10, border: `1px solid ${C.border}` }}>
-                <div style={{ fontSize: 10.5, color: C.muted2, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700 }}>WALKIE-TALKIE CHANNEL</div>
-                <div style={{ fontSize: 13, fontWeight: 800, color: "#fbbf24", marginTop: 3 }}>
-                  📻 {joinedTrip.vhfChannel || joinedTrip.emergencyFrequency || "145.500 MHz (VHF Ch 1)"}
-                </div>
-              </div>
-            </div>
-
-            {/* Collapsible logistics drawer */}
-            <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
-              <button
-                onClick={() => setShowLogistics((prev) => !prev)}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: C.accent,
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: 0,
-                  fontFamily: "inherit",
-                }}
-              >
-                <span>{showLogistics ? "▲ Hide Detailed Logistics & SAR Protocol" : "▼ View Assembly Point, Corridor Geofence & SAR Units"}</span>
-              </button>
-
-              {showLogistics && (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12, marginTop: 12, padding: "14px 16px", background: "rgba(255, 255, 255, 0.02)", borderRadius: 10 }}>
-                  <div>
-                    <div style={{ fontSize: 11, color: C.muted2, fontWeight: 700 }}>ASSEMBLY &amp; PICKUP POINT</div>
-                    <div style={{ fontSize: 12.5, color: C.text, marginTop: 2 }}>{joinedTrip.pickupLocation || "Lonavala Railway Station (Exit Gate 1)"}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 11, color: C.muted2, fontWeight: 700 }}>SAFETY CORRIDOR GEOFENCE</div>
-                    <div style={{ fontSize: 12.5, color: "#34d399", fontWeight: 600, marginTop: 2 }}>
-                      🔒 {joinedTrip.geofence?.radius ? (joinedTrip.geofence.radius / 1000).toFixed(1) + " km Safe Corridor (Locked by Admin)" : "2.5 km Locked Corridor"}
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 11, color: C.muted2, fontWeight: 700 }}>SEARCH &amp; RESCUE UNIT</div>
-                    <div style={{ fontSize: 12.5, color: C.text, marginTop: 2 }}>{joinedTrip.rescueUnit || "Team Alpha (Lonavala Mountain SAR)"}</div>
-                  </div>
-                </div>
-              )}
-            </div>
+            <TripInfo trip={joinedTrip} />
           </div>
         </div>
       )}
 
-      {/* ── SECTION 2: JOIN WITH CODE (ONLY PROMINENT IF NOT ENROLLED) ────── */}
-      {!joinedTrip && (
-        <Card style={{ marginBottom: 28, background: "linear-gradient(145deg, rgba(59, 130, 246, 0.12) 0%, rgba(11, 20, 34, 0.95) 100%)", borderColor: "rgba(59, 130, 246, 0.35)", padding: "28px" }}>
-          <div style={{ maxWidth: 560, margin: "0 auto", textAlign: "center" }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>🔑</div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: C.text, marginBottom: 6 }}>
-              Have an Expedition Join Code?
-            </div>
-            <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5, marginBottom: 20 }}>
-              Enter the unique 6-character code provided by your trek organizer (e.g. <strong>RAJM26</strong> or <strong>HAR26</strong>) to register and link live telemetry.
-            </div>
-
-            <form onSubmit={handleCodeSubmit} style={{ display: "flex", gap: 10, justifyContent: "center", maxWidth: 420, margin: "0 auto" }}>
-              <input
-                type="text"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="e.g. RAJM26"
-                maxLength={8}
-                style={{
-                  flex: 1,
-                  height: 44,
-                  background: "rgba(255, 255, 255, 0.06)",
-                  border: `1px solid ${C.border2}`,
-                  borderRadius: 10,
-                  color: "#fff",
-                  fontSize: 16,
-                  letterSpacing: 2,
-                  textAlign: "center",
-                  padding: "0 14px",
-                  fontFamily: "inherit",
-                  outline: "none",
-                  textTransform: "uppercase",
-                  fontWeight: 700,
-                }}
-              />
-              <button
-                type="submit"
-                disabled={submitting}
-                style={{
-                  padding: "0 22px",
-                  height: 44,
-                  background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
-                  border: "none",
-                  borderRadius: 10,
-                  color: "#ffffff",
-                  fontSize: 13.5,
-                  fontWeight: 700,
-                  cursor: submitting ? "not-allowed" : "pointer",
-                  fontFamily: "inherit",
-                  boxShadow: "0 4px 14px rgba(37, 99, 235, 0.35)",
-                }}
-              >
-                {submitting ? "Verifying..." : "Join Expedition →"}
-              </button>
-            </form>
-
-            {(localErr || error) && (
-              <div style={{ marginTop: 12, color: "#fca5a5", fontSize: 12, background: "rgba(239, 68, 68, 0.15)", padding: "8px 14px", borderRadius: 8, display: "inline-block" }}>
-                ⚠️ {localErr || error}
-              </div>
-            )}
+      {/* ── Available expeditions ───────────────────────────────────────── */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>Available expeditions</div>
+          <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
+            {joinedTrip ? "Other trips stay visible but are locked until you leave your current one." : "Pick a trip and send a join request."}
           </div>
+        </div>
+        <button onClick={loadTrips} style={{ background: "transparent", border: "none", color: C.accent, fontSize: 11.5, cursor: "pointer", fontFamily: "inherit" }}>
+          ↻ Refresh
+        </button>
+      </div>
+
+      {loadError && availableTrips.length === 0 && (
+        <Card style={{ marginBottom: 12, borderColor: "rgba(245,158,11,0.3)" }}>
+          <div style={{ fontSize: 12.5, color: "#fcd34d" }}>⚠️ {loadError}</div>
         </Card>
       )}
 
-      {/* ── SECTION 3: EXPLORE UPCOMING EXPEDITIONS ───────────────────────── */}
-      <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: C.text }}>
-              {joinedTrip ? "Other Scheduled Expeditions" : "Explore Upcoming Expeditions"}
-            </div>
-            <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>
-              {joinedTrip
-                ? "Browse upcoming departures across the Western Ghats (Single active trek policy applies)"
-                : "Select an expedition to review itinerary and request enrollment"}
-            </div>
-          </div>
-        </div>
+      {loading ? (
+        <Card style={{ textAlign: "center", padding: 30, color: C.muted, fontSize: 12.5 }}>Loading expeditions…</Card>
+      ) : availableTrips.length === 0 ? (
+        <Card style={{ textAlign: "center", padding: "34px 20px" }}>
+          <div style={{ fontSize: 26, marginBottom: 6 }}>🏔️</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>No expeditions are open right now</div>
+          <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>New departures published by the Margsutra team will appear here.</div>
+        </Card>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 14 }}>
+          {availableTrips.map((trip) => {
+            const tripId = trip.id || trip.tripId;
+            const mine = joinedId && (joinedId === tripId || joinedTrip?.code === trip.code);
+            const locked = !!joinedTrip && !mine;
+            const infoOpen = openInfoId === tripId;
+            const filled = Number(trip.rosterCount || 0);
+            const max = Number(trip.maxRoster) || 0;
+            const full = max > 0 && filled >= max;
+            const hasInfo = trip.instructions || (Array.isArray(trip.gearList) && trip.gearList.length) || trip.notes;
 
-        {joinedTrip && (
-          <div style={{ padding: "10px 16px", borderRadius: 10, background: "rgba(59, 130, 246, 0.06)", border: `1px solid ${C.border}`, fontSize: 12, color: C.muted, marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
-            <span>ℹ️</span>
-            <span>You are currently enrolled in <strong>{joinedTrip.name}</strong>. To register for a different expedition, please leave your active trek first.</span>
-          </div>
-        )}
-
-        {otherTrips.length === 0 ? (
-          <Card style={{ textAlign: "center", padding: "36px", color: C.muted }}>
-            <div>🏔️</div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginTop: 8 }}>No Other Expeditions Currently Listed</div>
-            <div style={{ fontSize: 12, marginTop: 4 }}>You are enrolled in the sole active expedition for this weekend batch.</div>
-          </Card>
-        ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", gap: 16 }}>
-            {otherTrips.map((t) => (
+            return (
               <Card
-                key={t.id || t.code}
+                key={tripId || trip.code}
                 style={{
-                  background: "rgba(11, 20, 34, 0.95)",
-                  border: `1px solid ${C.border}`,
                   display: "flex",
                   flexDirection: "column",
                   justifyContent: "space-between",
-                  opacity: joinedTrip ? 0.75 : 1,
-                  transition: "all 0.2s ease",
+                  padding: "15px 16px",
+                  opacity: locked ? 0.55 : 1,
+                  borderColor: mine ? (isPending ? "rgba(245,158,11,0.35)" : "rgba(34,197,94,0.3)") : C.border,
                 }}
               >
                 <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ background: "rgba(59, 130, 246, 0.15)", border: "1px solid rgba(59, 130, 246, 0.3)", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700, color: "#60a5fa" }}>
-                        {t.code}
-                      </span>
-                      <Pill color={t.difficulty === "Challenging" ? "red" : "amber"}>
-                        {t.difficulty || "Moderate"}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <Pill color={trip.difficulty && /challeng/i.test(trip.difficulty) ? "red" : "amber"}>
+                        {trip.difficulty || "Moderate"}
                       </Pill>
+                      {mine && <Pill color={isPending ? "amber" : "green"}>{isPending ? "requested" : "joined"}</Pill>}
+                      {full && !mine && <Pill color="red">full</Pill>}
                     </div>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: C.muted }}>
-                      🏔️ {t.elevation || "1,424m ASL"}
-                    </span>
+                    <span style={{ fontSize: 11, color: C.muted2, whiteSpace: "nowrap" }}>🏔 {trip.elevation || "—"}</span>
                   </div>
 
-                  <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 6 }}>
-                    {t.name}
-                  </div>
-                  <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>
-                    📍 {t.location}
+                  <div style={{ fontSize: 15.5, fontWeight: 700, color: C.text, lineHeight: 1.35 }}>{trip.name}</div>
+                  <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>📍 {trip.location || "Location TBD"}</div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 10, fontSize: 11.5, color: C.muted }}>
+                    <div>📅 {trip.startDate || "Date TBD"}</div>
+                    <div>⏱ {trip.duration || "—"}</div>
+                    <div>🧭 {trip.adminInChargeName || trip.leader || "Margsutra team"}</div>
+                    <div style={{ color: full ? "#fca5a5" : C.text }}>👥 {filled} / {max || "∞"} {max ? "slots" : ""}</div>
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "10px 12px", background: "rgba(255, 255, 255, 0.02)", borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 11.5, color: C.muted, marginBottom: 16 }}>
-                    <div>📅 {t.startDate || t.date}</div>
-                    <div>🏕️ {t.baseLocation || "Khireshwar Base"}</div>
-                    <div>🧭 Guide: {t.leader || "Lead Guide"}</div>
-                    <div>👥 Roster: {t.rosterCount || 0} / {t.maxRoster || 20}</div>
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                  {joinedTrip ? (
+                  {hasInfo && (
                     <button
                       type="button"
-                      disabled={true}
-                      style={{
-                        padding: "8px 16px",
-                        borderRadius: 8,
-                        background: "rgba(255, 255, 255, 0.04)",
-                        border: `1px solid ${C.border}`,
-                        color: "rgba(180, 210, 245, 0.4)",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        cursor: "not-allowed",
-                        fontFamily: "inherit",
-                      }}
+                      onClick={() => setOpenInfoId(infoOpen ? null : tripId)}
+                      style={{ marginTop: 10, background: "transparent", border: "none", color: C.accent, fontSize: 11.5, cursor: "pointer", padding: 0, fontFamily: "inherit" }}
                     >
-                      Enrolled in active trek
+                      {infoOpen ? "▲ Hide details" : "▼ Instructions, gear & notes"}
                     </button>
-                  ) : (
-                    <Btn variant="primary" onClick={() => handleCardJoin(t)} style={{ padding: "8px 18px", fontSize: 12.5 }}>
-                      Apply to Join Expedition →
-                    </Btn>
                   )}
+                  {infoOpen && <TripInfo trip={trip} />}
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+                  {renderJoinButton(trip)}
                 </div>
               </Card>
-            ))}
-          </div>
-        )}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };
@@ -4394,38 +4334,14 @@ export default function UserDashboard() {
     }
   });
 
-  // Real-time synchronization of Active Trip from Firestore & Backend API
+  // Synchronize the user's active trip from the backend. The listener polls
+  // every 10s (and on focus) so admin approvals/removals appear without
+  // hammering Firestore's free-tier read quota.
   useEffect(() => {
     if (!user?.id) return;
 
-    // 1. Backend REST fast sync every 3s (guarantees update even if client rules or network fluctuate)
-    const syncActiveTripFromBackend = async () => {
-      try {
-        const res = await fetch(`http://localhost:5050/api/users/${user.id}/active-trip`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.activeTrip?.trip) {
-            const fullTrip = {
-              ...data.activeTrip.trip,
-              tripStatus: data.activeTrip.status || "pending_approval",
-              requestedAt: data.activeTrip.requestedAt,
-              approvedAt: data.activeTrip.approvedAt,
-            };
-            setJoinedTrip(fullTrip);
-            localStorage.setItem("margsutra_joined_trip", JSON.stringify(fullTrip));
-          } else if (data?.success && !data.activeTrip) {
-            setJoinedTrip(null);
-            localStorage.removeItem("margsutra_joined_trip");
-          }
-        }
-      } catch {}
-    };
-
-    syncActiveTripFromBackend();
-    const interval = setInterval(syncActiveTripFromBackend, 3000);
-
-    // 2. Firestore real-time snapshot listener
     const unsub = subscribeToUserActiveTrip(user.id, (activeData) => {
+      if (activeData === undefined) return; // transient failure, keep what we have
       if (activeData && activeData.trip) {
         const fullTrip = {
           ...activeData.trip,
@@ -4441,10 +4357,7 @@ export default function UserDashboard() {
       }
     });
 
-    return () => {
-      clearInterval(interval);
-      unsub?.();
-    };
+    return () => unsub?.();
   }, [user?.id]);
 
   // Default page: if user has no joined trip, open "join-trip" by default
@@ -4667,7 +4580,7 @@ export default function UserDashboard() {
       }).catch(() => {});
     }
 
-    setPage("dashboard");
+    // Stay on the expeditions page so the trekker sees "request sent / pending".
     return true;
   };
 
@@ -4748,13 +4661,13 @@ export default function UserDashboard() {
     : [];
 
   return (
-    <div style={{display:"grid",gridTemplateColumns:"220px 1fr",minHeight:"780px",
+    <div className="app-shell" style={{display:"grid",gridTemplateColumns:"220px 1fr",minHeight:"780px",
       background:C.bg,fontFamily:"system-ui,-apple-system,sans-serif",color:C.text}}>
 
       {/* Sidebar */}
-      <aside style={{background:C.sidebar,display:"flex",flexDirection:"column",borderRight:`1px solid ${C.border}`}}>
+      <aside className="app-sidebar" style={{background:C.sidebar,display:"flex",flexDirection:"column",borderRight:`1px solid ${C.border}`}}>
         {/* Brand */}
-        <div style={{padding:"18px 16px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:10}}>
+        <div className="app-brand" style={{padding:"18px 16px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:10}}>
           <div style={{width:32,height:32,borderRadius:"50%",background:"rgba(59,130,246,0.12)",
             border:"1px solid rgba(59,130,246,0.28)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🏔️</div>
           <div>
@@ -4765,6 +4678,7 @@ export default function UserDashboard() {
 
         {/* User profile card — Clickable to Profile page */}
         <div
+          className="app-profile"
           onClick={() => setPage("profile")}
           title="View & Edit Trekker Profile & Medical Records"
           style={{
@@ -4802,16 +4716,16 @@ export default function UserDashboard() {
         </div>
 
         {/* Nav */}
-        <nav style={{flex:1,overflowY:"auto",padding:"10px 0"}}>
+        <nav className="app-nav" style={{flex:1,overflowY:"auto",padding:"10px 0"}}>
           {NAV.map(({section,items})=>(
-            <div key={section}>
+            <div key={section} className="app-nav-section">
               <div style={{fontSize:9,color:C.muted2,padding:"10px 16px 4px",letterSpacing:"0.12em",textTransform:"uppercase"}}>{section}</div>
               {items.map(item=>{
                 const active = page===item.id;
                 const isSOS  = item.id==="sos-nav";
                 const isJoin = item.id==="join-trip";
                 return (
-                  <div key={item.id} onClick={()=>setPage(item.id)}
+                  <div key={item.id} className="app-nav-item" onClick={()=>setPage(item.id)}
                     style={{display:"flex",alignItems:"center",gap:10,padding:"8px 16px",cursor:"pointer",
                       borderLeft:`2px solid ${active?(isSOS?C.red:C.accent):"transparent"}`,
                       background:active?(isSOS?"rgba(239,68,68,0.1)":"rgba(59,130,246,0.1)"):"transparent",
@@ -4844,7 +4758,7 @@ export default function UserDashboard() {
         </nav>
 
         {/* Quick SOS in sidebar */}
-        <div style={{padding:"12px 16px",borderTop:`1px solid ${C.border}`}}>
+        <div className="app-sos" style={{padding:"12px 16px",borderTop:`1px solid ${C.border}`}}>
           <button onClick={()=>{
             if (activeSOS) {
               const ok = window.confirm("Are you safe now? Stand down SAR rescue teams?");
@@ -4876,7 +4790,7 @@ export default function UserDashboard() {
             }}>
             🆘 {activeSOS?"SOS ACTIVE · Cancel":"Quick SOS"}
           </button>
-          <div style={{marginTop:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div className="app-footer" style={{marginTop:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <span style={{fontSize:10,color:C.muted2}}>© 2026 Margsutra</span>
             <button onClick={signOut} style={{fontSize:11,color:C.muted,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}}>Sign out</button>
           </div>
@@ -4884,7 +4798,7 @@ export default function UserDashboard() {
       </aside>
 
       {/* Main Container */}
-      <div style={{display:"flex",flexDirection:"column",minWidth:0,height:"100%"}}>
+      <div className="app-main-col" style={{display:"flex",flexDirection:"column",minWidth:0,height:"100%"}}>
         {/* Persistent Emergency Beacon Top Alert Bar */}
         {activeSOS && (
           <div style={{
@@ -4953,7 +4867,7 @@ export default function UserDashboard() {
         )}
 
         {/* Main Content View */}
-        <main style={{flex:1,overflow:"auto",padding:24}}>
+        <main className="app-main" style={{flex:1,overflow:"auto",padding:24}}>
           {PAGES[page]||<div style={{color:C.muted}}>Page not found.</div>}
         </main>
       </div>

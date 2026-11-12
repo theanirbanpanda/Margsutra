@@ -239,7 +239,7 @@ const Btn = ({ children, onClick, variant = "default", style: sx }) => {
   return <button onClick={onClick} style={{ padding: "7px 16px", borderRadius: 8, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 6, ...v[variant], ...sx }}>{children}</button>;
 };
 const PageHeader = ({ title, sub, right }) => (
-  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22 }}>
+  <div className="page-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22 }}>
     <div><h1 style={{ fontSize: 20, fontWeight: 600, color: C.text, margin: 0 }}>{title}</h1>{sub && <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>{sub}</div>}</div>
     {right}
   </div>
@@ -2295,6 +2295,8 @@ const PageAdminApprovals = ({
   approvedAdmins = [],
   refreshing,
   onRefresh,
+  pendingTrekkerCount = 0,
+  onReviewTrekkers,
 }) => {
   const [actingId, setActingId] = useState(null);
   const [toast, setToast] = useState(null);
@@ -2362,6 +2364,36 @@ const PageAdminApprovals = ({
           }}
         >
           <span>{toast.text}</span>
+        </div>
+      )}
+
+      {pendingTrekkerCount > 0 && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: "11px 14px",
+            borderRadius: 10,
+            background: "rgba(245,158,11,0.08)",
+            border: "1px solid rgba(245,158,11,0.3)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ fontSize: 12.5, color: "#fcd34d" }}>
+            🧭 {pendingTrekkerCount} trekker join request{pendingTrekkerCount === 1 ? "" : "s"} awaiting expedition approval.
+          </div>
+          {onReviewTrekkers && (
+            <button
+              type="button"
+              onClick={onReviewTrekkers}
+              style={{ background: "rgba(245,158,11,0.16)", border: "1px solid rgba(245,158,11,0.35)", color: "#fcd34d", borderRadius: 7, padding: "6px 12px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
+            >
+              Review in Expeditions & Rosters →
+            </button>
+          )}
         </div>
       )}
 
@@ -2797,6 +2829,162 @@ const PageSafetyProtocol = ({ isEmbedded = false }) => {
 /* ════════════════════════════════════════════════
    PAGE: TRIP ROSTERS & EXPEDITION APPROVALS
 ════════════════════════════════════════════════ */
+const RAJMACHI_DEMO_MEMBERS = [
+  { id: "rajm-demo-1", name: "Rhea Kulkarni", email: "rhea.k@example.com", phone: "+91 98200 11221", blood: "O+", medical: "Mild asthma — carries inhaler", ec1Name: "Meera Kulkarni", ec1Rel: "Mother", ec1Ph: "+91 98200 11222", status: "approved", isDemo: true },
+  { id: "rajm-demo-2", name: "Aditya Rane", email: "aditya.rane@example.com", phone: "+91 99670 44112", blood: "B+", medical: "None", ec1Name: "Sunil Rane", ec1Rel: "Father", ec1Ph: "+91 99670 44113", status: "approved", isDemo: true },
+  { id: "rajm-demo-3", name: "Sanya Deshpande", email: "sanya.d@example.com", phone: "+91 90040 78231", blood: "A-", medical: "Knee brace — old sprain", ec1Name: "Vikram Deshpande", ec1Rel: "Brother", ec1Ph: "+91 90040 78232", status: "approved", isDemo: true },
+  { id: "rajm-demo-4", name: "Kabir Sheikh", email: "kabir.s@example.com", phone: "+91 98670 55109", blood: "AB+", medical: "None", ec1Name: "Farah Sheikh", ec1Rel: "Sister", ec1Ph: "+91 98670 55110", status: "approved", isDemo: true },
+  { id: "rajm-demo-5", name: "Ira Menon", email: "ira.menon@example.com", phone: "+91 98330 21004", blood: "O-", medical: "Carries EpiPen", ec1Name: "Deepa Menon", ec1Rel: "Mother", ec1Ph: "+91 98330 21005", status: "approved", isDemo: true },
+];
+
+const FieldLabel = ({ children }) => (
+  <div style={{ fontSize: 10.5, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 5 }}>
+    {children}
+  </div>
+);
+
+const Field = ({ label, hint, children, span }) => (
+  <label style={{ display: "block", gridColumn: span ? `span ${span}` : undefined, minWidth: 0 }}>
+    <FieldLabel>{label}</FieldLabel>
+    {children}
+    {hint && <div style={{ fontSize: 10.5, color: C.muted2, marginTop: 4, lineHeight: 1.4 }}>{hint}</div>}
+  </label>
+);
+
+const TextArea = ({ value, onChange, placeholder, rows = 3, style }) => (
+  <textarea
+    value={value}
+    onChange={onChange}
+    placeholder={placeholder}
+    rows={rows}
+    style={{
+      width: "100%",
+      background: "rgba(255,255,255,0.04)",
+      border: `1px solid ${C.border}`,
+      borderRadius: 8,
+      color: C.text,
+      fontSize: 12.5,
+      lineHeight: 1.55,
+      padding: "9px 12px",
+      fontFamily: "inherit",
+      resize: "vertical",
+      outline: "none",
+      boxSizing: "border-box",
+      ...style,
+    }}
+  />
+);
+
+const Select = ({ value, onChange, children, style }) => (
+  <select
+    value={value}
+    onChange={onChange}
+    style={{
+      height: 36,
+      width: "100%",
+      background: "#0d1727",
+      border: `1px solid ${C.border}`,
+      borderRadius: 8,
+      color: C.text,
+      fontSize: 12.5,
+      padding: "0 10px",
+      fontFamily: "inherit",
+      outline: "none",
+      ...style,
+    }}
+  >
+    {children}
+  </select>
+);
+
+const Tabs = ({ tabs, value, onChange }) => (
+  <div style={{ display: "flex", gap: 6, padding: 4, background: "rgba(255,255,255,0.03)", border: `1px solid ${C.border}`, borderRadius: 10, flexWrap: "wrap" }}>
+    {tabs.map((t) => (
+      <button
+        key={t.id}
+        type="button"
+        onClick={() => onChange(t.id)}
+        style={{
+          padding: "6px 12px",
+          borderRadius: 7,
+          border: "none",
+          background: value === t.id ? "rgba(59,130,246,0.18)" : "transparent",
+          color: value === t.id ? "#93c5fd" : C.muted,
+          fontSize: 12,
+          fontWeight: 600,
+          cursor: "pointer",
+          fontFamily: "inherit",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {t.label}
+      </button>
+    ))}
+  </div>
+);
+
+const CapacityBar = ({ filled, max, compact = false }) => {
+  const pct = max > 0 ? Math.min(100, Math.round((filled / max) * 100)) : 0;
+  const full = filled >= max;
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 5 }}>
+        <span style={{ color: C.muted }}>Roster</span>
+        <span style={{ color: full ? "#fca5a5" : C.text, fontWeight: 600 }}>
+          {filled} / {max} {full ? "· full" : `· ${max - filled} open`}
+        </span>
+      </div>
+      <div style={{ height: compact ? 5 : 6, borderRadius: 4, background: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
+        <div style={{ width: `${pct}%`, height: "100%", borderRadius: 4, background: full ? "linear-gradient(90deg,#ef4444,#f59e0b)" : "linear-gradient(90deg,#22c55e,#14b8a6)" }} />
+      </div>
+    </div>
+  );
+};
+
+const DrawerShell = ({ title, subtitle, onClose, children }) => (
+  <div
+    onClick={onClose}
+    style={{ position: "fixed", inset: 0, zIndex: 950, background: "rgba(3,7,18,0.72)", backdropFilter: "blur(4px)", display: "flex", justifyContent: "flex-end" }}
+  >
+    <div
+      onClick={(e) => e.stopPropagation()}
+      className="ms-drawer-panel"
+      style={{ width: "min(640px, 100%)", height: "100%", background: "#0b1422", borderLeft: `1px solid ${C.border2}`, display: "flex", flexDirection: "column", boxShadow: "-24px 0 60px rgba(0,0,0,0.55)" }}
+    >
+      <div style={{ padding: "16px 20px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: C.text, lineHeight: 1.3 }}>{title}</div>
+          {subtitle && <div style={{ fontSize: 11.5, color: C.muted, marginTop: 3 }}>{subtitle}</div>}
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close panel"
+          style={{ background: "rgba(255,255,255,0.06)", border: `1px solid ${C.border}`, color: C.muted, width: 30, height: 30, borderRadius: 8, cursor: "pointer", fontSize: 14, flexShrink: 0, fontFamily: "inherit" }}
+        >
+          ✕
+        </button>
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px 28px" }}>{children}</div>
+    </div>
+  </div>
+);
+
+const ModalShell = ({ title, subtitle, onClose, children, maxWidth = 660 }) => (
+  <div style={{ position: "fixed", inset: 0, zIndex: 960, background: "rgba(3,7,18,0.82)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, overflowY: "auto" }}>
+    <div style={{ width: "100%", maxWidth, background: "#0b1422", border: `1px solid ${C.border2}`, borderRadius: 16, boxShadow: "0 24px 60px rgba(0,0,0,0.6)", maxHeight: "calc(100vh - 32px)", display: "flex", flexDirection: "column" }}>
+      <div style={{ padding: "15px 20px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{title}</div>
+          {subtitle && <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2 }}>{subtitle}</div>}
+        </div>
+        <button type="button" onClick={onClose} aria-label="Close" style={{ background: "rgba(255,255,255,0.06)", border: `1px solid ${C.border}`, color: C.muted, width: 28, height: 28, borderRadius: 8, cursor: "pointer", fontFamily: "inherit" }}>✕</button>
+      </div>
+      <div style={{ padding: "16px 20px 22px", overflowY: "auto" }}>{children}</div>
+    </div>
+  </div>
+);
+
 const PageTripRosters = ({
   defaultTab = "expeditions",
   pendingTrekkers = [],
@@ -2804,76 +2992,95 @@ const PageTripRosters = ({
   onRemove,
   refreshing,
   onRefresh,
+  admins = [],
+  currentAdmin = null,
 }) => {
   const [activeMainTab, setActiveMainTab] = useState(defaultTab || "expeditions");
   const [protocols, setProtocols] = useState(PROTOCOLS);
+  const [trips, setTrips] = useState([]);
+  const [actionLoading, setActionLoading] = useState({});
+  const [rosters, setRosters] = useState({});
+  const [loadingRoster, setLoadingRoster] = useState({});
+  const [toastMessage, setToastMessage] = useState(null);
+  const [toastKind, setToastKind] = useState("success");
+  const [formError, setFormError] = useState("");
+
+  // Manage drawer
+  const [drawerTripId, setDrawerTripId] = useState(null);
+  const [drawerTab, setDrawerTab] = useState("roster");
+  const [detailsForm, setDetailsForm] = useState(null);
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [geofenceRadius, setGeofenceRadius] = useState(2500);
+  const [geofenceZone, setGeofenceZone] = useState("");
+  const [savingGeofence, setSavingGeofence] = useState(false);
+  const [geofenceToast, setGeofenceToast] = useState("");
+
+  // Create / delete
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [creatingExpedition, setCreatingExpedition] = useState(false);
+  const [deleteModalTrip, setDeleteModalTrip] = useState(null);
+  const [deletingTrip, setDeletingTrip] = useState(false);
+
+  // Rajmachi demo roster is local-only: it is rebuilt on every admin sign-in,
+  // so removals/edits survive this session but reset after sign-out.
+  const [demoMembers, setDemoMembers] = useState(() => RAJMACHI_DEMO_MEMBERS.map((m) => ({ ...m })));
+  const [removedDemo, setRemovedDemo] = useState({});
+  const [demoEditId, setDemoEditId] = useState(null);
+
+  const emptyForm = () => ({
+    name: "",
+    startDate: "",
+    startTime: "06:30 AM",
+    endDate: "",
+    endTime: "05:00 PM",
+    duration: "2 Days / 1 Night",
+    location: "",
+    elevation: "",
+    difficulty: "Moderate",
+    pickupLocation: "Lonavala Railway Station (Platform 1 exit)",
+    baseLocation: "",
+    maxRoster: 12,
+    instructions: "",
+    gearList: "",
+    notes: "",
+    adminInCharge: currentAdmin?.id || admins[0]?.id || "",
+    extraAdmins: [],
+  });
+  const [newExpForm, setNewExpForm] = useState(emptyForm);
 
   useEffect(() => {
-    if (defaultTab) {
-      setActiveMainTab(defaultTab);
-    }
+    if (defaultTab) setActiveMainTab(defaultTab);
   }, [defaultTab]);
 
   useEffect(() => {
     let isMounted = true;
     const unsub = subscribeToSafetyProtocols((items) => {
-      if (!isMounted) return;
-      if (items && items.length > 0) {
-        setProtocols(items);
-      }
+      if (isMounted && items && items.length > 0) setProtocols(items);
     });
     return () => {
       isMounted = false;
-      unsub();
+      if (unsub) unsub();
     };
   }, []);
 
-  const [trips, setTrips] = useState(TRIPS);
-  const [actionLoading, setActionLoading] = useState({});
-  const [rosters, setRosters] = useState({});
-  const [loadingRoster, setLoadingRoster] = useState({});
-  const [expandedTrip, setExpandedTrip] = useState(null);
-  const [activeTabMap, setActiveTabMap] = useState({});
-
-  // Geofence states
-  const [geofenceRadiusMap, setGeofenceRadiusMap] = useState({});
-  const [geofenceZoneMap, setGeofenceZoneMap] = useState({});
-  const [savingGeofence, setSavingGeofence] = useState({});
-  const [geofenceToast, setGeofenceToast] = useState({});
-
-  // New Expedition Modal & Command States
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [creatingExpedition, setCreatingExpedition] = useState(false);
-  const [toastMessage, setToastMessage] = useState(null);
-  const [deleteModalTrip, setDeleteModalTrip] = useState(null);
-  const [deletingTrip, setDeletingTrip] = useState(false);
-  const [managingTripId, setManagingTripId] = useState(null);
-  const [newExpForm, setNewExpForm] = useState({
-    name: "Rajmachi Fort Monsoon Trek — Batch 13",
-    startDate: "2026-06-13",
-    startTime: "06:30 AM",
-    endDate: "2026-06-14",
-    endTime: "05:00 PM",
-    duration: "2 Days / 1 Night",
-    pickupLocation: "Lonavala Railway Station (Platform 1 Exit, Ticket Counter)",
-    baseLocation: "Udhewadi Base Village Camp (829m ASL)",
-    location: "Rajmachi Fort, Maharashtra",
-    elevation: "829m ASL",
-    difficulty: "Moderate (14 km Trail Circuit)",
-    leader: "Field Guide Ajay Saini",
-    vhfChannel: "145.500 MHz (VHF Ch 1)",
-    maxRoster: 25,
-    geofenceRadius: 2500,
-  });
-
   useEffect(() => {
     const unsub = subscribeToTrips((liveTrips) => {
-      if (liveTrips && liveTrips.length > 0) {
-        setTrips(liveTrips);
-      }
+      if (liveTrips && liveTrips.length > 0) setTrips(liveTrips);
     });
     return () => unsub && unsub();
   }, []);
+
+  const flash = (msg, kind = "success") => {
+    setToastKind(kind);
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 5000);
+  };
+
+  const adminOptions = useMemo(() => {
+    const list = [...admins];
+    if (currentAdmin?.id && !list.some((a) => a.id === currentAdmin.id)) list.unshift(currentAdmin);
+    return list;
+  }, [admins, currentAdmin]);
 
   const loadRosterForTrip = async (tripId) => {
     setLoadingRoster((p) => ({ ...p, [tripId]: true }));
@@ -2887,14 +3094,53 @@ const PageTripRosters = ({
     }
   };
 
+  const selectedTrip = trips.find((t) => (t.id || t.tripId) === drawerTripId) || null;
+
+  const openManage = (trip, tab = "roster") => {
+    const tripId = trip.id || trip.tripId;
+    setDrawerTripId(tripId);
+    setDrawerTab(tab);
+    setGeofenceToast("");
+    setGeofenceRadius(trip.geofence?.radius || 2500);
+    setGeofenceZone(trip.geofence?.zoneName || `${trip.name} Safe Corridor`);
+    setDetailsForm({
+      name: trip.name || "",
+      startDate: trip.startDate || "",
+      startTime: trip.startTime || "06:30 AM",
+      endDate: trip.endDate || "",
+      endTime: trip.endTime || "05:00 PM",
+      duration: trip.duration || "2 Days / 1 Night",
+      location: trip.location || "",
+      elevation: trip.elevation || "",
+      difficulty: trip.difficulty || "",
+      pickupLocation: trip.pickupLocation || "",
+      baseLocation: trip.baseLocation || "",
+      maxRoster: trip.maxRoster || 12,
+      instructions: trip.instructions || "",
+      gearList: Array.isArray(trip.gearList) ? trip.gearList.join("\n") : (trip.gearList || ""),
+      notes: trip.notes || "",
+      adminInCharge: trip.adminInCharge || trip.adminInChargeName || "",
+      extraAdmins: (trip.admins || []).map((a) => a.id || a).filter((id) => id !== trip.adminInCharge),
+    });
+    if (!rosters[tripId] && !loadingRoster[tripId]) loadRosterForTrip(tripId);
+  };
+
+  const closeDrawer = () => setDrawerTripId(null);
+
   const handleApprove = async (tripId, userId) => {
     const key = `${tripId}-${userId}`;
     setActionLoading((p) => ({ ...p, [key]: true }));
     try {
-      await onApprove(tripId, userId);
-      // Reload roster for this trip
+      const res = await onApprove(tripId, userId);
       const updated = await fetchTripRoster(tripId);
       setRosters((p) => ({ ...p, [tripId]: updated }));
+      if (res?.success === false) {
+        flash(res?.error || "Could not approve that request.", "error");
+      } else {
+        flash("Trekker approved and added to the expedition roster.");
+      }
+    } catch (e) {
+      flash(e?.message || "Could not approve that request.", "error");
     } finally {
       setActionLoading((p) => ({ ...p, [key]: false }));
     }
@@ -2904,10 +3150,16 @@ const PageTripRosters = ({
     const key = `${tripId}-${userId}`;
     setActionLoading((p) => ({ ...p, [key]: true }));
     try {
-      await onRemove(tripId, userId);
-      // Reload roster for this trip
+      const res = await onRemove(tripId, userId);
       const updated = await fetchTripRoster(tripId);
       setRosters((p) => ({ ...p, [tripId]: updated }));
+      if (res?.success === false) {
+        flash(res?.error || "Could not update that request.", "error");
+      } else {
+        flash("Trekker removed from the expedition.");
+      }
+    } catch (e) {
+      flash(e?.message || "Could not update that request.", "error");
     } finally {
       setActionLoading((p) => ({ ...p, [key]: false }));
     }
@@ -2915,30 +3167,23 @@ const PageTripRosters = ({
 
   const handleSetInFieldCommand = async (trip) => {
     const tripId = trip.id || trip.tripId;
-    setManagingTripId(tripId);
+    setActionLoading((p) => ({ ...p, [`manage-${tripId}`]: true }));
     try {
       const res = await setActiveManagedTripRemote(tripId);
       if (res?.success) {
         setTrips((prev) =>
           prev.map((t) => {
             const tid = t.id || t.tripId;
-            if (tid === tripId) {
-              return { ...t, isManaged: true, status: "in-field" };
-            }
-            return {
-              ...t,
-              isManaged: false,
-              status: t.status === "in-field" ? "upcoming" : (t.status || "upcoming"),
-            };
+            if (tid === tripId) return { ...t, isManaged: true, status: "in-field" };
+            return { ...t, isManaged: false, status: t.status === "in-field" ? "upcoming" : (t.status || "upcoming") };
           })
         );
-        setToastMessage(`✓ In-Field Command transferred to "${trip.name}"! Lead Guide: ${trip.leader || "Field Guide Ajay Saini"}`);
-        setTimeout(() => setToastMessage(null), 5000);
+        flash(`In-field command is now on "${trip.name}".`);
       }
     } catch (err) {
       console.error("Failed to switch active managed expedition:", err);
     } finally {
-      setManagingTripId(null);
+      setActionLoading((p) => ({ ...p, [`manage-${tripId}`]: false }));
     }
   };
 
@@ -2955,9 +3200,8 @@ const PageTripRosters = ({
           delete next[tripId];
           return next;
         });
-        if (expandedTrip === tripId) setExpandedTrip(null);
-        setToastMessage(`✓ Expedition "${deleteModalTrip.name}" deleted and associated rosters cleared.`);
-        setTimeout(() => setToastMessage(null), 5000);
+        if (drawerTripId === tripId) setDrawerTripId(null);
+        flash(`Expedition "${deleteModalTrip.name}" deleted.`);
       }
     } catch (err) {
       console.error("Failed to delete trip:", err);
@@ -2967,64 +3211,18 @@ const PageTripRosters = ({
     }
   };
 
-  const handleSaveGeofence = async (trip) => {
-    const tripId = trip.id || trip.tripId;
-    const currentRadius = geofenceRadiusMap[tripId] ?? (trip.geofence?.radius || 2500);
-    const currentZone = geofenceZoneMap[tripId] ?? (trip.geofence?.zoneName || `${trip.name} Safe Corridor`);
-
-    setSavingGeofence((p) => ({ ...p, [tripId]: true }));
-    try {
-      const saveResult = await updateTripGeofenceRemote(tripId, {
-        radius: Number(currentRadius),
-        zoneName: currentZone,
-        lat: trip.lat || 18.8286,
-        lon: trip.lon || 73.3986,
-      });
-      if (saveResult && saveResult.success === false) {
-        setGeofenceToast((p) => ({
-          ...p,
-          [tripId]: `✕ Perimeter NOT saved — ${saveResult.error || "backend rejected the update"}`,
-        }));
-        setTimeout(() => setGeofenceToast((p) => ({ ...p, [tripId]: null })), 7000);
-        return;
-      }
-
-      setTrips((prev) =>
-        prev.map((t) => {
-          if ((t.id || t.tripId) === tripId) {
-            return {
-              ...t,
-              geofence: {
-                ...(t.geofence || {}),
-                radius: Number(currentRadius),
-                zoneName: currentZone,
-              },
-            };
-          }
-          return t;
-        })
-      );
-
-      setGeofenceToast((p) => ({
-        ...p,
-        [tripId]: `✓ Safety perimeter updated to ${(currentRadius / 1000).toFixed(1)} km & broadcasted to all active trekkers via Cloud Firestore!`,
-      }));
-      setTimeout(() => {
-        setGeofenceToast((p) => ({ ...p, [tripId]: null }));
-      }, 5000);
-    } catch (err) {
-      console.error("Failed to update geofence:", err);
-    } finally {
-      setSavingGeofence((p) => ({ ...p, [tripId]: false }));
-    }
-  };
-
   const handleCreateExpedition = async (e) => {
     if (e) e.preventDefault();
+    setFormError("");
     if (!newExpForm.name.trim() || creatingExpedition) return;
+    if (!newExpForm.adminInCharge) {
+      setFormError("Choose an admin in charge — an expedition can never have zero admins.");
+      return;
+    }
     setCreatingExpedition(true);
     try {
       const formattedDate = `${newExpForm.startDate} · ${newExpForm.startTime} – ${newExpForm.endDate} · ${newExpForm.endTime}`;
+      const gear = newExpForm.gearList.split(/\r?\n|,/).map((g) => g.trim()).filter(Boolean);
       const res = await createTripRemote({
         name: newExpForm.name.trim(),
         date: formattedDate,
@@ -3033,492 +3231,196 @@ const PageTripRosters = ({
         endDate: newExpForm.endDate,
         endTime: newExpForm.endTime,
         duration: newExpForm.duration || "2 Days / 1 Night",
-        pickupLocation: newExpForm.pickupLocation || "Lonavala Railway Station (Platform 1 Exit, Ticket Counter)",
-        baseLocation: newExpForm.baseLocation || "Udhewadi Base Village Camp (829m ASL)",
+        pickupLocation: newExpForm.pickupLocation || "",
+        baseLocation: newExpForm.baseLocation || "",
         location: newExpForm.location.trim(),
         elevation: newExpForm.elevation.trim(),
         difficulty: newExpForm.difficulty,
-        leader: newExpForm.leader.trim() || "Field Guide Ajay Saini",
-        vhfChannel: newExpForm.vhfChannel.trim() || "145.500 MHz (VHF Ch 1)",
-        maxRoster: Number(newExpForm.maxRoster) || 25,
+        maxRoster: Number(newExpForm.maxRoster) || 12,
+        instructions: newExpForm.instructions,
+        gearList: gear,
+        notes: newExpForm.notes,
+        admins: [newExpForm.adminInCharge, ...newExpForm.extraAdmins].filter(Boolean),
+        adminInCharge: newExpForm.adminInCharge,
+        createdBy: currentAdmin?.id || newExpForm.adminInCharge,
         isManaged: false,
         status: "upcoming",
         lat: 18.8286,
         lon: 73.3986,
-        geofence: {
-          lat: 18.8286,
-          lon: 73.3986,
-          radius: Number(newExpForm.geofenceRadius) || 2500,
-          zoneName: `${newExpForm.name.trim()} Safe Corridor`,
-        },
+        geofence: { lat: 18.8286, lon: 73.3986, radius: 2500, zoneName: `${newExpForm.name.trim()} Safe Corridor` },
       });
 
       if (res?.success) {
-        setToastMessage(`✓ Expedition created successfully! Join Code: ${res.code || res.trip?.code}`);
+        if (res.trip) setTrips((p) => [res.trip, ...p.filter((t) => (t.id || t.tripId) !== res.trip.id)]);
         setShowCreateModal(false);
-        if (res.trip) {
-          setTrips((p) => [res.trip, ...p.filter((t) => (t.id || t.tripId) !== res.trip.id)]);
-        }
-        setTimeout(() => setToastMessage(null), 5000);
+        setNewExpForm(emptyForm());
+        flash(`Expedition "${res.trip?.name || newExpForm.name}" created.`);
+      } else {
+        setFormError(res?.error || "Could not create the expedition. Please try again.");
       }
     } catch (err) {
-      console.error("Failed to create expedition:", err);
+      setFormError(err?.message || "Could not create the expedition.");
     } finally {
       setCreatingExpedition(false);
     }
   };
 
+  const handleSaveDetails = async () => {
+    if (!selectedTrip || !detailsForm || savingDetails) return;
+    setFormError("");
+    if (!detailsForm.name.trim()) {
+      setFormError("Expedition name cannot be empty.");
+      return;
+    }
+    if (!detailsForm.adminInCharge) {
+      setFormError("An expedition must always have an admin in charge.");
+      return;
+    }
+    setSavingDetails(true);
+    const tripId = selectedTrip.id || selectedTrip.tripId;
+    try {
+      const res = await updateTripRemote(tripId, {
+        name: detailsForm.name.trim(),
+        startDate: detailsForm.startDate,
+        startTime: detailsForm.startTime,
+        endDate: detailsForm.endDate,
+        endTime: detailsForm.endTime,
+        date: `${detailsForm.startDate} · ${detailsForm.startTime} – ${detailsForm.endDate} · ${detailsForm.endTime}`,
+        duration: detailsForm.duration,
+        location: detailsForm.location,
+        elevation: detailsForm.elevation,
+        difficulty: detailsForm.difficulty,
+        pickupLocation: detailsForm.pickupLocation,
+        baseLocation: detailsForm.baseLocation,
+        maxRoster: Number(detailsForm.maxRoster) || 1,
+        instructions: detailsForm.instructions,
+        gearList: detailsForm.gearList.split(/\r?\n|,/).map((g) => g.trim()).filter(Boolean),
+        notes: detailsForm.notes,
+        admins: [detailsForm.adminInCharge, ...detailsForm.extraAdmins].filter(Boolean),
+        adminInCharge: detailsForm.adminInCharge,
+      });
+      if (res?.success && res.trip) {
+        setTrips((prev) => prev.map((t) => ((t.id || t.tripId) === tripId ? { ...t, ...res.trip } : t)));
+        flash("Expedition details saved.");
+      } else {
+        setFormError(res?.error || "Could not save the expedition details.");
+      }
+    } catch (err) {
+      setFormError(err?.message || "Could not save the expedition details.");
+    } finally {
+      setSavingDetails(false);
+    }
+  };
+
+  const handleSaveGeofence = async () => {
+    if (!selectedTrip || savingGeofence) return;
+    const tripId = selectedTrip.id || selectedTrip.tripId;
+    setSavingGeofence(true);
+    setGeofenceToast("");
+    try {
+      const saveResult = await updateTripGeofenceRemote(tripId, {
+        radius: Number(geofenceRadius),
+        zoneName: geofenceZone,
+        lat: selectedTrip.lat || 18.8286,
+        lon: selectedTrip.lon || 73.3986,
+      });
+      if (saveResult && saveResult.success === false) {
+        setGeofenceToast(`✕ Perimeter not saved — ${saveResult.error || "backend rejected the update"}`);
+        return;
+      }
+      setTrips((prev) =>
+        prev.map((t) =>
+          (t.id || t.tripId) === tripId
+            ? { ...t, geofence: { ...(t.geofence || {}), radius: Number(geofenceRadius), zoneName: geofenceZone } }
+            : t
+        )
+      );
+      setGeofenceToast("✓ Safety perimeter updated and broadcast to active trekkers.");
+    } catch (err) {
+      console.error("Failed to update geofence:", err);
+      setGeofenceToast("✕ Could not update the safety perimeter.");
+    } finally {
+      setSavingGeofence(false);
+      setTimeout(() => setGeofenceToast(""), 6000);
+    }
+  };
+
+  const toggleExtraAdmin = (id) => {
+    setDetailsForm((f) => {
+      if (!f) return f;
+      const has = f.extraAdmins.includes(id);
+      return { ...f, extraAdmins: has ? f.extraAdmins.filter((x) => x !== id) : [...f.extraAdmins, id] };
+    });
+  };
+
+  const demoForTrip = (trip) => {
+    if (!trip?.demoRoster) return [];
+    const removed = removedDemo[trip.id || trip.tripId] || [];
+    return demoMembers.filter((m) => !removed.includes(m.id));
+  };
+
+  const removeDemoMember = (tripId, memberId) => {
+    setRemovedDemo((p) => ({ ...p, [tripId]: [...(p[tripId] || []), memberId] }));
+  };
+
+  const restoreDemoRoster = (tripId) => {
+    setRemovedDemo((p) => ({ ...p, [tripId]: [] }));
+    setDemoMembers(RAJMACHI_DEMO_MEMBERS.map((m) => ({ ...m })));
+  };
+
+  const pendingCount = pendingTrekkers.length;
+
+  const inFieldTrip = trips.find((t) => t.isManaged || t.status === "in-field");
+
+  const tabStyle = (active, color) => ({
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "7px 14px",
+    borderRadius: 8,
+    fontSize: 12.5,
+    fontWeight: 600,
+    fontFamily: "inherit",
+    cursor: "pointer",
+    background: active ? (color === "green" ? "rgba(34,197,94,0.16)" : "rgba(59,130,246,0.16)") : "transparent",
+    border: `1px solid ${active ? (color === "green" ? "#22c55e" : C.border2) : "transparent"}`,
+    color: active ? (color === "green" ? "#86efac" : "#93c5fd") : C.muted,
+    whiteSpace: "nowrap",
+  });
+
   return (
     <div>
       <PageHeader
-        title="Expedition Rosters & Approvals"
-        sub="Review incoming trekker applications, configure geofence perimeters, and manage active mountain expedition rosters"
+        title="Expeditions & Rosters"
+        sub="Create expeditions, approve trekker requests, and keep every roster accounted for."
         right={
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            {pendingTrekkers.length > 0 ? (
-              <Pill color="amber">⏳ {pendingTrekkers.length} Pending Approval</Pill>
-            ) : (
-              <Pill color="green">✓ All Trekkers Processed</Pill>
-            )}
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <Btn variant="default" onClick={onRefresh} disabled={refreshing}>
-              {refreshing ? "↻ Refreshing..." : "↻ Refresh Queue"}
+              {refreshing ? "↻ Refreshing…" : "↻ Refresh"}
             </Btn>
-            <Btn variant="primary" onClick={() => setShowCreateModal(true)}>
-              + Create Expedition
+            <Btn variant="primary" onClick={() => { setFormError(""); setNewExpForm({ ...emptyForm(), adminInCharge: currentAdmin?.id || admins[0]?.id || "" }); setShowCreateModal(true); }}>
+              + New expedition
             </Btn>
           </div>
         }
       />
 
-      {/* Global Toast Notification */}
       {toastMessage && (
-        <div
-          style={{
-            marginBottom: 16,
-            padding: "12px 18px",
-            borderRadius: 12,
-            background: "linear-gradient(90deg, rgba(34, 197, 94, 0.2), rgba(16, 185, 129, 0.15))",
-            border: "1px solid rgba(34, 197, 94, 0.4)",
-            color: "#86efac",
-            fontSize: 13,
-            fontWeight: 600,
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            boxShadow: "0 4px 16px rgba(34, 197, 94, 0.15)",
-          }}
-        >
-          <span>🏔️</span>
-          <span>{toastMessage}</span>
+        <div style={{ marginBottom: 14, padding: "10px 14px", borderRadius: 10, background: toastKind === "error" ? "rgba(239,68,68,0.12)" : "rgba(34,197,94,0.12)", border: `1px solid ${toastKind === "error" ? "rgba(239,68,68,0.35)" : "rgba(34,197,94,0.35)"}`, color: toastKind === "error" ? "#fca5a5" : "#86efac", fontSize: 12.5, fontWeight: 600 }}>
+          {toastMessage}
         </div>
       )}
 
-      {/* MODAL: CREATE NEW EXPEDITION */}
-      {showCreateModal && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 999,
-            background: "rgba(3, 7, 18, 0.85)",
-            backdropFilter: "blur(8px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 20,
-          }}
-        >
-          <div
-            style={{
-              width: "100%",
-              maxWidth: 620,
-              background: "#0b1422",
-              border: `1px solid ${C.border2}`,
-              borderRadius: 16,
-              boxShadow: "0 24px 60px rgba(0, 0, 0, 0.6)",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                padding: "16px 22px",
-                borderBottom: `1px solid ${C.border}`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                background: "rgba(255, 255, 255, 0.02)",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: 20 }}>🏔️</span>
-                <div>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>Create New Mountain Expedition</div>
-                  <div style={{ fontSize: 11, color: C.muted }}>Configure trail route, safety frequency, and geofence perimeter</div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowCreateModal(false)}
-                style={{ background: "transparent", border: "none", color: C.muted, fontSize: 18, cursor: "pointer" }}
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateExpedition} style={{ padding: "20px 22px", maxHeight: "80vh", overflowY: "auto" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
-                <div style={{ gridColumn: "span 2" }}>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
-                    Expedition Name
-                  </label>
-                  <Input
-                    value={newExpForm.name}
-                    onChange={(e) => setNewExpForm((p) => ({ ...p, name: e.target.value }))}
-                    placeholder="e.g. Rajmachi Fort Night Trek — Batch 13"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
-                    Start Date & Assembly Time
-                  </label>
-                  <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 6 }}>
-                    <Input
-                      type="date"
-                      value={newExpForm.startDate}
-                      onChange={(e) => setNewExpForm((p) => ({ ...p, startDate: e.target.value }))}
-                      required
-                    />
-                    <Input
-                      value={newExpForm.startTime}
-                      onChange={(e) => setNewExpForm((p) => ({ ...p, startTime: e.target.value }))}
-                      placeholder="06:30 AM"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
-                    End Date & Return Time
-                  </label>
-                  <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 6 }}>
-                    <Input
-                      type="date"
-                      value={newExpForm.endDate}
-                      onChange={(e) => setNewExpForm((p) => ({ ...p, endDate: e.target.value }))}
-                      required
-                    />
-                    <Input
-                      value={newExpForm.endTime}
-                      onChange={(e) => setNewExpForm((p) => ({ ...p, endTime: e.target.value }))}
-                      placeholder="05:00 PM"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
-                    Trip Duration
-                  </label>
-                  <Input
-                    value={newExpForm.duration}
-                    onChange={(e) => setNewExpForm((p) => ({ ...p, duration: e.target.value }))}
-                    placeholder="e.g. 2 Days / 1 Night"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
-                    Trail Difficulty
-                  </label>
-                  <Input
-                    value={newExpForm.difficulty}
-                    onChange={(e) => setNewExpForm((p) => ({ ...p, difficulty: e.target.value }))}
-                    placeholder="e.g. Moderate (14 km Trail Circuit)"
-                    required
-                  />
-                </div>
-
-                <div style={{ gridColumn: "span 2" }}>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
-                    Pickup & Assembly Point (Maharashtra Transit Hub)
-                  </label>
-                  <Input
-                    value={newExpForm.pickupLocation}
-                    onChange={(e) => setNewExpForm((p) => ({ ...p, pickupLocation: e.target.value }))}
-                    placeholder="e.g. Lonavala Railway Station (Platform 1 Exit, Ticket Counter)"
-                    required
-                  />
-                </div>
-
-                <div style={{ gridColumn: "span 2" }}>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
-                    Base Village / Trailhead Camp (Altitude & Camp)
-                  </label>
-                  <Input
-                    value={newExpForm.baseLocation}
-                    onChange={(e) => setNewExpForm((p) => ({ ...p, baseLocation: e.target.value }))}
-                    placeholder="e.g. Udhewadi Base Village Camp (829m ASL)"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
-                    Location / Mountain Region
-                  </label>
-                  <Input
-                    value={newExpForm.location}
-                    onChange={(e) => setNewExpForm((p) => ({ ...p, location: e.target.value }))}
-                    placeholder="e.g. Rajmachi Fort, Maharashtra"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
-                    Peak Elevation
-                  </label>
-                  <Input
-                    value={newExpForm.elevation}
-                    onChange={(e) => setNewExpForm((p) => ({ ...p, elevation: e.target.value }))}
-                    placeholder="e.g. 829m ASL"
-                  />
-                </div>
-
-                <div style={{ gridColumn: "span 2" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
-                    <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                      Walkie-Talkie Channel (VHF Radio)
-                    </label>
-                    <span style={{ fontSize: 10, color: "#93c5fd" }}>
-                      Very High Frequency (136–174 MHz) for no-signal mountain valleys
-                    </span>
-                  </div>
-                  <Input
-                    value={newExpForm.vhfChannel}
-                    onChange={(e) => setNewExpForm((p) => ({ ...p, vhfChannel: e.target.value }))}
-                    placeholder="e.g. 145.500 MHz (VHF Ch 1)"
-                  />
-                </div>
-
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
-                    Expedition Leader
-                  </label>
-                  <Input
-                    value={newExpForm.leader}
-                    onChange={(e) => setNewExpForm((p) => ({ ...p, leader: e.target.value }))}
-                    placeholder="Field Guide Ajay Saini"
-                  />
-                </div>
-
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
-                    Max Roster Capacity
-                  </label>
-                  <Input
-                    type="number"
-                    value={newExpForm.maxRoster}
-                    onChange={(e) => setNewExpForm((p) => ({ ...p, maxRoster: e.target.value }))}
-                    min="5"
-                    max="100"
-                  />
-                </div>
-
-                <div style={{ gridColumn: "span 2" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                      Initial Geofence Safety Radius
-                    </label>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: "#f59e0b" }}>
-                      {(newExpForm.geofenceRadius / 1000).toFixed(1)} km ({newExpForm.geofenceRadius} meters)
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="500"
-                    max="5000"
-                    step="100"
-                    value={newExpForm.geofenceRadius}
-                    onChange={(e) => setNewExpForm((p) => ({ ...p, geofenceRadius: Number(e.target.value) }))}
-                    style={{ width: "100%", accentColor: "#f59e0b" }}
-                  />
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: C.muted2, marginTop: 2 }}>
-                    <span>500 m (High Fog / Alert)</span>
-                    <span>2.5 km (Standard Trail)</span>
-                    <span>5.0 km (Wide Plateau)</span>
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18, borderTop: `1px solid ${C.border}`, paddingTop: 14 }}>
-                <Btn variant="default" onClick={() => setShowCreateModal(false)}>
-                  Cancel
-                </Btn>
-                <Btn variant="primary" onClick={handleCreateExpedition} disabled={creatingExpedition}>
-                  {creatingExpedition ? "Creating Expedition..." : "Create Expedition & Generate Code"}
-                </Btn>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: DELETE EXPEDITION CONFIRMATION */}
-      {deleteModalTrip && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 999,
-            background: "rgba(3, 7, 18, 0.85)",
-            backdropFilter: "blur(8px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 20,
-          }}
-        >
-          <div
-            style={{
-              width: "100%",
-              maxWidth: 480,
-              background: "#0b1422",
-              border: "1px solid rgba(239, 68, 68, 0.4)",
-              borderRadius: 16,
-              boxShadow: "0 24px 60px rgba(0, 0, 0, 0.7)",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                padding: "16px 20px",
-                borderBottom: `1px solid ${C.border}`,
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                background: "rgba(239, 68, 68, 0.08)",
-              }}
-            >
-              <span style={{ fontSize: 24 }}>⚠️</span>
-              <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: "#fca5a5" }}>
-                  Confirm Expedition Deletion
-                </div>
-                <div style={{ fontSize: 11, color: C.muted }}>
-                  Permanently remove this expedition from Margsutra
-                </div>
-              </div>
-            </div>
-
-            <div style={{ padding: "20px 22px" }}>
-              <p style={{ fontSize: 13, color: C.text, lineHeight: 1.5, margin: 0, marginBottom: 12 }}>
-                Are you sure you want to permanently delete <strong>"{deleteModalTrip.name}"</strong> (Code: <strong>{deleteModalTrip.code}</strong>)?
-              </p>
-
-              <div
-                style={{
-                  background: "rgba(239, 68, 68, 0.08)",
-                  border: "1px solid rgba(239, 68, 68, 0.25)",
-                  borderRadius: 8,
-                  padding: "10px 14px",
-                  fontSize: 12,
-                  color: "#fca5a5",
-                  lineHeight: 1.45,
-                  marginBottom: 16,
-                }}
-              >
-                ⚠️ <strong>This will perform the following actions:</strong>
-                <ul style={{ margin: "6px 0 0 16px", padding: 0 }}>
-                  <li>Delete all enrolled trekker rosters for this expedition</li>
-                  <li>Clear active expedition status from all enrolled users so they can join new treks</li>
-                  <li>Erase expedition telemetry records from Cloud Firestore</li>
-                </ul>
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-                <Btn variant="default" onClick={() => setDeleteModalTrip(null)} disabled={deletingTrip}>
-                  Cancel
-                </Btn>
-                <button
-                  type="button"
-                  onClick={handleConfirmDeleteTrip}
-                  disabled={deletingTrip}
-                  style={{
-                    padding: "8px 18px",
-                    borderRadius: 8,
-                    background: "linear-gradient(135deg, #ef4444, #b91c1c)",
-                    border: "none",
-                    color: "#ffffff",
-                    fontSize: 12.5,
-                    fontWeight: 700,
-                    cursor: deletingTrip ? "not-allowed" : "pointer",
-                    boxShadow: "0 4px 14px rgba(239, 68, 68, 0.4)",
-                    fontFamily: "inherit",
-                    opacity: deletingTrip ? 0.7 : 1,
-                  }}
-                >
-                  {deletingTrip ? "Deleting Expedition..." : "Yes, Delete Expedition"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Top Segmented Navigation: Expeditions vs Safety Protocols */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 20, borderBottom: `1px solid ${C.border}`, paddingBottom: 12 }}>
-        <button
-          type="button"
-          onClick={() => setActiveMainTab("expeditions")}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "8px 16px",
-            borderRadius: 8,
-            fontSize: 13,
-            fontWeight: 600,
-            fontFamily: "inherit",
-            cursor: "pointer",
-            background: activeMainTab === "expeditions" ? "rgba(59, 130, 246, 0.18)" : "transparent",
-            border: `1px solid ${activeMainTab === "expeditions" ? C.accent : C.border}`,
-            color: activeMainTab === "expeditions" ? "#93c5fd" : C.muted,
-          }}
-        >
-          <span>🧭</span>
-          <span>Active Expeditions & Rosters</span>
-          <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 10, background: "rgba(255,255,255,0.08)", color: C.text }}>
-            {trips.length}
-          </span>
+      <div style={{ display: "flex", gap: 6, marginBottom: 18, borderBottom: `1px solid ${C.border}`, paddingBottom: 12, flexWrap: "wrap" }}>
+        <button type="button" onClick={() => setActiveMainTab("expeditions")} style={tabStyle(activeMainTab === "expeditions")}>
+          🧭 Expeditions
+          <span style={{ fontSize: 10.5, padding: "1px 7px", borderRadius: 10, background: "rgba(255,255,255,0.08)" }}>{trips.length}</span>
+          {pendingCount > 0 && <span style={{ fontSize: 10.5, padding: "1px 7px", borderRadius: 10, background: "rgba(245,158,11,0.2)", color: "#fbbf24" }}>{pendingCount} pending</span>}
         </button>
-        <button
-          type="button"
-          onClick={() => setActiveMainTab("protocols")}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "8px 16px",
-            borderRadius: 8,
-            fontSize: 13,
-            fontWeight: 600,
-            fontFamily: "inherit",
-            cursor: "pointer",
-            background: activeMainTab === "protocols" ? "rgba(34, 197, 94, 0.18)" : "transparent",
-            border: `1px solid ${activeMainTab === "protocols" ? "#22c55e" : C.border}`,
-            color: activeMainTab === "protocols" ? "#86efac" : C.muted,
-          }}
-        >
-          <span>🛡️</span>
-          <span>Safety Directives & Protocols</span>
-          <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 10, background: "rgba(34, 197, 94, 0.15)", color: "#86efac" }}>
-            {protocols.filter((p) => p.status === "published").length} Active
+        <button type="button" onClick={() => setActiveMainTab("protocols")} style={tabStyle(activeMainTab === "protocols", "green")}>
+          🛡️ Safety directives
+          <span style={{ fontSize: 10.5, padding: "1px 7px", borderRadius: 10, background: "rgba(34,197,94,0.15)", color: "#86efac" }}>
+            {protocols.filter((p) => p.status === "published").length}
           </span>
         </button>
       </div>
@@ -3527,833 +3429,498 @@ const PageTripRosters = ({
         <PageSafetyProtocol isEmbedded={true} />
       ) : (
         <>
-          {/* SECTION 1: PENDING TREKKER APPLICATIONS QUEUE */}
-          <div style={{ marginBottom: 28 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 16 }}>⏳</span>
-                <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>
-                  Pending Trekker Applications
-                </span>
-                <span
-                  style={{
-                    fontSize: 11,
-                    padding: "2px 8px",
-                    borderRadius: 12,
-                    background: pendingTrekkers.length > 0 ? "rgba(245,158,11,0.2)" : "rgba(255,255,255,0.08)",
-                    color: pendingTrekkers.length > 0 ? "#fbbf24" : C.muted,
-                    fontWeight: 600,
-                  }}
-                >
-                  {pendingTrekkers.length}
-                </span>
+          {pendingCount > 0 && (
+            <div style={{ marginBottom: 22 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: "#fbbf24" }}>Pending trekker approvals</span>
+                <Pill color="amber">{pendingCount}</Pill>
               </div>
-            </div>
-
-            {pendingTrekkers.length === 0 ? (
-              <Card style={{ padding: "28px 20px", textAlign: "center", background: "rgba(255,255,255,0.02)" }}>
-                <div style={{ fontSize: 28, marginBottom: 8 }}>🧭</div>
-                <div style={{ fontSize: 13.5, fontWeight: 600, color: C.text, marginBottom: 4 }}>
-                  No Pending Trekker Applications
-                </div>
-                <div style={{ fontSize: 12, color: C.muted, maxWidth: 500, margin: "0 auto", lineHeight: 1.5 }}>
-                  All trekker expedition join requests have been processed. When a user enters a trip code or clicks Join from the user portal, their medical notes and emergency contact details will appear here for your review and clearance.
-                </div>
-              </Card>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 10 }}>
                 {pendingTrekkers.map((applicant) => {
                   const applicantId = applicant.userId || applicant.id;
                   const key = `${applicant.tripId}-${applicantId}`;
                   const isActing = !!actionLoading[key];
-                  const initials = (applicant.name || "Trekker")
-                    .split(/\s+/)
-                    .slice(0, 2)
-                    .map((p) => p[0])
-                    .join("")
-                    .toUpperCase() || "TR";
-
                   return (
-                    <Card
-                      key={key}
-                      style={{
-                        border: "1px solid rgba(245, 158, 11, 0.35)",
-                        background: "linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(11, 20, 34, 0.95))",
-                        boxShadow: "0 4px 18px rgba(0, 0, 0, 0.35)",
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 14 }}>
-                        <div style={{ display: "flex", gap: 14 }}>
-                          <div
-                            style={{
-                              width: 44,
-                              height: 44,
-                              borderRadius: 12,
-                              background: "rgba(245, 158, 11, 0.18)",
-                              border: "1px solid rgba(245, 158, 11, 0.4)",
-                              color: "#fbbf24",
-                              fontSize: 15,
-                              fontWeight: 700,
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              flexShrink: 0,
-                            }}
-                          >
-                            {initials}
-                          </div>
-
-                          <div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
-                              <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>
-                                {applicant.name || "Trekker Applicant"}
-                              </span>
-                              <span
-                                style={{
-                                  fontSize: 10,
-                                  fontWeight: 700,
-                                  padding: "2px 8px",
-                                  borderRadius: 10,
-                                  background: "rgba(245, 158, 11, 0.2)",
-                                  border: "1px solid rgba(245, 158, 11, 0.35)",
-                                  color: "#fbbf24",
-                                }}
-                              >
-                                ⏳ AWAITING APPROVAL
-                              </span>
-                              <span
-                                style={{
-                                  fontSize: 11,
-                                  fontWeight: 600,
-                                  padding: "2px 8px",
-                                  borderRadius: 6,
-                                  background: "rgba(59, 130, 246, 0.15)",
-                                  border: "1px solid rgba(59, 130, 246, 0.3)",
-                                  color: "#60a5fa",
-                                }}
-                              >
-                                Expedition: {applicant.tripName} ({applicant.tripCode})
-                              </span>
-                            </div>
-
-                            <div style={{ fontSize: 12, color: C.muted, display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 8 }}>
-                              <span>✉️ {applicant.email || "No email"}</span>
-                              <span>📞 {applicant.phone || "No phone"}</span>
-                              <span>🩸 Blood: <strong>{applicant.blood || "Not specified"}</strong></span>
-                              <span>🩺 Medical: <strong>{applicant.medical || "None reported"}</strong></span>
-                            </div>
-
-                            <div style={{ fontSize: 11.5, color: "rgba(180, 210, 245, 0.85)", background: "rgba(255,255,255,0.03)", padding: "6px 12px", borderRadius: 8, display: "inline-block" }}>
-                              🆘 <strong>Emergency Contact:</strong> {applicant.ec1Name || "Family"} ({applicant.ec1Rel || "Next of Kin"}) — 📞 {applicant.ec1Ph || "—"}
-                            </div>
-                          </div>
+                    <Card key={key} style={{ padding: "13px 14px", border: "1px solid rgba(245,158,11,0.3)", background: "linear-gradient(140deg, rgba(245,158,11,0.07), rgba(11,20,34,0.6))" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{applicant.name || "Trekker"}</div>
+                          <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{applicant.tripName || "Expedition"}</div>
                         </div>
-
-                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                          <button
-                            type="button"
-                            onClick={() => handleRemove(applicant.tripId, applicantId)}
-                            disabled={isActing}
-                            style={{
-                              background: "transparent",
-                              border: "1px solid rgba(239, 68, 68, 0.35)",
-                              borderRadius: 8,
-                              color: "#fca5a5",
-                              padding: "8px 14px",
-                              fontSize: 12,
-                              fontWeight: 600,
-                              cursor: isActing ? "not-allowed" : "pointer",
-                              opacity: isActing ? 0.6 : 1,
-                              fontFamily: "inherit",
-                            }}
-                          >
-                            ✕ Decline Request
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleApprove(applicant.tripId, applicantId)}
-                            disabled={isActing}
-                            style={{
-                              background: "linear-gradient(135deg, #10b981, #059669)",
-                              border: "none",
-                              borderRadius: 8,
-                              color: "#ffffff",
-                              padding: "8px 16px",
-                              fontSize: 12,
-                              fontWeight: 700,
-                              cursor: isActing ? "not-allowed" : "pointer",
-                              boxShadow: "0 4px 14px rgba(16, 185, 129, 0.35)",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 6,
-                              opacity: isActing ? 0.6 : 1,
-                              fontFamily: "inherit",
-                            }}
-                          >
-                            {isActing ? "Authorizing..." : "✓ Approve Trekker"}
-                          </button>
-                        </div>
+                        <Pill color="amber">pending</Pill>
+                      </div>
+                      <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.65, marginBottom: 10 }}>
+                        <div>📞 {applicant.phone || "No phone"} · 🩸 {applicant.blood || "B+"}</div>
+                        <div>🩺 {applicant.medical || "No medical notes"}</div>
+                        <div>🆘 {applicant.ec1Name || "Emergency contact"} ({applicant.ec1Rel || "Kin"}) · {applicant.ec1Ph || "—"}</div>
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button
+                          type="button"
+                          disabled={isActing}
+                          onClick={() => handleApprove(applicant.tripId, applicantId)}
+                          style={{ flex: 1, padding: "7px 10px", borderRadius: 7, border: "1px solid rgba(34,197,94,0.35)", background: "rgba(34,197,94,0.14)", color: "#86efac", fontSize: 11.5, fontWeight: 700, cursor: isActing ? "not-allowed" : "pointer", fontFamily: "inherit" }}
+                        >
+                          {isActing ? "…" : "Approve"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isActing}
+                          onClick={() => handleRemove(applicant.tripId, applicantId)}
+                          style={{ flex: 1, padding: "7px 10px", borderRadius: 7, border: `1px solid ${C.border}`, background: "transparent", color: "#fca5a5", fontSize: 11.5, fontWeight: 700, cursor: isActing ? "not-allowed" : "pointer", fontFamily: "inherit" }}
+                        >
+                          Deny
+                        </button>
                       </div>
                     </Card>
                   );
                 })}
               </div>
-            )}
-          </div>
-
-          {/* SECTION 2: ACTIVE EXPEDITIONS & ROSTER MANAGEMENT */}
-          <div>
-            {/* In-Field Single Active Command Banner */}
-            {(() => {
-              const inFieldTrip = trips.find((t) => t.isManaged || t.status === "in-field") || trips[0];
-              return (
-                <div
-                  style={{
-                    marginBottom: 20,
-                    padding: "16px 20px",
-                    borderRadius: 14,
-                    background: "linear-gradient(135deg, rgba(34, 197, 94, 0.12), rgba(11, 20, 34, 0.95))",
-                    border: "1px solid rgba(34, 197, 94, 0.35)",
-                    boxShadow: "0 8px 24px rgba(0, 0, 0, 0.3)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    flexWrap: "wrap",
-                    gap: 14,
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                    <div
-                      style={{
-                        width: 48,
-                        height: 48,
-                        borderRadius: 12,
-                        background: "rgba(34, 197, 94, 0.2)",
-                        border: "1px solid rgba(34, 197, 94, 0.4)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 22,
-                      }}
-                    >
-                      🛰️
-                    </div>
-                    <div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                        <span
-                          style={{
-                            fontSize: 10,
-                            fontWeight: 800,
-                            letterSpacing: "0.08em",
-                            textTransform: "uppercase",
-                            padding: "2px 8px",
-                            borderRadius: 6,
-                            background: "rgba(34, 197, 94, 0.25)",
-                            border: "1px solid rgba(34, 197, 94, 0.5)",
-                            color: "#86efac",
-                          }}
-                        >
-                          ● Active In-Field Command
-                        </span>
-                        <span style={{ fontSize: 11, color: C.muted2 }}>
-                          (Admin manages 1 live expedition in the field at a time)
-                        </span>
-                      </div>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>
-                        {inFieldTrip?.name || "No Active In-Field Expedition"}
-                      </div>
-                      <div style={{ fontSize: 12, color: C.muted, marginTop: 4, display: "flex", gap: 16, flexWrap: "wrap" }}>
-                        <span>🔑 Join Code: <strong style={{ color: "#60a5fa" }}>{inFieldTrip?.code || "—"}</strong></span>
-                        <span>🧭 Field Guide: <strong style={{ color: C.text }}>{inFieldTrip?.leader || "Field Guide Ajay Saini"}</strong></span>
-                        <span>📻 Walkie-Talkie: <strong style={{ color: "#fbbf24" }}>{inFieldTrip?.vhfChannel || "145.500 MHz (VHF Ch 1)"}</strong></span>
-                        <span>👥 Enrolled: <strong style={{ color: "#34d399" }}>{inFieldTrip?.rosterCount || 0} / {inFieldTrip?.maxRoster || 25} Trekkers</strong></span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: 11, color: C.muted2 }}>Field Safety Duty-of-Care</div>
-                      <div style={{ fontSize: 12.5, fontWeight: 700, color: "#86efac" }}>🟢 Live Telemetry Linked</div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
-              <span>🏔️</span>
-              <span>Expedition Batches & Management ({trips.length})</span>
             </div>
+          )}
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {trips.length === 0 ? (
+            <Card style={{ textAlign: "center", padding: "40px 20px" }}>
+              <div style={{ fontSize: 28, marginBottom: 8 }}>🧭</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 4 }}>No expeditions yet</div>
+              <div style={{ fontSize: 12, color: C.muted, marginBottom: 14 }}>Create your first expedition and it will appear in the trekker app instantly.</div>
+              <Btn variant="primary" onClick={() => { setFormError(""); setShowCreateModal(true); }}>+ New expedition</Btn>
+            </Card>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(315px, 1fr))", gap: 14 }}>
               {trips.map((trip) => {
                 const tripId = trip.id || trip.tripId;
-                const isExpanded = expandedTrip === tripId;
-                const tripRoster = rosters[tripId] || [];
-                const approvedMembers = tripRoster.filter((m) => m.status === "approved" || !m.status);
-                const isInField = !!(trip.isManaged || trip.status === "in-field");
-
+                const demoList = demoForTrip(trip);
+                const liveMembers = rosters[tripId] || [];
+                const approvedLive = liveMembers.filter((m) => (m.status || "approved") === "approved").length;
+                const displayFilled = trip.demoRoster ? Math.max(demoList.length, 0) + approvedLive : (Number(trip.rosterCount) || approvedLive);
+                const max = Number(trip.maxRoster) || 25;
+                const isInCharge = trip.adminInCharge === currentAdmin?.id;
+                const inChargeName = trip.adminInChargeName || (adminOptions.find((a) => a.id === trip.adminInCharge) || {}).name || trip.leader || "—";
+                const isManaged = !!trip.isManaged || trip.status === "in-field";
                 return (
-                  <Card
-                    key={tripId}
-                    style={{
-                      background: isInField
-                        ? "linear-gradient(135deg, rgba(34, 197, 94, 0.06), rgba(11, 20, 34, 0.98))"
-                        : "rgba(11, 20, 34, 0.95)",
-                      border: isInField ? "1px solid rgba(34, 197, 94, 0.4)" : `1px solid ${C.border}`,
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 12 }}>
-                      <div style={{ flex: "1 1 500px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-                          <span style={{ background: "rgba(59, 130, 246, 0.15)", border: "1px solid rgba(59, 130, 246, 0.3)", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700, color: "#60a5fa" }}>
-                            {trip.code}
-                          </span>
-                          {isInField ? (
-                            <span
-                              style={{
-                                fontSize: 10.5,
-                                fontWeight: 800,
-                                letterSpacing: "0.06em",
-                                padding: "3px 9px",
-                                borderRadius: 8,
-                                background: "rgba(34, 197, 94, 0.2)",
-                                border: "1px solid rgba(34, 197, 94, 0.45)",
-                                color: "#86efac",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 5,
-                              }}
-                            >
-                              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px #22c55e" }} />
-                              IN-FIELD COMMAND (ACTIVE)
-                            </span>
-                          ) : (
-                            <span
-                              style={{
-                                fontSize: 10.5,
-                                fontWeight: 700,
-                                padding: "3px 8px",
-                                borderRadius: 8,
-                                background: "rgba(148, 163, 184, 0.12)",
-                                border: "1px solid rgba(148, 163, 184, 0.25)",
-                                color: "#cbd5e1",
-                              }}
-                            >
-                              ⏳ UPCOMING SCHEDULED
-                            </span>
-                          )}
-                          <span style={{ fontSize: 12, color: C.muted }}>📍 {trip.location}</span>
-                        </div>
-
-                        <div style={{ fontSize: 16.5, fontWeight: 700, color: C.text }}>{trip.name}</div>
-
-                        <div style={{ fontSize: 12, color: C.muted, marginTop: 6, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 6 }}>
-                          <div>
-                            📅 <strong>Schedule:</strong> {trip.startDate || trip.date} {trip.startTime ? `at ${trip.startTime}` : ""} → {trip.endDate || ""} {trip.endTime ? `at ${trip.endTime}` : ""}
-                            {trip.duration ? ` (${trip.duration})` : ""}
-                          </div>
-                          <div>
-                            🚌 <strong>Assembly / Pickup:</strong> {trip.pickupLocation || "Lonavala Station (Exit Gate 1)"}
-                          </div>
-                          <div>
-                            🏕️ <strong>Base Camp:</strong> {trip.baseLocation || "Udhewadi Base Camp (829m ASL)"}
-                          </div>
-                          <div>
-                            📻 <strong>Walkie-Talkie Channel:</strong> <span style={{ color: "#fbbf24" }}>{trip.vhfChannel || "145.500 MHz (VHF Ch 1)"}</span>
-                          </div>
-                          <div>
-                            🏔️ <strong>Elevation:</strong> {trip.elevation || "829m ASL"} · <strong>Trail:</strong> {trip.difficulty || "Moderate"}
-                          </div>
-                          <div>
-                            🧭 <strong>Leader:</strong> {trip.leader || "Field Guide Ajay Saini"} · 🔒 <strong>Geofence:</strong> {((geofenceRadiusMap[tripId] ?? (trip.geofence?.radius || 2500)) / 1000).toFixed(1)} km
-                          </div>
-                        </div>
+                  <Card key={tripId} style={{ display: "flex", flexDirection: "column", gap: 11, padding: "15px 16px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                        <span style={{ width: 7, height: 7, borderRadius: "50%", background: isManaged ? "#22c55e" : "#3b82f6", flexShrink: 0 }} />
+                        <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: "0.08em", color: isManaged ? "#86efac" : C.muted, textTransform: "uppercase" }}>
+                          {isManaged ? "In field" : (trip.status || "upcoming")}
+                        </span>
+                        <span style={{ fontSize: 10, color: C.muted2, fontFamily: "monospace", letterSpacing: "0.08em" }}>· {trip.code}</span>
                       </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        {trip.demoRoster && <Pill color="purple">demo</Pill>}
+                        <button
+                          type="button"
+                          onClick={() => setDeleteModalTrip(trip)}
+                          aria-label={`Delete ${trip.name}`}
+                          style={{ background: "transparent", border: "none", color: C.muted2, cursor: "pointer", fontSize: 13, padding: 2, fontFamily: "inherit" }}
+                        >
+                          🗑
+                        </button>
+                      </div>
+                    </div>
 
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10 }}>
-                        <div style={{ textAlign: "right" }}>
-                          <div style={{ fontSize: 11, color: C.muted2 }}>Roster Strength</div>
-                          <div style={{ fontSize: 14, fontWeight: 700, color: "#60a5fa" }}>
-                            {trip.rosterCount || approvedMembers.length || 0} / {trip.maxRoster || 25} Trekkers
-                          </div>
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: C.text, lineHeight: 1.35 }}>{trip.name}</div>
+                      <div style={{ fontSize: 11.5, color: C.muted, marginTop: 4 }}>
+                        📅 {trip.startDate}{trip.endDate ? ` – ${trip.endDate}` : ""}
+                        {trip.location ? ` · 📍 ${trip.location}` : ""}
+                      </div>
+                      {trip.difficulty && <div style={{ fontSize: 11, color: C.muted2, marginTop: 2 }}>⛰ {trip.difficulty}</div>}
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "rgba(255,255,255,0.03)", borderRadius: 8 }}>
+                      <Avatar initials={(inChargeName || "AD").split(/\s+/).slice(0, 2).map((p) => p[0]).join("").toUpperCase()} size={26} />
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: 11.5, color: C.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {inChargeName} {isInCharge && <span style={{ color: "#86efac", fontWeight: 700 }}>· you</span>}
                         </div>
-
-                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                          {!isInField && (
-                            <button
-                              type="button"
-                              onClick={() => handleSetInFieldCommand(trip)}
-                              disabled={managingTripId === tripId}
-                              style={{
-                                padding: "6px 12px",
-                                borderRadius: 8,
-                                background: "linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(16, 185, 129, 0.25))",
-                                border: "1px solid rgba(34, 197, 94, 0.4)",
-                                color: "#86efac",
-                                fontSize: 11.5,
-                                fontWeight: 700,
-                                cursor: managingTripId === tripId ? "not-allowed" : "pointer",
-                                fontFamily: "inherit",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 5,
-                                boxShadow: "0 2px 10px rgba(34, 197, 94, 0.15)",
-                              }}
-                            >
-                              {managingTripId === tripId ? "Transferring..." : "🧭 Take Field Command"}
-                            </button>
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={() => setDeleteModalTrip(trip)}
-                            title="Cancel and delete this expedition from system"
-                            style={{
-                              padding: "6px 12px",
-                              borderRadius: 8,
-                              background: "transparent",
-                              border: "1px solid rgba(239, 68, 68, 0.35)",
-                              color: "#fca5a5",
-                              fontSize: 11.5,
-                              fontWeight: 600,
-                              cursor: "pointer",
-                              fontFamily: "inherit",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 5,
-                            }}
-                          >
-                            🗑️ Delete Expedition
-                          </button>
-
-                          <Btn
-                            variant={isExpanded ? "default" : "primary"}
-                            onClick={() => {
-                              if (isExpanded) {
-                                setExpandedTrip(null);
-                              } else {
-                                setExpandedTrip(tripId);
-                                loadRosterForTrip(tripId);
-                              }
-                            }}
-                          >
-                            {isExpanded ? "Hide Controls ▴" : "Manage Expedition ▾"}
-                          </Btn>
+                        <div style={{ fontSize: 10, color: C.muted2 }}>
+                          Admin in charge · {(() => { const n = (trip.admins || []).length || 1; return `${n} admin${n === 1 ? "" : "s"}`; })()}
                         </div>
                       </div>
                     </div>
 
-                    {/* Expanded Controls Drawer */}
-                    {isExpanded && (
-                      <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
-                        {/* Sub-tab navigation */}
-                        <div style={{ display: "flex", gap: 8, marginBottom: 14, borderBottom: `1px solid ${C.border}`, paddingBottom: 8 }}>
-                          <button
-                            type="button"
-                            onClick={() => setActiveTabMap((p) => ({ ...p, [tripId]: "roster" }))}
-                            style={{
-                              background: (activeTabMap[tripId] || "roster") === "roster" ? "rgba(59, 130, 246, 0.15)" : "transparent",
-                              border: `1px solid ${(activeTabMap[tripId] || "roster") === "roster" ? C.accent : "transparent"}`,
-                              borderRadius: 8,
-                              padding: "6px 14px",
-                              color: (activeTabMap[tripId] || "roster") === "roster" ? "#93c5fd" : C.muted,
-                              fontSize: 12,
-                              fontWeight: 600,
-                              cursor: "pointer",
-                              fontFamily: "inherit",
-                            }}
-                          >
-                            👥 Enrolled Trekkers ({approvedMembers.length})
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setActiveTabMap((p) => ({ ...p, [tripId]: "geofence" }))}
-                            style={{
-                              background: activeTabMap[tripId] === "geofence" ? "rgba(245, 158, 11, 0.15)" : "transparent",
-                              border: `1px solid ${activeTabMap[tripId] === "geofence" ? "#f59e0b" : "transparent"}`,
-                              borderRadius: 8,
-                              padding: "6px 14px",
-                              color: activeTabMap[tripId] === "geofence" ? "#fbbf24" : C.muted,
-                              fontSize: 12,
-                              fontWeight: 600,
-                              cursor: "pointer",
-                              fontFamily: "inherit",
-                            }}
-                          >
-                            🔒 Geofence & Safety Perimeter
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setActiveTabMap((p) => ({ ...p, [tripId]: "protocols" }))}
-                            style={{
-                              background: activeTabMap[tripId] === "protocols" ? "rgba(34, 197, 94, 0.15)" : "transparent",
-                              border: `1px solid ${activeTabMap[tripId] === "protocols" ? "#22c55e" : "transparent"}`,
-                              borderRadius: 8,
-                              padding: "6px 14px",
-                              color: activeTabMap[tripId] === "protocols" ? "#86efac" : C.muted,
-                              fontSize: 12,
-                              fontWeight: 600,
-                              cursor: "pointer",
-                              fontFamily: "inherit",
-                            }}
-                          >
-                            🛡️ Safety Directives & SOPs ({protocols.filter((p) => p.status === "published").length})
-                          </button>
-                        </div>
+                    <CapacityBar filled={displayFilled} max={max} compact />
 
-                        {/* SUB-VIEW 1: ENROLLED TREKKERS ROSTER */}
-                        {(activeTabMap[tripId] || "roster") === "roster" && (
-                          <div>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                              <span>Enrolled Trekkers Roster</span>
-                              <button
-                                type="button"
-                                onClick={() => loadRosterForTrip(tripId)}
-                                style={{ background: "transparent", border: "none", color: "#60a5fa", fontSize: 11, cursor: "pointer" }}
-                              >
-                                ↻ Refresh Roster
-                              </button>
-                            </div>
-
-                            {loadingRoster[tripId] ? (
-                              <div style={{ padding: "16px", textAlign: "center", color: C.muted, fontSize: 12 }}>
-                                Loading expedition roster from database...
-                              </div>
-                            ) : approvedMembers.length === 0 ? (
-                              <div style={{ padding: "16px", textAlign: "center", color: C.muted2, fontSize: 12, background: "rgba(255,255,255,0.02)", borderRadius: 8 }}>
-                                No trekkers currently enrolled in this expedition. Trekkers who apply with code <strong>{trip.code}</strong> and get approved will appear here.
-                              </div>
-                            ) : (
-                              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                                <thead>
-                                  <tr>
-                                    <TH>Trekker</TH>
-                                    <TH>Contact & Blood</TH>
-                                    <TH>Emergency Contact</TH>
-                                    <TH>Status</TH>
-                                    <TH>Roster Actions</TH>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {approvedMembers.map((member) => {
-                                    const memberKey = `${tripId}-${member.id || member.userId}`;
-                                    const isActing = !!actionLoading[memberKey];
-
-                                    return (
-                                      <tr key={memberKey}>
-                                        <TD>
-                                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                            <div
-                                              style={{
-                                                width: 30,
-                                                height: 30,
-                                                borderRadius: "50%",
-                                                background: "rgba(59, 130, 246, 0.15)",
-                                                border: "1px solid rgba(59, 130, 246, 0.3)",
-                                                color: "#60a5fa",
-                                                fontSize: 11,
-                                                fontWeight: 700,
-                                                display: "flex",
-                                                alignItems: "center",
-                                                justifyContent: "center",
-                                              }}
-                                            >
-                                              {(member.name || "TR").slice(0, 2).toUpperCase()}
-                                            </div>
-                                            <div>
-                                              <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>
-                                                {member.name || "Trekker"}
-                                              </div>
-                                              <div style={{ fontSize: 11, color: C.muted }}>{member.email || "No email"}</div>
-                                            </div>
-                                          </div>
-                                        </TD>
-                                        <TD>
-                                          <div style={{ fontSize: 11.5, color: C.text }}>{member.phone || "—"}</div>
-                                          <div style={{ fontSize: 11, color: C.muted2 }}>Blood: {member.blood || "B+"} · Medical: {member.medical || "None"}</div>
-                                        </TD>
-                                        <TD>
-                                          <div style={{ fontSize: 11.5, color: C.text }}>{member.ec1Name || "Family"} ({member.ec1Rel || "Next of Kin"})</div>
-                                          <div style={{ fontSize: 11, color: C.muted2 }}>📞 {member.ec1Ph || "—"}</div>
-                                        </TD>
-                                        <TD>
-                                          <span
-                                            style={{
-                                              fontSize: 10,
-                                              fontWeight: 700,
-                                              padding: "2px 7px",
-                                              borderRadius: 10,
-                                              background: "rgba(34, 197, 94, 0.15)",
-                                              border: "1px solid rgba(34, 197, 94, 0.3)",
-                                              color: "#86efac",
-                                            }}
-                                          >
-                                            ● ENROLLED
-                                          </span>
-                                        </TD>
-                                        <TD>
-                                          <button
-                                            type="button"
-                                            onClick={() => handleRemove(tripId, member.id || member.userId)}
-                                            disabled={isActing}
-                                            style={{
-                                              background: "transparent",
-                                              border: "1px solid rgba(239, 68, 68, 0.3)",
-                                              borderRadius: 6,
-                                              color: "#fca5a5",
-                                              padding: "4px 10px",
-                                              fontSize: 11,
-                                              fontWeight: 600,
-                                              cursor: isActing ? "not-allowed" : "pointer",
-                                              opacity: isActing ? 0.6 : 1,
-                                              fontFamily: "inherit",
-                                            }}
-                                          >
-                                            {isActing ? "Removing..." : "Remove from Expedition"}
-                                          </button>
-                                        </TD>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                            )}
-                          </div>
-                        )}
-
-                        {/* SUB-VIEW 2: GEOFENCE SAFETY PERIMETER MANAGEMENT */}
-                        {activeTabMap[tripId] === "geofence" && (
-                          <div
-                            style={{
-                              background: "rgba(245, 158, 11, 0.04)",
-                              border: "1px solid rgba(245, 158, 11, 0.25)",
-                              borderRadius: 12,
-                              padding: "16px 20px",
-                            }}
-                          >
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
-                              <div>
-                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                  <span style={{ fontSize: 18 }}>🔒</span>
-                                  <span style={{ fontSize: 14, fontWeight: 700, color: "#fbbf24" }}>
-                                    Geofence Safety Perimeter Editor
-                                  </span>
-                                  <Pill color="amber">Admin Authority Only</Pill>
-                                </div>
-                                <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
-                                  Adjust the maximum allowable distance trekkers can venture from the trail center. Trekkers breaching this perimeter trigger automatic telemetry alerts on their mobile app and this admin radar.
-                                </div>
-                              </div>
-
-                              <Btn
-                                variant="primary"
-                                onClick={() => handleSaveGeofence(trip)}
-                                disabled={!!savingGeofence[tripId]}
-                                style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)", border: "none" }}
-                              >
-                                {savingGeofence[tripId] ? "Broadcasting..." : "Save & Broadcast Perimeter"}
-                              </Btn>
-                            </div>
-
-                            {geofenceToast[tripId] && (
-                              <div
-                                style={{
-                                  marginBottom: 14,
-                                  padding: "10px 14px",
-                                  borderRadius: 8,
-                                  background: "rgba(34, 197, 94, 0.15)",
-                                  border: "1px solid rgba(34, 197, 94, 0.35)",
-                                  color: "#86efac",
-                                  fontSize: 12,
-                                  fontWeight: 600,
-                                }}
-                              >
-                                {geofenceToast[tripId]}
-                              </div>
-                            )}
-
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                              <div>
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                                  <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                                    Safety Perimeter Radius
-                                  </label>
-                                  <span style={{ fontSize: 14, fontWeight: 800, color: "#fbbf24" }}>
-                                    {((geofenceRadiusMap[tripId] ?? (trip.geofence?.radius || 2500)) / 1000).toFixed(1)} km ({(geofenceRadiusMap[tripId] ?? (trip.geofence?.radius || 2500))} m)
-                                  </span>
-                                </div>
-
-                                <input
-                                  type="range"
-                                  min="500"
-                                  max="5000"
-                                  step="100"
-                                  value={geofenceRadiusMap[tripId] ?? (trip.geofence?.radius || 2500)}
-                                  onChange={(e) =>
-                                    setGeofenceRadiusMap((p) => ({ ...p, [tripId]: Number(e.target.value) }))
-                                  }
-                                  style={{ width: "100%", accentColor: "#f59e0b", marginBottom: 10 }}
-                                />
-
-                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
-                                  {[
-                                    { label: "⚠️ 1.0 km (Dense Fog / Storm)", val: 1000 },
-                                    { label: "🧭 2.5 km (Standard Corridor)", val: 2500 },
-                                    { label: "🏔️ 4.0 km (Plateau Range)", val: 4000 },
-                                  ].map((preset) => (
-                                    <button
-                                      key={preset.val}
-                                      type="button"
-                                      onClick={() =>
-                                        setGeofenceRadiusMap((p) => ({ ...p, [tripId]: preset.val }))
-                                      }
-                                      style={{
-                                        fontSize: 10.5,
-                                        padding: "4px 9px",
-                                        borderRadius: 6,
-                                        border: `1px solid ${(geofenceRadiusMap[tripId] ?? (trip.geofence?.radius || 2500)) === preset.val ? "#f59e0b" : C.border}`,
-                                        background: (geofenceRadiusMap[tripId] ?? (trip.geofence?.radius || 2500)) === preset.val ? "rgba(245, 158, 11, 0.2)" : "rgba(255, 255, 255, 0.04)",
-                                        color: (geofenceRadiusMap[tripId] ?? (trip.geofence?.radius || 2500)) === preset.val ? "#fbbf24" : C.muted,
-                                        cursor: "pointer",
-                                        fontFamily: "inherit",
-                                      }}
-                                    >
-                                      {preset.label}
-                                    </button>
-                                  ))}
-                                </div>
-
-                                <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
-                                  Designated Safety Zone Name
-                                </label>
-                                <Input
-                                  value={geofenceZoneMap[tripId] ?? (trip.geofence?.zoneName || `${trip.name} Safe Corridor`)}
-                                  onChange={(e) =>
-                                    setGeofenceZoneMap((p) => ({ ...p, [tripId]: e.target.value }))
-                                  }
-                                  placeholder="e.g. Rajmachi Safe Trek Corridor"
-                                />
-                              </div>
-
-                              <div
-                                style={{
-                                  background: "rgba(0, 0, 0, 0.3)",
-                                  border: `1px solid ${C.border}`,
-                                  borderRadius: 10,
-                                  padding: "14px 16px",
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  justifyContent: "space-between",
-                                }}
-                              >
-                                <div>
-                                  <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
-                                    Active Enforced Coordinates
-                                  </div>
-                                  <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
-                                    📍 Trail Center: {trip.lat || 18.8286}°N, {trip.lon || 73.3986}°E
-                                  </div>
-                                  <div style={{ fontSize: 11, color: C.muted2, marginTop: 2 }}>
-                                    Reference: Rajmachi Fort / Manoranjan Ridge (829m ASL)
-                                  </div>
-                                </div>
-
-                                <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.border}`, fontSize: 11.5, color: C.muted }}>
-                                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                                    <span>Leader in Command:</span>
-                                    <span style={{ color: "#fbbf24", fontWeight: 600 }}>{trip.leader || "Field Guide Ajay Saini"}</span>
-                                  </div>
-                                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                                    <span>User App Enforced Status:</span>
-                                    <span style={{ color: "#86efac", fontWeight: 600 }}>Active (Locked to Admin)</span>
-                                  </div>
-                                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                    <span>Walkie-Talkie Channel (VHF Radio):</span>
-                                    <span style={{ color: "#60a5fa" }}>{trip.vhfChannel || "145.500 MHz (VHF Ch 1)"}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* SUB-VIEW 3: EXPEDITION SAFETY PROTOCOLS */}
-                        {activeTabMap[tripId] === "protocols" && (
-                          <div>
-                            <div
-                              style={{
-                                fontSize: 13,
-                                fontWeight: 600,
-                                color: C.text,
-                                marginBottom: 10,
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                              }}
-                            >
-                              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                <span>🛡️</span>
-                                <span>Enforced Safety Directives for {trip.name}</span>
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => setActiveMainTab("protocols")}
-                                style={{
-                                  background: "transparent",
-                                  border: "none",
-                                  color: "#60a5fa",
-                                  fontSize: 11,
-                                  cursor: "pointer",
-                                  fontWeight: 600,
-                                  textDecoration: "underline",
-                                }}
-                              >
-                                Edit &amp; Manage All Directives →
-                              </button>
-                            </div>
-                            <div
-                              style={{
-                                display: "grid",
-                                gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-                                gap: 10,
-                              }}
-                            >
-                              {protocols.map((p) => (
-                                <div
-                                  key={p.id}
-                                  style={{
-                                    padding: "12px 14px",
-                                    background: "rgba(255,255,255,0.02)",
-                                    border: `1px solid ${p.status === "published" ? "rgba(34,197,94,0.25)" : C.border}`,
-                                    borderRadius: 10,
-                                  }}
-                                >
-                                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                                    <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>{p.title}</div>
-                                    <Pill color={p.status === "published" ? "green" : "amber"}>{p.status}</Pill>
-                                  </div>
-                                  <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.5, marginBottom: 8 }}>
-                                    {p.body}
-                                  </div>
-                                  <div style={{ fontSize: 10, color: C.muted2 }}>
-                                    Author: {p.author || "Command Admin"} · Updated: {p.updated || "Recently"}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    <div style={{ display: "flex", gap: 7, marginTop: 2 }}>
+                      <button
+                        type="button"
+                        onClick={() => openManage(trip, "roster")}
+                        style={{ flex: 1, padding: "8px 10px", borderRadius: 8, border: "none", background: "linear-gradient(135deg,#2563eb,#1d4ed8)", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+                      >
+                        Manage roster
+                      </button>
+                      {!isManaged && (
+                        <button
+                          type="button"
+                          disabled={!!actionLoading[`manage-${tripId}`]}
+                          onClick={() => handleSetInFieldCommand(trip)}
+                          style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid rgba(34,197,94,0.3)", background: "transparent", color: "#86efac", fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}
+                        >
+                          {actionLoading[`manage-${tripId}`] ? "…" : "Set in-field"}
+                        </button>
+                      )}
+                    </div>
                   </Card>
                 );
               })}
             </div>
-          </div>
+          )}
         </>
+      )}
+
+      {selectedTrip && detailsForm && (
+        <DrawerShell
+          title={selectedTrip.name}
+          subtitle={`${selectedTrip.code} · ${selectedTrip.startDate || "date TBD"}${selectedTrip.location ? ` · ${selectedTrip.location}` : ""}`}
+          onClose={closeDrawer}
+        >
+          <div style={{ marginBottom: 14 }}>
+            <Tabs
+              value={drawerTab}
+              onChange={setDrawerTab}
+              tabs={[
+                { id: "roster", label: "Roster" },
+                { id: "details", label: "Details & slots" },
+                { id: "safety", label: "Safety" },
+              ]}
+            />
+          </div>
+
+          {drawerTab === "roster" && (() => {
+            const tripId = selectedTrip.id || selectedTrip.tripId;
+            const demoList = demoForTrip(selectedTrip);
+            const liveMembers = rosters[tripId] || [];
+            const approved = liveMembers.filter((m) => (m.status || "approved") === "approved");
+            const memberCount = demoList.length + approved.length;
+            const max = Number(selectedTrip.maxRoster) || 25;
+            return (
+              <div>
+                <div style={{ marginBottom: 14 }}>
+                  <CapacityBar filled={memberCount} max={max} />
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.muted }}>
+                    Enrolled trekkers · {memberCount}
+                  </div>
+                  <button type="button" onClick={() => loadRosterForTrip(tripId)} style={{ background: "transparent", border: "none", color: "#60a5fa", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>
+                    ↻ Refresh
+                  </button>
+                </div>
+
+                {loadingRoster[tripId] ? (
+                  <div style={{ padding: 18, textAlign: "center", color: C.muted, fontSize: 12 }}>Loading roster…</div>
+                ) : memberCount === 0 ? (
+                  <div style={{ padding: "18px 14px", textAlign: "center", color: C.muted2, fontSize: 12, background: "rgba(255,255,255,0.02)", borderRadius: 9 }}>
+                    No trekkers enrolled yet. Approved requests from the user app appear here.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {demoList.map((member) => {
+                      const editing = demoEditId === member.id;
+                      return (
+                        <div key={member.id} style={{ padding: "10px 12px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.border}`, borderRadius: 10 }}>
+                          <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                            <Avatar initials={(member.name || "TR").split(/\s+/).slice(0, 2).map((p) => p[0]).join("").toUpperCase()} size={30} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              {editing ? (
+                                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                  <Input value={member.name} onChange={(e) => setDemoMembers((prev) => prev.map((m) => (m.id === member.id ? { ...m, name: e.target.value } : m)))} placeholder="Name" />
+                                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                                    <Input value={member.phone} onChange={(e) => setDemoMembers((prev) => prev.map((m) => (m.id === member.id ? { ...m, phone: e.target.value } : m)))} placeholder="Phone" />
+                                    <Input value={member.blood} onChange={(e) => setDemoMembers((prev) => prev.map((m) => (m.id === member.id ? { ...m, blood: e.target.value } : m)))} placeholder="Blood group" />
+                                  </div>
+                                  <Input value={member.medical} onChange={(e) => setDemoMembers((prev) => prev.map((m) => (m.id === member.id ? { ...m, medical: e.target.value } : m)))} placeholder="Medical notes" />
+                                  <button type="button" onClick={() => setDemoEditId(null)} style={{ alignSelf: "flex-start", padding: "5px 12px", borderRadius: 7, border: "1px solid rgba(34,197,94,0.3)", background: "rgba(34,197,94,0.14)", color: "#86efac", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                                    Save member
+                                  </button>
+                                </div>
+                              ) : (
+                                <>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                    <span style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>{member.name}</span>
+                                    <Pill color="purple">demo</Pill>
+                                  </div>
+                                  <div style={{ fontSize: 11, color: C.muted2, marginTop: 2 }}>📞 {member.phone} · 🩸 {member.blood} · 🩺 {member.medical}</div>
+                                  <div style={{ fontSize: 10.5, color: C.muted2, marginTop: 1 }}>🆘 {member.ec1Name} ({member.ec1Rel}) · {member.ec1Ph}</div>
+                                </>
+                              )}
+                            </div>
+                            {!editing && (
+                              <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
+                                <button type="button" onClick={() => setDemoEditId(member.id)} style={{ background: "transparent", border: "none", color: "#60a5fa", fontSize: 10.5, cursor: "pointer", fontFamily: "inherit" }}>edit</button>
+                                <button type="button" onClick={() => removeDemoMember(tripId, member.id)} style={{ background: "transparent", border: "none", color: "#fca5a5", fontSize: 10.5, cursor: "pointer", fontFamily: "inherit" }}>remove</button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {approved.map((member) => {
+                      const memberId = member.id || member.userId;
+                      const key = `${tripId}-${memberId}`;
+                      const isActing = !!actionLoading[key];
+                      return (
+                        <div key={memberId} style={{ padding: "10px 12px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.border}`, borderRadius: 10 }}>
+                          <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                            <Avatar initials={(member.name || "TR").split(/\s+/).slice(0, 2).map((p) => p[0]).join("").toUpperCase()} size={30} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>{member.name || "Trekker"}</div>
+                              <div style={{ fontSize: 11, color: C.muted2, marginTop: 2 }}>{member.email || "no email"} · 📞 {member.phone || "—"}</div>
+                              <div style={{ fontSize: 10.5, color: C.muted2, marginTop: 1 }}>🩸 {member.blood || "B+"} · 🩺 {member.medical || "None"}</div>
+                              <div style={{ fontSize: 10.5, color: C.muted2, marginTop: 1 }}>🆘 {member.ec1Name || "Kin"} ({member.ec1Rel || "contact"}) · {member.ec1Ph || "—"}</div>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={isActing}
+                              onClick={() => handleRemove(tripId, memberId)}
+                              style={{ background: "transparent", border: "none", color: "#fca5a5", fontSize: 10.5, cursor: isActing ? "not-allowed" : "pointer", fontFamily: "inherit", flexShrink: 0 }}
+                            >
+                              {isActing ? "…" : "remove"}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {selectedTrip.demoRoster && (
+                  <div style={{ marginTop: 14, padding: "10px 12px", borderRadius: 9, background: "rgba(167,139,250,0.07)", border: "1px solid rgba(167,139,250,0.22)", fontSize: 10.5, color: "rgba(196,181,253,0.85)", lineHeight: 1.5 }}>
+                    Rajmachi demo roster is local to this console. Changes reset the next time an admin signs out.
+                    {(removedDemo[tripId] || []).length > 0 && (
+                      <button type="button" onClick={() => restoreDemoRoster(tripId)} style={{ display: "block", marginTop: 6, background: "transparent", border: "none", color: "#c4b5fd", fontSize: 10.5, fontWeight: 700, textDecoration: "underline", cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
+                        Restore demo roster
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {drawerTab === "details" && (
+            <div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10, marginBottom: 4 }}>
+                <Field label="Expedition name" span={2}>
+                  <Input value={detailsForm.name} onChange={(e) => setDetailsForm((f) => ({ ...f, name: e.target.value }))} />
+                </Field>
+                <Field label="Start date"><Input type="date" value={detailsForm.startDate} onChange={(e) => setDetailsForm((f) => ({ ...f, startDate: e.target.value }))} style={{ colorScheme: "dark" }} /></Field>
+                <Field label="Start time"><Input value={detailsForm.startTime} onChange={(e) => setDetailsForm((f) => ({ ...f, startTime: e.target.value }))} /></Field>
+                <Field label="End date"><Input type="date" value={detailsForm.endDate} onChange={(e) => setDetailsForm((f) => ({ ...f, endDate: e.target.value }))} style={{ colorScheme: "dark" }} /></Field>
+                <Field label="End time"><Input value={detailsForm.endTime} onChange={(e) => setDetailsForm((f) => ({ ...f, endTime: e.target.value }))} /></Field>
+                <Field label="Slots"><Input type="number" value={detailsForm.maxRoster} onChange={(e) => setDetailsForm((f) => ({ ...f, maxRoster: e.target.value }))} /></Field>
+                <Field label="Difficulty"><Input value={detailsForm.difficulty} onChange={(e) => setDetailsForm((f) => ({ ...f, difficulty: e.target.value }))} /></Field>
+                <Field label="Location"><Input value={detailsForm.location} onChange={(e) => setDetailsForm((f) => ({ ...f, location: e.target.value }))} /></Field>
+                <Field label="Elevation"><Input value={detailsForm.elevation} onChange={(e) => setDetailsForm((f) => ({ ...f, elevation: e.target.value }))} /></Field>
+                <Field label="Pickup point" span={2}><Input value={detailsForm.pickupLocation} onChange={(e) => setDetailsForm((f) => ({ ...f, pickupLocation: e.target.value }))} /></Field>
+                <Field label="Base / camp" span={2}><Input value={detailsForm.baseLocation} onChange={(e) => setDetailsForm((f) => ({ ...f, baseLocation: e.target.value }))} /></Field>
+                <Field label="Admin in charge" span={2} hint="One admin per expedition. Changing this may be blocked if that admin is already in charge elsewhere.">
+                  <Select value={detailsForm.adminInCharge} onChange={(e) => setDetailsForm((f) => ({ ...f, adminInCharge: e.target.value, extraAdmins: f.extraAdmins.filter((id) => id !== e.target.value) }))}>
+                    <option value="">Select an admin…</option>
+                    {adminOptions.map((a) => <option key={a.id} value={a.id}>{a.name || a.email}</option>)}
+                  </Select>
+                </Field>
+              </div>
+
+              <div style={{ marginBottom: 12 }}>
+                <FieldLabel>Additional admins</FieldLabel>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {adminOptions.filter((a) => a.id !== detailsForm.adminInCharge).map((a) => {
+                    const on = detailsForm.extraAdmins.includes(a.id);
+                    return (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => toggleExtraAdmin(a.id)}
+                        style={{ padding: "5px 10px", borderRadius: 7, fontSize: 11, cursor: "pointer", fontFamily: "inherit", border: `1px solid ${on ? "rgba(34,197,94,0.4)" : C.border}`, background: on ? "rgba(34,197,94,0.12)" : "transparent", color: on ? "#86efac" : C.muted }}
+                      >
+                        {on ? "✓ " : "+ "}{a.name || a.email}
+                      </button>
+                    );
+                  })}
+                  {adminOptions.filter((a) => a.id !== detailsForm.adminInCharge).length === 0 && (
+                    <span style={{ fontSize: 11, color: C.muted2 }}>No other admin accounts available.</span>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 12 }}>
+                <Field label="Instructions for trekkers">
+                  <TextArea rows={4} value={detailsForm.instructions} onChange={(e) => setDetailsForm((f) => ({ ...f, instructions: e.target.value }))} placeholder="Reporting time, ID checks, route rules…" />
+                </Field>
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <Field label="Things to carry" hint="One item per line.">
+                  <TextArea rows={4} value={detailsForm.gearList} onChange={(e) => setDetailsForm((f) => ({ ...f, gearList: e.target.value }))} placeholder={"Trekking shoes\n2L water\nHeadlamp"} />
+                </Field>
+              </div>
+              <div style={{ marginBottom: 14 }}>
+                <Field label="Notes">
+                  <TextArea rows={3} value={detailsForm.notes} onChange={(e) => setDetailsForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Anything else the trekker should know." />
+                </Field>
+              </div>
+
+              {formError && <div style={{ marginBottom: 10, fontSize: 11.5, color: "#fca5a5" }}>{formError}</div>}
+              <button
+                type="button"
+                onClick={handleSaveDetails}
+                disabled={savingDetails}
+                style={{ width: "100%", padding: "10px 14px", borderRadius: 9, border: "none", background: "linear-gradient(135deg,#2563eb,#1d4ed8)", color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: savingDetails ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: savingDetails ? 0.7 : 1 }}
+              >
+                {savingDetails ? "Saving…" : "Save expedition details"}
+              </button>
+            </div>
+          )}
+
+          {drawerTab === "safety" && (
+            <div>
+              <div style={{ padding: "12px 14px", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: `1px solid ${C.border}`, marginBottom: 14 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 10 }}>🔒 Safety perimeter</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+                  <Field label="Radius (metres)">
+                    <Input type="number" value={geofenceRadius} onChange={(e) => setGeofenceRadius(e.target.value)} />
+                  </Field>
+                  <Field label="Zone name">
+                    <Input value={geofenceZone} onChange={(e) => setGeofenceZone(e.target.value)} />
+                  </Field>
+                </div>
+                <div style={{ fontSize: 10.5, color: C.muted2, margin: "6px 0 10px" }}>
+                  Centre: {selectedTrip.lat || 18.8286}°N, {selectedTrip.lon || 73.3986}°E · {(Number(geofenceRadius) / 1000).toFixed(1)} km radius
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSaveGeofence}
+                  disabled={savingGeofence}
+                  style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "rgba(34,197,94,0.18)", color: "#86efac", fontSize: 11.5, fontWeight: 700, cursor: savingGeofence ? "not-allowed" : "pointer", fontFamily: "inherit" }}
+                >
+                  {savingGeofence ? "Saving…" : "Save perimeter"}
+                </button>
+                {geofenceToast && <div style={{ marginTop: 8, fontSize: 11, color: geofenceToast.startsWith("✓") ? "#86efac" : "#fca5a5" }}>{geofenceToast}</div>}
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.muted }}>Safety directives</div>
+                <button type="button" onClick={() => setActiveMainTab("protocols")} style={{ background: "transparent", border: "none", color: "#60a5fa", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>
+                  Manage all →
+                </button>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {protocols.map((p) => (
+                  <div key={p.id} style={{ padding: "10px 12px", background: "rgba(255,255,255,0.02)", border: `1px solid ${p.status === "published" ? "rgba(34,197,94,0.22)" : C.border}`, borderRadius: 9 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{p.title}</span>
+                      <Pill color={p.status === "published" ? "green" : "amber"}>{p.status}</Pill>
+                    </div>
+                    <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.5 }}>{p.body}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </DrawerShell>
+      )}
+
+      {showCreateModal && (
+        <ModalShell
+          title="New expedition"
+          subtitle="Created trips appear instantly in the trekker app."
+          onClose={() => setShowCreateModal(false)}
+        >
+          <form onSubmit={handleCreateExpedition}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10, marginBottom: 10 }}>
+              <Field label="Name" span={2}>
+                <Input value={newExpForm.name} onChange={(e) => setNewExpForm((f) => ({ ...f, name: e.target.value }))} placeholder="e.g. Rajmachi Fort Night Trek" />
+              </Field>
+              <Field label="Start date"><Input type="date" value={newExpForm.startDate} onChange={(e) => setNewExpForm((f) => ({ ...f, startDate: e.target.value }))} style={{ colorScheme: "dark" }} /></Field>
+              <Field label="Start time"><Input value={newExpForm.startTime} onChange={(e) => setNewExpForm((f) => ({ ...f, startTime: e.target.value }))} /></Field>
+              <Field label="End date"><Input type="date" value={newExpForm.endDate} onChange={(e) => setNewExpForm((f) => ({ ...f, endDate: e.target.value }))} style={{ colorScheme: "dark" }} /></Field>
+              <Field label="End time"><Input value={newExpForm.endTime} onChange={(e) => setNewExpForm((f) => ({ ...f, endTime: e.target.value }))} /></Field>
+              <Field label="Slots"><Input type="number" min="1" value={newExpForm.maxRoster} onChange={(e) => setNewExpForm((f) => ({ ...f, maxRoster: e.target.value }))} /></Field>
+              <Field label="Difficulty"><Input value={newExpForm.difficulty} onChange={(e) => setNewExpForm((f) => ({ ...f, difficulty: e.target.value }))} /></Field>
+              <Field label="Location"><Input value={newExpForm.location} onChange={(e) => setNewExpForm((f) => ({ ...f, location: e.target.value }))} placeholder="Rajmachi Fort, Lonavala" /></Field>
+              <Field label="Elevation"><Input value={newExpForm.elevation} onChange={(e) => setNewExpForm((f) => ({ ...f, elevation: e.target.value }))} placeholder="826m ASL" /></Field>
+              <Field label="Admin in charge" span={2} hint="You can only be in charge of one expedition at a time.">
+                <Select value={newExpForm.adminInCharge} onChange={(e) => setNewExpForm((f) => ({ ...f, adminInCharge: e.target.value, extraAdmins: f.extraAdmins.filter((id) => id !== e.target.value) }))}>
+                  <option value="">Select an admin…</option>
+                  {adminOptions.map((a) => <option key={a.id} value={a.id}>{a.name || a.email}</option>)}
+                </Select>
+              </Field>
+              <Field label="Pickup point" span={2}><Input value={newExpForm.pickupLocation} onChange={(e) => setNewExpForm((f) => ({ ...f, pickupLocation: e.target.value }))} /></Field>
+              <Field label="Base / camp" span={2}><Input value={newExpForm.baseLocation} onChange={(e) => setNewExpForm((f) => ({ ...f, baseLocation: e.target.value }))} /></Field>
+            </div>
+
+            <div style={{ marginBottom: 10 }}>
+              <FieldLabel>Additional admins</FieldLabel>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {adminOptions.filter((a) => a.id !== newExpForm.adminInCharge).map((a) => {
+                  const on = newExpForm.extraAdmins.includes(a.id);
+                  return (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => setNewExpForm((f) => ({ ...f, extraAdmins: on ? f.extraAdmins.filter((x) => x !== a.id) : [...f.extraAdmins, a.id] }))}
+                      style={{ padding: "5px 10px", borderRadius: 7, fontSize: 11, cursor: "pointer", fontFamily: "inherit", border: `1px solid ${on ? "rgba(34,197,94,0.4)" : C.border}`, background: on ? "rgba(34,197,94,0.12)" : "transparent", color: on ? "#86efac" : C.muted }}
+                    >
+                      {on ? "✓ " : "+ "}{a.name || a.email}
+                    </button>
+                  );
+                })}
+                {adminOptions.filter((a) => a.id !== newExpForm.adminInCharge).length === 0 && (
+                  <span style={{ fontSize: 11, color: C.muted2 }}>No other admin accounts available.</span>
+                )}
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 10 }}>
+              <Field label="Instructions for trekkers">
+                <TextArea rows={3} value={newExpForm.instructions} onChange={(e) => setNewExpForm((f) => ({ ...f, instructions: e.target.value }))} placeholder="Reporting time, ID checks, route rules…" />
+              </Field>
+            </div>
+            <div style={{ marginBottom: 10 }}>
+              <Field label="Things to carry" hint="One item per line.">
+                <TextArea rows={3} value={newExpForm.gearList} onChange={(e) => setNewExpForm((f) => ({ ...f, gearList: e.target.value }))} placeholder={"Trekking shoes\n2L water\nHeadlamp"} />
+              </Field>
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <Field label="Notes">
+                <TextArea rows={2} value={newExpForm.notes} onChange={(e) => setNewExpForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Anything else the trekker should know." />
+              </Field>
+            </div>
+
+            {formError && <div style={{ marginBottom: 10, fontSize: 11.5, color: "#fca5a5" }}>{formError}</div>}
+            <button
+              type="submit"
+              disabled={creatingExpedition || !newExpForm.name.trim()}
+              style={{ width: "100%", padding: "10px 14px", borderRadius: 9, border: "none", background: "linear-gradient(135deg,#2563eb,#1d4ed8)", color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: creatingExpedition ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: creatingExpedition || !newExpForm.name.trim() ? 0.6 : 1 }}
+            >
+              {creatingExpedition ? "Creating…" : "Create expedition"}
+            </button>
+          </form>
+        </ModalShell>
+      )}
+
+      {deleteModalTrip && (
+        <ModalShell title="Delete expedition" subtitle="This also clears the roster and releases enrolled trekkers." onClose={() => setDeleteModalTrip(null)} maxWidth={440}>
+          <p style={{ fontSize: 12.5, color: C.text, lineHeight: 1.6, marginTop: 0 }}>
+            Permanently delete <strong>{deleteModalTrip.name}</strong> ({deleteModalTrip.code})? Enrolled trekkers will be removed and freed to join another expedition.
+          </p>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <Btn variant="default" onClick={() => setDeleteModalTrip(null)}>Cancel</Btn>
+            <button
+              type="button"
+              onClick={handleConfirmDeleteTrip}
+              disabled={deletingTrip}
+              style={{ padding: "7px 14px", borderRadius: 8, border: "none", background: "rgba(239,68,68,0.16)", color: "#fca5a5", fontSize: 12, fontWeight: 700, cursor: deletingTrip ? "not-allowed" : "pointer", fontFamily: "inherit" }}
+            >
+              {deletingTrip ? "Deleting…" : "Delete expedition"}
+            </button>
+          </div>
+        </ModalShell>
       )}
     </div>
   );
@@ -7257,6 +6824,8 @@ export default function AdminPanel() {
       onRemove={handleRemoveTrekker}
       refreshing={refreshingTrekkers}
       onRefresh={loadPendingTrekkers}
+      admins={displayUsers.filter((u) => (u.role || "").toLowerCase() === "admin")}
+      currentAdmin={activeAdmin}
     />,
     "admin-approvals": <PageAdminApprovals
       pendingAdmins={pendingAdmins}
@@ -7265,6 +6834,8 @@ export default function AdminPanel() {
       onReject={handleRejectAdmin}
       refreshing={refreshingPending}
       onRefresh={loadPendingAdmins}
+      pendingTrekkerCount={pendingTrekkers.length}
+      onReviewTrekkers={() => setPage("trip-rosters")}
     />,
     "device-tracking": <PageDeviceTracking users={displayUsers} connectionState={connectionState} />,
     "wearables-radar": <PageWearablesRadar users={displayUsers} />,
@@ -7277,6 +6848,8 @@ export default function AdminPanel() {
       onRemove={handleRemoveTrekker}
       refreshing={refreshingTrekkers}
       onRefresh={loadPendingTrekkers}
+      admins={displayUsers.filter((u) => (u.role || "").toLowerCase() === "admin")}
+      currentAdmin={activeAdmin}
     />,
     "sos-navigation": (
       <PageSOSNavigation
@@ -7295,16 +6868,16 @@ export default function AdminPanel() {
   };
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", minHeight: "780px", background: C.bg, fontFamily: "var(--font-sans)", color: C.text }}>
+    <div className="admin-shell" style={{ display: "grid", gridTemplateColumns: "240px 1fr", minHeight: "780px", background: C.bg, fontFamily: "var(--font-sans)", color: C.text }}>
       {/* Sidebar */}
-      <aside style={{ background: C.sidebar, display: "flex", flexDirection: "column", borderRight: `1px solid ${C.border}` }}>
-        <div style={{ padding: "18px 16px 14px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 10 }}>
+      <aside className="admin-sidebar" style={{ background: C.sidebar, display: "flex", flexDirection: "column", borderRight: `1px solid ${C.border}` }}>
+        <div className="admin-brand" style={{ padding: "18px 16px 14px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 32, height: 32, borderRadius: "50%", background: "rgba(59,130,246,0.15)", border: `1px solid rgba(59,130,246,0.3)`, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke={C.accent} strokeWidth="1.5" /><circle cx="12" cy="12" r="4" stroke={C.accent} strokeWidth="1.5" /><circle cx="12" cy="12" r="1.5" fill={C.accent} /></svg>
           </div>
           <div><div style={{ fontSize: 14, fontWeight: 600, color: C.text, letterSpacing: "0.03em" }}>Margsutra <span style={{ color: C.accent }}>Admin</span></div><div style={{ fontSize: 10, color: C.muted2 }}>Control panel v3.0</div></div>
         </div>
-        <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 10 }}>
+        <div className="admin-profile" style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 34, height: 34, borderRadius: "50%", background: "rgba(59,130,246,0.18)", color: C.accent, fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center" }}>
             {(activeAdmin?.name || "SA").slice(0, 2).toUpperCase()}
           </div>
@@ -7314,16 +6887,16 @@ export default function AdminPanel() {
           </div>
           {activeSOS > 0 && <div style={{ marginLeft: "auto", background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "50%", width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: C.red, fontWeight: 700 }}>{activeSOS}</div>}
         </div>
-        <nav style={{ flex: 1, overflowY: "auto", padding: "10px 0" }}>
+        <nav className="admin-nav" style={{ flex: 1, overflowY: "auto", padding: "10px 0" }}>
           {NAV.map(({ section, items }) => (
-            <div key={section}>
+            <div key={section} className="admin-nav-section">
               <div style={{ fontSize: 9, color: C.muted2, padding: "10px 16px 4px", letterSpacing: "0.12em", textTransform: "uppercase" }}>{section}</div>
               {items.map(item => {
                 const active = page === item.id;
                 const isSosNav = item.id === "sos-navigation";
                 const isApprovals = item.id === "admin-approvals";
                 return (
-                  <div key={item.id} onClick={() => setPage(item.id)}
+                  <div key={item.id} className="admin-nav-item" onClick={() => setPage(item.id)}
                     style={{
                       display: "flex", alignItems: "center", gap: 10, padding: "8px 16px", cursor: "pointer",
                       borderLeft: `2px solid ${active ? (isSosNav ? C.red : C.accent) : "transparent"}`,
@@ -7341,7 +6914,7 @@ export default function AdminPanel() {
             </div>
           ))}
         </nav>
-        <div style={{ padding: "12px 16px", borderTop: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div className="admin-footer" style={{ padding: "12px 16px", borderTop: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ fontSize: 10, color: C.muted2 }}>© 2026 Margsutra</span>
           <button onClick={handleLogout} style={{ fontSize: 11, color: C.muted, background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}>Sign out</button>
         </div>
@@ -7554,7 +7127,7 @@ export default function AdminPanel() {
           </div>
         )}
 
-        <main style={{ flex: 1, overflow: "auto", padding: 24 }}>
+        <main className="admin-main" style={{ flex: 1, overflow: "auto", padding: 24 }}>
           {pages[page] || <div style={{ color: C.muted }}>Page not found.</div>}
         </main>
       </div>
