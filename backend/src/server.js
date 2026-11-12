@@ -36,6 +36,7 @@ const {
   getUserActiveTrip,
   createSOSEvent,
   resolveSOSEvent,
+  acknowledgeSOSEvent,
   cancelUserSOS,
   listSOSEvents,
   listPendingAdmins,
@@ -359,6 +360,7 @@ app.post("/api/sos/:id/resolve", optionalAuth, async (req, res) => {
     const resolvedBy = req.body?.resolvedBy || "admin@margsutra.app";
     const result = await resolveSOSEvent(req.params.id, notes, resolvedBy);
     if (result.error) return res.status(404).json({ error: result.error });
+    sosEventsCache = { at: 0, key: "", data: null };
 
     // Broadcast cancel to Socket.IO tracking server so admin and users stand down
     try {
@@ -380,6 +382,29 @@ app.post("/api/sos/:id/resolve", optionalAuth, async (req, res) => {
   } catch (error) {
     console.error("Resolve SOS error:", error);
     res.status(500).json({ error: "Failed to resolve SOS event." });
+  }
+});
+
+// Acknowledge an SOS: a duty officer has seen the beacon and is acting on it.
+// The incident stays active — only "stand down" clears it.
+app.post("/api/sos/:id/acknowledge", optionalAuth, async (req, res) => {
+  try {
+    let acknowledgedBy = req.body?.acknowledgedBy;
+    if (!acknowledgedBy && req.userId) {
+      const adminUser = await findUserById(req.userId);
+      acknowledgedBy = adminUser?.email || adminUser?.name || "admin@margsutra.app";
+    }
+    const result = await acknowledgeSOSEvent(
+      req.params.id,
+      acknowledgedBy || "admin@margsutra.app",
+      req.body?.note || ""
+    );
+    if (result.error) return res.status(404).json({ error: result.error });
+    sosEventsCache = { at: 0, key: "", data: null };
+    res.json(result);
+  } catch (error) {
+    console.error("Acknowledge SOS error:", error);
+    res.status(500).json({ error: "Failed to acknowledge SOS event." });
   }
 });
 

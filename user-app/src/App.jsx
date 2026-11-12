@@ -27,6 +27,64 @@ import {
 
 
 /* ════════════════════════════════════════════════
+   PAGE ERROR BOUNDARY
+   A broken page must never leave the trekker without
+   controls — show a recovery screen instead of a blank app.
+════════════════════════════════════════════════ */
+class PageErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, info) {
+    console.error("[App] Page crashed:", error, info?.componentStack);
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div style={{ padding: 24, display: "flex", justifyContent: "center" }}>
+        <div style={{
+          maxWidth: 460, width: "100%", background: "rgba(239,68,68,0.08)",
+          border: "1px solid rgba(239,68,68,0.3)", borderRadius: 16, padding: 24, textAlign: "center",
+        }}>
+          <div style={{ fontSize: 34, marginBottom: 10 }}>⚠️</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 6 }}>
+            This screen hit an error
+          </div>
+          <div style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.6, marginBottom: 16 }}>
+            Your safety controls are still active. Reload this screen, or go back to the dashboard — your
+            emergency beacon state is stored on the server and is not affected.
+          </div>
+          <div style={{ fontSize: 11, color: C.muted2, marginBottom: 16, wordBreak: "break-word" }}>
+            {String(this.state.error?.message || this.state.error)}
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+            <button onClick={() => this.setState({ error: null })}
+              style={{ padding: "9px 18px", borderRadius: 9, background: "rgba(59,130,246,0.16)",
+                border: "1px solid rgba(59,130,246,0.35)", color: C.accent, fontSize: 12.5, fontWeight: 700,
+                cursor: "pointer", fontFamily: "inherit" }}>
+              Try again
+            </button>
+            <button onClick={() => window.location.reload()}
+              style={{ padding: "9px 18px", borderRadius: 9, background: "rgba(255,255,255,0.06)",
+                border: `1px solid ${C.border}`, color: C.text, fontSize: 12.5, fontWeight: 700,
+                cursor: "pointer", fontFamily: "inherit" }}>
+              Reload app
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+}
+
+/* ════════════════════════════════════════════════
    DESIGN TOKENS  (mirror admin panel exactly)
 ════════════════════════════════════════════════ */
 const C = {
@@ -198,8 +256,8 @@ const Pill = ({ color, children }) => {
   const s = map[color]||map.gray;
   return <span style={{fontSize:11,padding:"2px 9px",borderRadius:20,fontWeight:500,background:s.bg,color:s.text}}>{children}</span>;
 };
-const Card = ({ children, style }) => (
-  <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px 18px",...style}}>{children}</div>
+const Card = ({ children, style, className }) => (
+  <div className={className} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px 18px",...style}}>{children}</div>
 );
 const StatCard = ({ label, value, sub, color=C.accent, icon }) => (
   <Card style={{marginBottom:0}}>
@@ -2998,7 +3056,7 @@ const PageWeatherMaps = ({ joinedTrip, onNavigate }) => {
             </div>
             <Card>
               <div style={{fontSize:12,fontWeight:500,color:C.text,marginBottom:12}}>Weekly Summary</div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
+              <div className="resp-4col" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
                 {[["Avg High",`${(wx.daily.temperature_2m_max.reduce((a,b)=>a+b,0)/7).toFixed(1)}°C`,C.red],
                   ["Avg Low",`${(wx.daily.temperature_2m_min.reduce((a,b)=>a+b,0)/7).toFixed(1)}°C`,C.teal],
                   ["Total Rain",`${wx.daily.precipitation_sum.reduce((a,b)=>a+b,0).toFixed(1)} mm`,C.accent],
@@ -3023,13 +3081,14 @@ const PageWeatherMaps = ({ joinedTrip, onNavigate }) => {
 /* ════════════════════════════════════════════════
    PAGE: SOS NAVIGATION  (user view)
 ════════════════════════════════════════════════ */
-const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate }) => {
+const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate, sosDelivery, sosAcknowledged }) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [elapsed, setElapsed]         = useState(0);
   const [teamPos, setTeamPos]         = useState({lat:RESCUE_TEAMS[0].lat,lon:RESCUE_TEAMS[0].lon});
   const [navMode, setNavMode]         = useState(false);
   const [trackingToken, setTrackingToken] = useState(() => localStorage.getItem("margsutra_tracking_token") || "");
   const [tokenState, setTokenState] = useState(trackingToken ? "ready" : "loading");
+  const [sirenOn, setSirenOn] = useState(true);
 
   const issueToken = useCallback(async () => {
     setTokenState("loading");
@@ -3137,30 +3196,42 @@ const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate }) => {
     const [rdy,setRdy] = useState(!!window.L);
     useEffect(()=>{ injectLeafletStyles(); ensureLeaflet(()=>setRdy(true)); },[]);
     const teamKey = JSON.stringify(teamPos);
+    // Without a GPS fix there is no marker to place — fall back to the rescue
+    // base and tell the trekker that the fix is still pending.
+    const anchor = myPos ? [myPos.lat, myPos.lon] : [teamPos.lat, teamPos.lon];
     useEffect(()=>{
       if(!rdy||!ref.current) return;
       const L = window.L;
       if(mapRef2.current){mapRef2.current.remove();mapRef2.current=null;}
-      const map = L.map(ref.current,{center:[myPos.lat,myPos.lon],zoom:10,zoomControl:true});
+      const map = L.map(ref.current,{center:anchor,zoom:10,zoomControl:true});
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
         attribution:"© OpenStreetMap",maxZoom:19}).addTo(map);
-      // User marker
-      L.marker([myPos.lat,myPos.lon],{icon:makeDotIcon(L,"#ef4444",14,true)}).addTo(map)
-        .bindPopup(`<b>📍 My Location</b><br>${user.name}<br>${myPos.lat.toFixed(5)}°N · ${myPos.lon.toFixed(5)}°E`);
+      // User marker — only when we really have a fix
+      if (myPos) {
+        L.marker([myPos.lat,myPos.lon],{icon:makeDotIcon(L,"#ef4444",14,true)}).addTo(map)
+          .bindPopup(`<b>📍 My Location</b><br>${user.name}<br>${myPos.lat.toFixed(5)}°N · ${myPos.lon.toFixed(5)}°E`);
+      }
       // Team marker
       L.marker([teamPos.lat,teamPos.lon],{icon:makeTeamIcon(L,"Team Alpha")}).addTo(map)
         .bindPopup(`<b>🚑 ${team.name}</b><br>${team.vehicle} · ETA ${etaMin} min`);
       // Route line
-      const shadow = L.polyline([[teamPos.lat,teamPos.lon],[myPos.lat,myPos.lon]],{color:"#f59e0b",weight:6,opacity:0.18}).addTo(map);
-      L.polyline([[teamPos.lat,teamPos.lon],[myPos.lat,myPos.lon]],{color:"#f59e0b",weight:3,opacity:0.9,dashArray:"14 10"}).addTo(map);
-      map.fitBounds([[teamPos.lat,teamPos.lon],[myPos.lat,myPos.lon]],{padding:[40,40],maxZoom:11});
+      L.polyline([[teamPos.lat,teamPos.lon],anchor],{color:"#f59e0b",weight:6,opacity:0.18}).addTo(map);
+      L.polyline([[teamPos.lat,teamPos.lon],anchor],{color:"#f59e0b",weight:3,opacity:0.9,dashArray:"14 10"}).addTo(map);
+      if (myPos) map.fitBounds([[teamPos.lat,teamPos.lon],[myPos.lat,myPos.lon]],{padding:[40,40],maxZoom:11});
       mapRef2.current = map;
       return()=>{if(mapRef2.current){mapRef2.current.remove();mapRef2.current=null;}};
-    },[rdy,teamKey]);
+    },[rdy,teamKey,myPos?.lat,myPos?.lon]);
     return (
-      <div style={{borderRadius:12,overflow:"hidden",border:`1px solid ${C.border}`}}>
+      <div style={{borderRadius:12,overflow:"hidden",border:`1px solid ${C.border}`,position:"relative"}}>
         {!rdy&&<div style={{height,background:"#08101e",display:"flex",alignItems:"center",justifyContent:"center",color:C.muted,fontSize:13}}>⏳ Loading map…</div>}
         <div ref={ref} style={{height,display:rdy?"block":"none"}}/>
+        {rdy && !myPos && (
+          <div style={{position:"absolute",top:12,left:12,right:12,background:"rgba(8,15,26,0.94)",
+            border:"1px solid rgba(245,158,11,0.45)",borderRadius:10,padding:"10px 12px",fontSize:11.5,color:"#fcd34d"}}>
+            <strong>⏳ Waiting for a GPS fix.</strong> Your beacon was sent with the last known position.
+            Enable location permission to let SAR Command see you live on the map.
+          </div>
+        )}
       </div>
     );
   };
@@ -3190,7 +3261,7 @@ const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate }) => {
         <div style={{flex:1}}/>
         <Btn onClick={handleExitSOS}>✕ Exit</Btn>
       </div>
-      <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 340px",overflow:"hidden"}}>
+      <div className="resp-2col-wide" style={{flex:1,display:"grid",gridTemplateColumns:"1fr 340px",overflow:"hidden"}}>
         <div style={{position:"relative"}}>
           <SOSMap height={500}/>
           <div style={{position:"absolute",bottom:20,left:20,background:"rgba(8,15,26,0.92)",
@@ -3258,48 +3329,92 @@ const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate }) => {
     </div>
   );
 
+  const deliveredChannels = sosDelivery
+    ? Object.entries(sosDelivery.channels || {}).filter(([, ok]) => ok).map(([name]) => name)
+    : [];
+
+  const toggleSiren = () => {
+    if (sirenOn) {
+      alarmEngine.stop();
+      setSirenOn(false);
+    } else {
+      alarmEngine.start();
+      setSirenOn(true);
+    }
+  };
+
+  const stopSOS = () => {
+    const ok = window.confirm(
+      "Stop the emergency beacon?\n\nOnly do this if you are safe. SAR Command will be told the beacon was cancelled by you."
+    );
+    if (ok) handleExitSOS();
+  };
+
   return (
     <div>
       <PageHeader title="SOS Navigation"
         sub="Rescue routing preview"
         right={
-          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
             <Pill color="red">🚨 SOS Active</Pill>
             <Pill color="amber">◐ Demo rescue assets</Pill>
-            <Btn onClick={handleExitSOS}>✕ Exit</Btn>
+            <Btn onClick={stopSOS}>✕ Stop SOS</Btn>
           </div>
         }/>
 
+      {/* Status banner */}
       <div style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.35)",
-        borderRadius:12,padding:"14px 18px",marginBottom:16,display:"flex",alignItems:"center",gap:14}}>
+        borderRadius:12,padding:"14px 18px",marginBottom:14,display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
         <div style={{width:12,height:12,borderRadius:"50%",background:C.red,animation:"ud-sos-blink 1.2s infinite",flexShrink:0}}/>
-        <div style={{flex:1}}>
-          <div style={{fontSize:14,fontWeight:700,color:C.red}}>Emergency broadcast active</div>
-          <div style={{fontSize:12,color:C.muted,marginTop:2}}>
-            Your beacon is sent to SAR Command. The team, ETA and route below are a simulated preview of the dispatch
-            experience — not a live rescue asset assignment.
+        <div style={{flex:"1 1 240px",minWidth:0}}>
+          <div style={{fontSize:14,fontWeight:700,color:C.red}}>
+            {sosAcknowledged ? "🛰 SAR Command has acknowledged your beacon" : "Emergency broadcast active"}
           </div>
+          <div style={{fontSize:12,color:C.muted,marginTop:2}}>
+            {sosAcknowledged
+              ? `Command (${sosAcknowledged.by || "SAR Duty Officer"}) has your beacon and is acting on it. The beacon stays active until you stand it down.`
+              : "Your beacon is sent to SAR Command. The team, ETA and route below are a simulated preview of the dispatch experience — not a live rescue asset assignment."}
+          </div>
+          {sosDelivery && (
+            <div style={{fontSize:11.5,color:C.muted2,marginTop:4}}>
+              Transmission: {sosDelivery.pending ? "sending…" : sosDelivery.delivered
+                ? `delivered via ${deliveredChannels.join(" + ") || "dispatch"}`
+                : "no transport reachable — beacon queued and retried automatically"}
+            </div>
+          )}
         </div>
         <Pill color="amber">Demo ETA {etaMin} min</Pill>
-        <Btn variant="danger" onClick={handleExitSOS} style={{padding:"6px 14px",fontSize:12}}>✕ Exit &amp; Stop SOS</Btn>
+        <Btn variant="danger" onClick={stopSOS} style={{padding:"8px 14px",fontSize:12}}>🛑 STOP SOS</Btn>
       </div>
 
-      <div style={{display:"grid",gridTemplateColumns:"1fr 280px",gap:14}}>
+      {/* Always-visible control row — the beacon page must never be a dead end */}
+      <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14}}>
+        <button onClick={toggleSiren}
+          style={{padding:"10px 16px",background: sirenOn ? "rgba(239,68,68,0.14)" : "rgba(255,255,255,0.04)",
+            border:`1px solid ${sirenOn ? "rgba(239,68,68,0.4)" : C.border}`,borderRadius:10,
+            color: sirenOn ? C.red : C.text,fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+          {sirenOn ? "🔇 Silence siren (keep beacon)" : "🔊 Turn siren back on"}
+        </button>
+        <button onClick={()=>{setNavMode(true);setCurrentStep(0);}}
+          style={{padding:"10px 16px",background:"rgba(59,130,246,0.12)",border:`1px solid rgba(59,130,246,0.35)`,
+            borderRadius:10,color:C.accent,fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+          🗺️ Open rescue navigation
+        </button>
+        <a href="tel:100" style={{padding:"10px 16px",background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.35)",
+          borderRadius:10,color:C.red,fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",textDecoration:"none",display:"inline-flex",alignItems:"center"}}>
+          ☎ Call emergency services (100)
+        </a>
+      </div>
+
+      <div className="resp-2col" style={{display:"grid",gridTemplateColumns:"1fr 280px",gap:14}}>
         <div>
           <SOSMap height={380}/>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginTop:12}}>
+          <div className="resp-4col" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginTop:12}}>
             <StatCard label="ETA" value={`${etaMin} min`} sub="Simulated" color={C.green} icon="⏱"/>
             <StatCard label="Distance" value={liveDistanceKm ? `${liveDistanceKm} km` : "—"} sub={liveDistanceKm ? "To demo team" : "No GPS fix"} color={C.accent} icon="📏"/>
             <StatCard label="Team Speed" value="—" sub="Not tracked" color={C.amber} icon="🚑"/>
-            <StatCard label="GPS Acc." value="device" sub="Own fix" color={C.purple} icon="🛰"/>
+            <StatCard label="GPS Acc." value={hasOwnFix ? "device" : "—"} sub={hasOwnFix ? "Own fix" : "Waiting for fix"} color={C.purple} icon="🛰"/>
           </div>
-          <button onClick={()=>{setNavMode(true);setCurrentStep(0);}}
-            style={{marginTop:14,width:"100%",padding:"14px",
-              background:`linear-gradient(135deg,${C.red},${C.accent2})`,
-              border:"none",borderRadius:12,color:"#fff",fontSize:14,fontWeight:700,
-              cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
-            🗺️ VIEW LIVE NAVIGATION
-          </button>
         </div>
         <div>
           <Card style={{marginBottom:12,borderColor:"rgba(245,158,11,0.3)"}}>
@@ -3540,7 +3655,7 @@ const PageGeofencing = ({ user, joinedTrip, onNavigate }) => {
         </div>}
       </div>
 
-      <div style={{display:"grid",gridTemplateColumns:"1fr 320px",gap:14}}>
+      <div className="resp-2col-mid" style={{display:"grid",gridTemplateColumns:"1fr 320px",gap:14}}>
         {/* Map */}
         <GeoMap height={480}/>
 
@@ -3628,7 +3743,7 @@ const PageGeofencing = ({ user, joinedTrip, onNavigate }) => {
       {/* Event log */}
       <div style={{marginTop:16}}>
         <div style={{fontSize:12,fontWeight:600,color:C.text,marginBottom:10}}>Geofence Perimeter Log</div>
-        <Card style={{padding:0}}>
+        <Card className="app-table-wrap" style={{padding:0}}>
           <table style={{width:"100%",borderCollapse:"collapse"}}>
             <thead>
               <tr>
@@ -4371,16 +4486,26 @@ export default function UserDashboard() {
   const [activeSosId, setActiveSosId] = useState(() => user?.activeSosId || null);
   const [joinError, setJoinError] = useState("");
   const [showSOSConfirmModal, setShowSOSConfirmModal] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
   const liveFix = useLivePosition();
   const [sosDelivery, setSosDelivery] = useState(null);
   const [outboxCount, setOutboxCount] = useState(() => getSOSOutboxCount());
+  const [sosAcknowledged, setSosAcknowledged] = useState(null);
 
   // Subscribe to remote stand-down (e.g. if Admin stands down SOS from command console)
   useEffect(() => {
     if (!user?.id) return;
-    const unsub = subscribeToSOSResolution(user.id, () => {
+    const unsub = subscribeToSOSResolution(user.id, (info) => {
+      if (info?.type === "acknowledged") {
+        // Command has seen the beacon. The emergency stays active — only the
+        // operator can stand it down — but the trekker gets reassurance.
+        setSosAcknowledged({ by: info.by, at: info.at });
+        setSosDelivery((prev) => (prev ? { ...prev, acknowledged: true, acknowledgedBy: info.by } : prev));
+        return;
+      }
       setActiveSOS(false);
       setActiveSosId(null);
+      setSosAcknowledged(null);
       alarmEngine.stop();
     });
     return () => unsub?.();
@@ -4408,6 +4533,47 @@ export default function UserDashboard() {
       window.removeEventListener("online", retry);
     };
   }, []);
+
+  // Keep the emergency state in sync with SAR Command.
+  // After a reload the beacon can still be live on the server, so the app
+  // asks the dispatch feed who is in distress and whether command has
+  // acknowledged it. (The client cannot read sos_events directly.)
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+
+    const sync = async () => {
+      try {
+        const res = await fetch("http://localhost:5050/api/sos/events?limit=20");
+        if (!res.ok) return;
+        const data = await res.json();
+        const events = Array.isArray(data?.events) ? data.events : [];
+        const mine = events.find((e) => e?.userId === user.id && e?.status === "active");
+        if (cancelled) return;
+
+        setActiveSOS(Boolean(mine));
+        setActiveSosId(mine ? mine.id || null : null);
+
+        if (mine?.acknowledged) {
+          setSosAcknowledged({ by: mine.acknowledgedBy, at: mine.acknowledgedAt });
+          setSosDelivery((prev) =>
+            prev ? { ...prev, acknowledged: true, acknowledgedBy: mine.acknowledgedBy } : prev
+          );
+        } else if (mine) {
+          setSosAcknowledged(null);
+        }
+      } catch (e) {
+        /* transient — the next poll retries */
+      }
+    };
+
+    sync();
+    const timer = setInterval(sync, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [user?.id]);
 
   const handleSOSToggle = async (activate) => {
     if (activate) {
@@ -4625,7 +4791,7 @@ export default function UserDashboard() {
 
   const PAGES = {
     "dashboard": <PageDashboard user={user} onNavigate={navigate} activeSOS={activeSOS} joinedTrip={joinedTrip} onSOS={handleSOSToggle}/>,
-    "sos-nav":   <PageSOSNav user={user} activeSOS={activeSOS} onSOS={handleSOSToggle} onNavigate={navigate}/>,
+    "sos-nav":   <PageSOSNav user={user} activeSOS={activeSOS} onSOS={handleSOSToggle} onNavigate={navigate} sosDelivery={sosDelivery} sosAcknowledged={sosAcknowledged}/>,
     "geofencing":<PageGeofencing user={user} joinedTrip={joinedTrip} onNavigate={navigate}/>,
     "live-tracking": <PageLiveTracking user={user} joinedTrip={joinedTrip} onNavigate={navigate} activeSOS={activeSOS} onSOS={handleSOSToggle}/>,
     "weather":   <PageWeatherMaps joinedTrip={joinedTrip} onNavigate={navigate}/>,
@@ -4652,30 +4818,33 @@ export default function UserDashboard() {
   };
 
   const deliveryLabel =
-    !sosDelivery || sosDelivery.pending
-      ? "TRANSMITTING TO SAR COMMAND…"
-      : sosDelivery.delivered
-        ? "DELIVERED TO SAR COMMAND"
-        : "NOT DELIVERED — QUEUED & RETRYING";
+    !sosDelivery
+      ? "BEACON LIVE · SYNCED WITH SAR COMMAND"
+      : sosDelivery.pending
+        ? "TRANSMITTING TO SAR COMMAND…"
+        : sosDelivery.delivered
+          ? "DELIVERED TO SAR COMMAND"
+          : "NOT DELIVERED — QUEUED & RETRYING";
 
   const deliveredChannels = sosDelivery
     ? Object.entries(sosDelivery.channels || {}).filter(([, ok]) => ok).map(([name]) => name)
     : [];
 
   return (
-    <div className="app-shell" style={{display:"grid",gridTemplateColumns:"220px 1fr",minHeight:"780px",
+    <div className="app-shell" style={{display:"grid",gridTemplateColumns:"232px 1fr",minHeight:"100vh",
       background:C.bg,fontFamily:"system-ui,-apple-system,sans-serif",color:C.text}}>
 
-      {/* Sidebar */}
-      <aside className="app-sidebar" style={{background:C.sidebar,display:"flex",flexDirection:"column",borderRight:`1px solid ${C.border}`}}>
+      {/* Sidebar — vertical control panel (drawer on small screens) */}
+      <aside className={`app-sidebar${navOpen ? " nav-open" : ""}`} style={{background:C.sidebar,display:"flex",flexDirection:"column",borderRight:`1px solid ${C.border}`}}>
         {/* Brand */}
         <div className="app-brand" style={{padding:"18px 16px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:10}}>
           <div style={{width:32,height:32,borderRadius:"50%",background:"rgba(59,130,246,0.12)",
             border:"1px solid rgba(59,130,246,0.28)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🏔️</div>
-          <div>
+          <div style={{minWidth:0}}>
             <div style={{fontSize:14,fontWeight:700,color:C.text}}>Margsutra</div>
             <div style={{fontSize:10,color:C.muted2}}>Trip Safety Portal</div>
           </div>
+          <button className="app-drawer-close" onClick={()=>setNavOpen(false)} aria-label="Close menu">✕</button>
         </div>
 
         {/* User profile card — Clickable to Profile page */}
@@ -4727,7 +4896,7 @@ export default function UserDashboard() {
                 const isSOS  = item.id==="sos-nav";
                 const isJoin = item.id==="join-trip";
                 return (
-                  <div key={item.id} className="app-nav-item" onClick={()=>setPage(item.id)}
+                  <div key={item.id} className="app-nav-item" onClick={()=>{setPage(item.id);setNavOpen(false);}}
                     style={{display:"flex",alignItems:"center",gap:10,padding:"8px 16px",cursor:"pointer",
                       borderLeft:`2px solid ${active?(isSOS?C.red:C.accent):"transparent"}`,
                       background:active?(isSOS?"rgba(239,68,68,0.1)":"rgba(59,130,246,0.1)"):"transparent",
@@ -4799,8 +4968,48 @@ export default function UserDashboard() {
         </div>
       </aside>
 
+      {/* Backdrop for the mobile drawer */}
+      <div className={`app-backdrop${navOpen ? "" : " nav-closed"}`} onClick={()=>setNavOpen(false)} />
+
       {/* Main Container */}
       <div className="app-main-col" style={{display:"flex",flexDirection:"column",minWidth:0,height:"100%"}}>
+        {/* Compact top bar (small screens only) */}
+        <div className="app-mobile-bar">
+          <button className="app-menu-btn" onClick={()=>setNavOpen(true)} aria-label="Open menu">☰</button>
+          <div style={{minWidth:0,flex:1}}>
+            <div className="app-mobile-title">Margsutra</div>
+            <div className="app-mobile-sub">
+              {joinedTrip
+                ? `${joinedTrip.code} · ${joinedTrip.tripStatus === "pending_approval" ? "Pending approval" : "Active expedition"}`
+                : "Trip Safety Portal"}
+            </div>
+          </div>
+          {activeSOS ? (
+            <button
+              onClick={()=>{setPage("sos-nav");setNavOpen(false);}}
+              style={{
+                background:"linear-gradient(135deg,#ef4444,#b91c1c)",border:"none",color:"#fff",
+                borderRadius:10,padding:"8px 12px",fontSize:11,fontWeight:800,cursor:"pointer",
+                fontFamily:"inherit",animation:"ud-sos-blink 1.2s infinite",flexShrink:0,
+              }}>
+              🚨 SOS LIVE
+            </button>
+          ) : (
+            <button
+              onClick={()=>{
+                if (!joinedTrip) { setPage("join-trip"); setNavOpen(false); return; }
+                setShowSOSConfirmModal(true); setNavOpen(false);
+              }}
+              style={{
+                background:"rgba(239,68,68,0.14)",border:"1px solid rgba(239,68,68,0.4)",color:"#fca5a5",
+                borderRadius:10,padding:"8px 12px",fontSize:11,fontWeight:800,cursor:"pointer",
+                fontFamily:"inherit",flexShrink:0,
+              }}>
+              🆘 SOS
+            </button>
+          )}
+        </div>
+
         {/* Persistent Emergency Beacon Top Alert Bar */}
         {activeSOS && (
           <div style={{
@@ -4810,22 +5019,26 @@ export default function UserDashboard() {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 8,
             boxShadow: "0 4px 20px rgba(220, 38, 38, 0.4)",
             zIndex: 9999,
             animation: "ud-sos-blink 1.4s infinite",
           }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, flex: "1 1 260px" }}>
               <span style={{ fontSize: 20 }}>🚨</span>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: "0.04em" }}>
                   EMERGENCY DISTRESS BEACON ACTIVE · {deliveryLabel}
                 </div>
                 <div style={{ fontSize: 11, opacity: 0.92 }}>
-                  {sosDelivery?.pending
-                    ? "Siren active · contacting SAR Incident Command and Field Guide"
-                    : sosDelivery?.delivered
-                      ? `Siren active · reached via ${deliveredChannels.join(" + ") || "dispatch"}${sosDelivery?.locationSource && sosDelivery.locationSource !== "live" ? ` · position source: ${sosDelivery.locationSource}` : " · live GPS attached"}`
-                      : `Siren active · no transport reachable. ${outboxCount} beacon${outboxCount === 1 ? "" : "s"} persisted and retried automatically — keep this screen open.`}
+                  {!sosDelivery
+                    ? "Beacon active · your position and medical details are on the SAR Command console"
+                    : sosDelivery?.pending
+                      ? "Siren active · contacting SAR Incident Command and Field Guide"
+                      : sosDelivery?.delivered
+                        ? `Siren active · reached via ${deliveredChannels.join(" + ") || "dispatch"}${sosDelivery?.locationSource && sosDelivery.locationSource !== "live" ? ` · position source: ${sosDelivery.locationSource}` : " · live GPS attached"}`
+                        : `Siren active · no transport reachable. ${outboxCount} beacon${outboxCount === 1 ? "" : "s"} persisted and retried automatically — keep this screen open.`}
                 </div>
               </div>
             </div>
@@ -4870,7 +5083,9 @@ export default function UserDashboard() {
 
         {/* Main Content View */}
         <main className="app-main" style={{flex:1,overflow:"auto",padding:24}}>
-          {PAGES[page]||<div style={{color:C.muted}}>Page not found.</div>}
+          <PageErrorBoundary key={page}>
+            {PAGES[page]||<div style={{color:C.muted}}>Page not found.</div>}
+          </PageErrorBoundary>
         </main>
       </div>
 

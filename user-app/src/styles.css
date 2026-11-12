@@ -1,5 +1,7 @@
 html, body, #root {
   margin: 0;
+  padding: 0;
+  width: 100%;
   min-height: 100%;
 }
 
@@ -23,98 +25,198 @@ body {
   border: 0;
 }
 
-/* ── Responsive shell ─────────────────────────────────────────────── */
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
+/* ── Shell ─────────────────────────────────────────────────────────────────
+   Desktop : persistent vertical control panel on the left.
+   Mobile  : the same vertical panel slides in from the left (hamburger),
+             so the app keeps one consistent navigation model everywhere.
+   ────────────────────────────────────────────────────────────────────────── */
+.app-shell {
+  display: grid;
+  grid-template-columns: 232px 1fr;
+  min-height: 100vh;
 }
 
-@media (max-width: 900px) {
+.app-sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-mobile-bar {
+  display: none;
+}
+
+.app-backdrop {
+  display: none;
+}
+
+.app-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  color: #e2e8f0;
+  font-size: 17px;
+  cursor: pointer;
+  font-family: inherit;
+  flex-shrink: 0;
+}
+
+.app-drawer-close {
+  display: none;
+}
+
+/* ── Responsive content helpers ─────────────────────────────────────────── */
+.resp-2col { grid-template-columns: 1fr 280px; }
+.resp-2col-wide { grid-template-columns: 1fr 340px; }
+.resp-2col-mid { grid-template-columns: 1fr 320px; }
+.resp-4col { grid-template-columns: repeat(4, 1fr); }
+.resp-2up { grid-template-columns: 1fr 1fr; }
+
+@media (max-width: 1100px) {
+  .resp-4col { grid-template-columns: repeat(2, 1fr) !important; }
+}
+
+@media (max-width: 1000px) {
+  .resp-2col,
+  .resp-2col-wide,
+  .resp-2col-mid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .resp-2up {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 780px) {
   .app-shell {
     grid-template-columns: 1fr !important;
-    align-content: start;
     min-height: 100vh !important;
   }
 
-  /* Sidebar becomes a compact horizontal nav bar. */
-  .app-sidebar {
-    flex-direction: row !important;
+  /* Compact top bar — the panel itself lives in the drawer. */
+  .app-mobile-bar {
+    display: flex !important;
     align-items: center;
-    overflow-x: auto;
-    border-right: none !important;
-    border-bottom: 1px solid rgba(80, 140, 220, 0.14);
+    gap: 10px;
+    padding: 10px 12px;
+    background: rgba(11, 23, 36, 0.97);
+    border-bottom: 1px solid rgba(80, 140, 220, 0.16);
     position: sticky;
     top: 0;
-    z-index: 80;
+    z-index: 120;
+    backdrop-filter: blur(10px);
   }
 
-  .app-brand,
-  .app-profile,
-  .app-footer {
-    display: none !important;
-  }
-
-  .app-nav {
-    display: flex !important;
+  .app-mobile-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #e2e8f0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     flex: 1;
-    overflow-x: auto !important;
-    overflow-y: hidden !important;
-    padding: 6px !important;
+    min-width: 0;
   }
 
-  .app-nav-section {
-    display: flex !important;
+  .app-mobile-sub {
+    font-size: 10px;
+    color: #7f9dc4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Vertical control panel, off-canvas until opened. */
+  .app-sidebar {
+    position: fixed !important;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 274px;
+    max-width: 84vw;
+    height: 100vh;
+    z-index: 300;
+    transform: translateX(-102%);
+    transition: transform 0.24s cubic-bezier(0.22, 0.61, 0.36, 1);
+    box-shadow: 0 0 48px rgba(0, 0, 0, 0.65);
+    border-right: 1px solid rgba(80, 140, 220, 0.2) !important;
+  }
+
+  .app-sidebar.nav-open {
+    transform: translateX(0);
+  }
+
+  .app-drawer-close {
+    display: inline-flex;
     align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #cbd5e1;
+    font-size: 14px;
+    cursor: pointer;
+    font-family: inherit;
+    margin-left: auto;
+    flex-shrink: 0;
   }
 
-  .app-nav-section > div:first-child {
-    display: none !important;
+  .app-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(2, 6, 16, 0.66);
+    backdrop-filter: blur(2px);
+    z-index: 290;
+  }
+
+  .app-backdrop.nav-closed {
+    display: none;
   }
 
   .app-nav-item {
-    flex-direction: column;
-    justify-content: center;
-    gap: 1px !important;
-    padding: 5px 9px !important;
-    border-left: none !important;
-    border-radius: 8px;
-    min-width: 58px;
+    padding: 11px 16px !important;
   }
 
   .app-nav-item span:last-of-type {
-    font-size: 9.5px !important;
-    line-height: 1.2;
-  }
-
-  /* Hide the tiny JOIN / PENDING chips in the compact bar. */
-  .app-nav-item div {
-    display: none;
-  }
-
-  .app-sos {
-    padding: 6px 8px !important;
-    border-top: none !important;
-  }
-
-  .app-sos > div:last-child {
-    display: none;
-  }
-
-  .app-sos button {
-    width: auto !important;
-    white-space: nowrap;
-    font-size: 10px !important;
-    padding: 7px 10px !important;
+    font-size: 13px !important;
   }
 
   .app-main {
     padding: 14px !important;
   }
 
+  .resp-4col {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
   .ms-drawer-panel {
     width: 100% !important;
   }
+}
+
+@media (max-width: 480px) {
+  .resp-4col {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ── Wide tables: scroll instead of breaking the layout ────────────────── */
+.app-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.app-table-wrap table {
+  min-width: 560px;
 }

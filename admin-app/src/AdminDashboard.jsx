@@ -23,6 +23,7 @@ import {
   subscribeToUsers,
   subscribeToSOSEvents,
   resolveSOSEvent,
+  acknowledgeSOSEvent,
   triggerDemoSOSEvent,
   updateUserFeatureAccess,
   setAdminToken,
@@ -34,6 +35,64 @@ import {
   RAJMACHI_ADMIN,
   RAJMACHI_MEMBERS,
 } from "./services/expeditionTeam";
+
+/* ════════════════════════════════════════════════
+   PAGE ERROR BOUNDARY
+   A crashing console page must not leave the duty
+   officer without the controls they need.
+════════════════════════════════════════════════ */
+class PageErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, info) {
+    console.error("[Admin] Page crashed:", error, info?.componentStack);
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div style={{ padding: 24, display: "flex", justifyContent: "center" }}>
+        <div style={{
+          maxWidth: 460, width: "100%", background: "rgba(239,68,68,0.08)",
+          border: "1px solid rgba(239,68,68,0.3)", borderRadius: 16, padding: 24, textAlign: "center",
+        }}>
+          <div style={{ fontSize: 34, marginBottom: 10 }}>⚠️</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 6 }}>
+            This console view hit an error
+          </div>
+          <div style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.6, marginBottom: 16 }}>
+            The incident feed and every other console page are still available. Reload this view to
+            continue — active SOS beacons are unaffected.
+          </div>
+          <div style={{ fontSize: 11, color: C.muted2, marginBottom: 16, wordBreak: "break-word" }}>
+            {String(this.state.error?.message || this.state.error)}
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+            <button onClick={() => this.setState({ error: null })}
+              style={{ padding: "9px 18px", borderRadius: 9, background: "rgba(59,130,246,0.16)",
+                border: "1px solid rgba(59,130,246,0.35)", color: C.accent, fontSize: 12.5, fontWeight: 700,
+                cursor: "pointer", fontFamily: "inherit" }}>
+              Try again
+            </button>
+            <button onClick={() => window.location.reload()}
+              style={{ padding: "9px 18px", borderRadius: 9, background: "rgba(255,255,255,0.06)",
+                border: `1px solid ${C.border}`, color: C.text, fontSize: 12.5, fontWeight: 700,
+                cursor: "pointer", fontFamily: "inherit" }}>
+              Reload console
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+}
 
 /* ════════════════════════════════════════════════
    DESIGN TOKENS
@@ -218,7 +277,7 @@ const Pill = ({ color, children }) => {
   const s = map[color] || map.gray;
   return <span style={{ fontSize: 11, padding: "2px 9px", borderRadius: 20, fontWeight: 500, background: s.bg, color: s.text }}>{children}</span>;
 };
-const Card = ({ children, style }) => <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "16px 18px", ...style }}>{children}</div>;
+const Card = ({ children, style, className }) => <div className={className} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "16px 18px", ...style }}>{children}</div>;
 const StatCard = ({ label, value, sub, color = C.accent, icon }) => (
   <Card style={{ marginBottom: 0 }}>
     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 }}>
@@ -467,11 +526,36 @@ const LiveMap = ({ points = [], teams = [], height = 380, showPulse = true, rout
   );
 };
 
+// Firestore timestamps arrive as { _seconds, _nanoseconds } over REST, as a
+// Timestamp instance from the Admin SDK, or as an ISO string from the client
+// SDK. Normalise them so the console never shows "Invalid Date".
+const toDateValue = (value) => {
+  if (!value) return null;
+  if (typeof value === "object") {
+    if (typeof value.toDate === "function") {
+      const d = value.toDate();
+      return Number.isNaN(d?.getTime?.()) ? null : d;
+    }
+    const seconds = value._seconds ?? value.seconds;
+    if (typeof seconds === "number") return new Date(seconds * 1000);
+    return null;
+  }
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+const formatClock = (value, fallback) => {
+  const d = toDateValue(value);
+  return d ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : fallback;
+};
+
 const PageSOSNavigation = ({
   users = USERS,
   sosEvents = [],
   onResolveSOS,
   onTriggerDemo,
+  onAcknowledge,
+  acknowledgedMap = {},
 }) => {
   // 1. Separate Active Distress Incidents from Resolved Incidents
   const activeIncidents = useMemo(() => {
@@ -501,11 +585,14 @@ const PageSOSNavigation = ({
           medical: ev.medical || u?.medical || "None reported",
           phone: ev.phone || u?.phone || "+91 86375 40813",
           ec: ev.ec || u?.ec || "Deepak Panda (Brother) · +91 91531 91902",
-          time: ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : (ev.time || "Just now"),
+          time: formatClock(ev.timestamp, ev.time || "Just now"),
           status: "active",
           type: ev.type || "Manual SOS Beacon",
           priority: ev.priority || "critical",
           vitals: ev.vitals || { hr: 114, spo2: 96, alt: 829, battery: 88 },
+          acknowledged: Boolean(ev.acknowledged) || Boolean(acknowledgedMap[ev.id || `sos-${userId}`]),
+          acknowledgedBy: ev.acknowledgedBy || acknowledgedMap[ev.id || `sos-${userId}`]?.by || "",
+          acknowledgedAt: ev.acknowledgedAt || acknowledgedMap[ev.id || `sos-${userId}`]?.at || null,
         });
       }
     });
@@ -534,12 +621,15 @@ const PageSOSNavigation = ({
           type: "Manual SOS Beacon",
           priority: "critical",
           vitals: { hr: 114, spo2: 96, alt: u.altitude || 829, battery: 88 },
+          acknowledged: Boolean(acknowledgedMap[u.activeSosId || `sos-${u.id}`]),
+          acknowledgedBy: acknowledgedMap[u.activeSosId || `sos-${u.id}`]?.by || "",
+          acknowledgedAt: acknowledgedMap[u.activeSosId || `sos-${u.id}`]?.at || null,
         });
       }
     });
 
     return list;
-  }, [sosEvents, users]);
+  }, [sosEvents, users, acknowledgedMap]);
 
   // 2. Resolved & Stand-down Historical Incidents Archive
   const resolvedIncidents = useMemo(() => {
@@ -556,10 +646,10 @@ const PageSOSNavigation = ({
           city: ev.city || "Rajmachi Fort Trail",
           lat: ev.lat,
           lon: ev.lon,
-          resolvedAt: ev.resolvedAt ? new Date(ev.resolvedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : (ev.updatedAt ? new Date(ev.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Resolved"),
+          resolvedAt: formatClock(ev.resolvedAt, formatClock(ev.updatedAt, "Resolved")),
           resolution: ev.resolution === "user_cancelled" ? "Cancelled by Trekker (Self-Resolved)" : (ev.resolutionNotes || "SAR Stand Down Executed"),
           resolvedBy: ev.resolvedBy || (ev.resolution === "user_cancelled" ? "Trekker (App Button)" : "SAR Command Admin"),
-          time: ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : (ev.time || "Logged"),
+          time: formatClock(ev.timestamp, ev.time || "Logged"),
           status: "resolved",
           type: ev.type || "SOS Beacon",
         });
@@ -702,6 +792,22 @@ const PageSOSNavigation = ({
   const handleVhfCheck = () => {
     setCalloutMsg("📻 VHF Tactical Link (156.800 MHz): Field Guide Ajay Saini reports signal 5x5. All trekkers safe in line-of-sight.");
     setTimeout(() => setCalloutMsg(""), 5000);
+  };
+
+  // Acknowledge = "a human has seen this and is acting". The alarm stops
+  // but the incident stays open until the team stands it down.
+  const handleAcknowledge = async (incident) => {
+    if (!incident) return;
+    if (onAcknowledge) {
+      const res = await onAcknowledge(incident.eventId || incident.id, incident.userId);
+      if (res && res.success === false) {
+        setCalloutMsg(`❌ Could not acknowledge ${incident.user}: ${res?.errors?.[0] || "the incident was not updated."}`);
+        setTimeout(() => setCalloutMsg(""), 7000);
+        return;
+      }
+    }
+    setCalloutMsg(`✅ Beacon acknowledged for ${incident.user}. Alarm silenced — dispatch a unit and stand down when the trekker is safe.`);
+    setTimeout(() => setCalloutMsg(""), 6000);
   };
 
   // ── Navigation Mode (fullscreen overlay) ──
@@ -1008,7 +1114,7 @@ const PageSOSNavigation = ({
         </div>
 
         {/* 4 KPI Cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 18 }}>
+        <div className="resp-4col" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 18 }}>
           <StatCard label="Active SOS Distress Alerts" value="0" sub="All trails normal" color={C.green} icon="🛡️" />
           <StatCard label="SAR Teams on Standby" value="2 Units" sub="Khandala & Karjat Bases" color={C.accent} icon="🚑" />
           <StatCard label="VHF Tactical Radio SNR" value="100%" sub="145.500 MHz (Ch 1)" color={C.amber} icon="📻" />
@@ -1016,7 +1122,7 @@ const PageSOSNavigation = ({
         </div>
 
         {/* Main 2-Column Grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "1.7fr 1.3fr", gap: 16 }}>
+        <div className="resp-32" style={{ display: "grid", gridTemplateColumns: "1.7fr 1.3fr", gap: 16 }}>
           {/* LEFT: Tactical Trail Map & Staging Units */}
           <div>
             <Card style={{ padding: 0, overflow: "hidden", marginBottom: 14 }}>
@@ -1143,10 +1249,12 @@ const PageSOSNavigation = ({
         </div>
       )}
 
-      {/* Flashing Emergency Beacon Banner */}
+      {/* Emergency Beacon Banner - flashes until a duty officer acknowledges */}
       <div style={{
-        background: "linear-gradient(135deg, rgba(239,68,68,0.22), rgba(185,28,28,0.08))",
-        border: `1px solid rgba(239,68,68,0.5)`,
+        background: selectedSOS?.acknowledged
+          ? "linear-gradient(135deg, rgba(245,158,11,0.18), rgba(120,53,15,0.08))"
+          : "linear-gradient(135deg, rgba(239,68,68,0.22), rgba(185,28,28,0.08))",
+        border: `1px solid ${selectedSOS?.acknowledged ? "rgba(245,158,11,0.45)" : "rgba(239,68,68,0.5)"}`,
         borderRadius: 14,
         padding: "16px 20px",
         marginBottom: 16,
@@ -1157,19 +1265,41 @@ const PageSOSNavigation = ({
         gap: 14
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(239,68,68,0.25)", border: `1px solid ${C.red}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, animation: "pulse 1.2s infinite" }}>
-            🚨
+          <div style={{ width: 44, height: 44, borderRadius: 12, background: selectedSOS?.acknowledged ? "rgba(245,158,11,0.2)" : "rgba(239,68,68,0.25)", border: `1px solid ${selectedSOS?.acknowledged ? C.amber : C.red}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, animation: selectedSOS?.acknowledged ? "none" : "pulse 1.2s infinite" }}>
+            {selectedSOS?.acknowledged ? "✅" : "🚨"}
           </div>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "#fca5a5", display: "flex", alignItems: "center", gap: 8 }}>
-              CRITICAL DISTRESS SIGNAL ACTIVE · {selectedSOS.user.toUpperCase()}
+            <div style={{ fontSize: 15, fontWeight: 700, color: selectedSOS?.acknowledged ? "#fcd34d" : "#fca5a5", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {selectedSOS?.acknowledged
+                ? `ACKNOWLEDGED · ${selectedSOS.user.toUpperCase()} · ACTION IN PROGRESS`
+                : `CRITICAL DISTRESS SIGNAL ACTIVE · ${selectedSOS.user.toUpperCase()}`}
             </div>
             <div style={{ fontSize: 12, color: C.text, marginTop: 2 }}>
               Location: <strong>{selectedSOS.city}</strong> · Altitude: <strong>{selectedSOS.altitude}m ASL</strong> · Coordinates: <span style={{ fontFamily: "monospace" }}>{selectedSOS.lat}°N, {selectedSOS.lon}°E</span> · Blood: <strong style={{ color: C.red }}>{selectedSOS.blood}</strong>
             </div>
+            {selectedSOS?.acknowledged && (
+              <div style={{ fontSize: 11, color: C.amber, marginTop: 3 }}>
+                Acknowledged by {selectedSOS.acknowledgedBy || "SAR Command"} - alarm silenced, beacon still live until stand-down.
+              </div>
+            )}
           </div>
         </div>
-        <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {!selectedSOS?.acknowledged ? (
+            <button
+              onClick={() => handleAcknowledge(selectedSOS)}
+              style={{
+                padding: "10px 18px", borderRadius: 8, background: "rgba(245,158,11,0.2)",
+                border: `1px solid ${C.amber}`, color: "#fcd34d", fontSize: 13, fontWeight: 700,
+                cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6,
+                boxShadow: "0 4px 12px rgba(245,158,11,0.25)"
+              }}
+            >
+              ✅ ACKNOWLEDGE &amp; SILENCE ALARM
+            </button>
+          ) : (
+            <Pill color="amber">🔕 Alarm silenced · beacon live</Pill>
+          )}
           <button
             onClick={() => setResolvingModal(true)}
             style={{
@@ -1178,13 +1308,13 @@ const PageSOSNavigation = ({
               display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(34,197,94,0.3)"
             }}
           >
-            ✓ STAND DOWN SAR & RESOLVE
+            ✓ STAND DOWN SAR &amp; RESOLVE
           </button>
         </div>
       </div>
 
       {/* 3-Column SAR Dispatch Grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "240px 1fr 310px", gap: 14 }}>
+      <div className="resp-3col" style={{ display: "grid", gridTemplateColumns: "240px 1fr 310px", gap: 14 }}>
         {/* LEFT COLUMN: Active SOS Queue */}
         <div>
           <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>
@@ -1209,10 +1339,30 @@ const PageSOSNavigation = ({
               </div>
               <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>📍 {ev.city}</div>
               <div style={{ fontSize: 10, color: C.muted2, marginBottom: 8 }}>Signal Ping: {ev.time}</div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <Pill color="red">🚨 ACTIVE BEACON</Pill>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                {ev.acknowledged ? (
+                  <Pill color="amber">✅ ACKNOWLEDGED</Pill>
+                ) : (
+                  <Pill color="red">🚨 ACTIVE BEACON</Pill>
+                )}
                 <span style={{ fontSize: 11, color: C.amber, fontWeight: 600 }}>🩸 {ev.blood}</span>
               </div>
+              {!ev.acknowledged ? (
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleAcknowledge(ev); }}
+                  style={{
+                    width: "100%", padding: "7px 10px", borderRadius: 7,
+                    background: "rgba(245,158,11,0.16)", border: `1px solid rgba(245,158,11,0.45)`,
+                    color: "#fcd34d", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit"
+                  }}
+                >
+                  ✅ ACKNOWLEDGE &amp; SILENCE ALARM
+                </button>
+              ) : (
+                <div style={{ fontSize: 10.5, color: C.muted2 }}>
+                  Acknowledged by {ev.acknowledgedBy || "SAR Command"}
+                </div>
+              )}
             </Card>
           ))}
 
@@ -2563,7 +2713,7 @@ const PageAdminApprovals = ({
           <span>Authorized Command Staff ({approvedAdmins.length})</span>
         </div>
 
-        <Card>
+        <Card className="admin-table-wrap">
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
@@ -6559,6 +6709,7 @@ export default function AdminPanel() {
   const [pendingTrekkers, setPendingTrekkers] = useState([]);
   const [refreshingTrekkers, setRefreshingTrekkers] = useState(false);
   const [offGridSimulation, setOffGridSimulation] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
   const { liveUsers, sosEvents, connectionState, error } = useAdminTracking({ serverUrl: "http://localhost:4000" });
   const displayUsers = toDisplayUsers(liveUsers, firestoreUsers);
   const navigate = (p) => setPage(p);
@@ -6659,9 +6810,45 @@ export default function AdminPanel() {
     activeSosRef.current = activeSOS;
   }, [activeSOS]);
 
+  // ── Acknowledgement state ────────────────────────────────────────────────
+  // A duty officer acknowledging a beacon silences the console alarm and the
+  // flashing banner, but the incident stays live until stand-down.
+  const [ackedSos, setAckedSos] = useState({});
+
+  const handleAcknowledgeSOS = async (eventId, userId) => {
+    if (!eventId) return { success: false, errors: ["Missing incident id"] };
+    const result = await acknowledgeSOSEvent(
+      eventId,
+      activeAdmin?.email || activeAdmin?.name || "Lead Command Admin"
+    );
+    if (result?.success) {
+      setAckedSos((prev) => ({
+        ...prev,
+        [eventId]: { by: activeAdmin?.email || activeAdmin?.name || "SAR Command", at: Date.now() },
+      }));
+    }
+    return result;
+  };
+
+  // Incidents that are still waiting for a human to acknowledge them.
+  const unacknowledgedSOSCount = useMemo(() => {
+    const ids = new Set();
+    allSosEvents.forEach((ev) => {
+      if (ev?.status !== "active") return;
+      const id = ev.id || `sos-${ev.userId}`;
+      if (!ev.acknowledged && !ackedSos[id]) ids.add(id);
+    });
+    displayUsers.forEach((u) => {
+      if (u?.status !== "sos") return;
+      const id = u.activeSosId || `sos-${u.id}`;
+      if (!ackedSos[id]) ids.add(id);
+    });
+    return ids.size;
+  }, [allSosEvents, displayUsers, ackedSos]);
+
   // SAR Command Audio Alert Chime (plays sound when emergency beacon is received)
   useEffect(() => {
-    if (activeSOS <= 0) return;
+    if (unacknowledgedSOSCount <= 0) return;
     let isCancelled = false;
     let audioCtx = null;
     let intervalId = null;
@@ -6699,7 +6886,7 @@ export default function AdminPanel() {
         try { audioCtx.close(); } catch { }
       }
     };
-  }, [activeSOS]);
+  }, [unacknowledgedSOSCount]);
 
   // Auto-switch view to Realtime SOS Dispatch whenever an active distress incident is detected
   useEffect(() => {
@@ -6916,6 +7103,8 @@ export default function AdminPanel() {
         sosEvents={allSosEvents}
         onResolveSOS={handleResolveSOS}
         onTriggerDemo={handleTriggerDemoSOS}
+        onAcknowledge={handleAcknowledgeSOS}
+        acknowledgedMap={ackedSos}
       />
     ),
 
@@ -6927,14 +7116,15 @@ export default function AdminPanel() {
   };
 
   return (
-    <div className="admin-shell" style={{ display: "grid", gridTemplateColumns: "240px 1fr", minHeight: "780px", background: C.bg, fontFamily: "var(--font-sans)", color: C.text }}>
-      {/* Sidebar */}
-      <aside className="admin-sidebar" style={{ background: C.sidebar, display: "flex", flexDirection: "column", borderRight: `1px solid ${C.border}` }}>
+    <div className="admin-shell" style={{ display: "grid", gridTemplateColumns: "244px 1fr", minHeight: "100vh", background: C.bg, fontFamily: "var(--font-sans)", color: C.text }}>
+      {/* Sidebar — vertical control panel (drawer on small screens) */}
+      <aside className={`admin-sidebar${navOpen ? " nav-open" : ""}`} style={{ background: C.sidebar, display: "flex", flexDirection: "column", borderRight: `1px solid ${C.border}` }}>
         <div className="admin-brand" style={{ padding: "18px 16px 14px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 32, height: 32, borderRadius: "50%", background: "rgba(59,130,246,0.15)", border: `1px solid rgba(59,130,246,0.3)`, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke={C.accent} strokeWidth="1.5" /><circle cx="12" cy="12" r="4" stroke={C.accent} strokeWidth="1.5" /><circle cx="12" cy="12" r="1.5" fill={C.accent} /></svg>
           </div>
-          <div><div style={{ fontSize: 14, fontWeight: 600, color: C.text, letterSpacing: "0.03em" }}>Margsutra <span style={{ color: C.accent }}>Admin</span></div><div style={{ fontSize: 10, color: C.muted2 }}>Control panel v3.0</div></div>
+          <div style={{ minWidth: 0 }}><div style={{ fontSize: 14, fontWeight: 600, color: C.text, letterSpacing: "0.03em" }}>Margsutra <span style={{ color: C.accent }}>Admin</span></div><div style={{ fontSize: 10, color: C.muted2 }}>Control panel v3.0</div></div>
+          <button className="admin-drawer-close" onClick={() => setNavOpen(false)} aria-label="Close menu">✕</button>
         </div>
         <div className="admin-profile" style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 34, height: 34, borderRadius: "50%", background: "rgba(59,130,246,0.18)", color: C.accent, fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -6955,7 +7145,7 @@ export default function AdminPanel() {
                 const isSosNav = item.id === "sos-navigation";
                 const isApprovals = item.id === "admin-approvals";
                 return (
-                  <div key={item.id} className="admin-nav-item" onClick={() => setPage(item.id)}
+                  <div key={item.id} className="admin-nav-item" onClick={() => { setPage(item.id); setNavOpen(false); }}
                     style={{
                       display: "flex", alignItems: "center", gap: 10, padding: "8px 16px", cursor: "pointer",
                       borderLeft: `2px solid ${active ? (isSosNav ? C.red : C.accent) : "transparent"}`,
@@ -6979,8 +7169,39 @@ export default function AdminPanel() {
         </div>
       </aside>
 
+      {/* Backdrop for the mobile drawer */}
+      <div className={`admin-backdrop${navOpen ? "" : " nav-closed"}`} onClick={() => setNavOpen(false)} />
+
       {/* Main content container */}
       <div style={{ display: "flex", flexDirection: "column", minWidth: 0, height: "100%" }}>
+        {/* Compact top bar (small screens only) */}
+        <div className="admin-mobile-bar">
+          <button className="admin-menu-btn" onClick={() => setNavOpen(true)} aria-label="Open menu">☰</button>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div className="admin-mobile-title">Margsutra Admin</div>
+            <div className="admin-mobile-sub">
+              {activeSOS > 0
+                ? `${activeSOS} active SOS · ${unacknowledgedSOSCount > 0 ? "awaiting acknowledgement" : "acknowledged"}`
+                : "Expedition Command & SAR"}
+            </div>
+          </div>
+          {activeSOS > 0 && (
+            <button
+              onClick={() => { setPage("sos-navigation"); setNavOpen(false); }}
+              style={{
+                background: unacknowledgedSOSCount > 0 ? "linear-gradient(135deg,#ef4444,#b91c1c)" : "rgba(245,158,11,0.18)",
+                border: unacknowledgedSOSCount > 0 ? "none" : "1px solid rgba(245,158,11,0.45)",
+                color: unacknowledgedSOSCount > 0 ? "#fff" : "#fcd34d",
+                borderRadius: 10, padding: "8px 12px", fontSize: 11, fontWeight: 800,
+                cursor: "pointer", fontFamily: "inherit", flexShrink: 0,
+                animation: unacknowledgedSOSCount > 0 ? "ud-sos-blink 1.2s infinite" : "none",
+              }}
+            >
+              {unacknowledgedSOSCount > 0 ? "🚨 SOS" : "🛰 SOS"}
+            </button>
+          )}
+        </div>
+
         {/* Executive Command Header */}
         <header
           style={{
@@ -7141,26 +7362,34 @@ export default function AdminPanel() {
           <div
             onClick={() => setPage("sos-navigation")}
             style={{
-              background: "linear-gradient(90deg, #7f1d1d 0%, #dc2626 50%, #991b1b 100%)",
+              background: unacknowledgedSOSCount > 0
+                ? "linear-gradient(90deg, #7f1d1d 0%, #dc2626 50%, #991b1b 100%)"
+                : "linear-gradient(90deg, #78350f 0%, #b45309 50%, #78350f 100%)",
               color: "#ffffff",
               padding: "12px 24px",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: 10,
               cursor: "pointer",
-              boxShadow: "0 6px 25px rgba(220, 38, 38, 0.6)",
+              boxShadow: unacknowledgedSOSCount > 0 ? "0 6px 25px rgba(220, 38, 38, 0.6)" : "0 4px 18px rgba(180, 83, 9, 0.45)",
               zIndex: 99999,
-              animation: "ud-sos-blink 1.2s infinite",
+              animation: unacknowledgedSOSCount > 0 ? "ud-sos-blink 1.2s infinite" : "none",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
               <span style={{ fontSize: 26 }}>🚨</span>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 900, letterSpacing: "0.04em" }}>
-                  EMERGENCY DISTRESS BEACON ACTIVE · {allSosEvents.find(e => e.status === "active")?.name || "Anirban Panda"} IN DISTRESS
+                  {unacknowledgedSOSCount > 0
+                    ? `EMERGENCY DISTRESS BEACON ACTIVE · ${allSosEvents.find(e => e.status === "active")?.name || "Anirban Panda"} IN DISTRESS`
+                    : `BEACON ACKNOWLEDGED · ${activeSOS} INCIDENT${activeSOS > 1 ? "S" : ""} UNDER COMMAND CONTROL`}
                 </div>
                 <div style={{ fontSize: 12, opacity: 0.95 }}>
-                  Telemetry received from field · Realtime SAR Incident Dispatch console activated
+                  {unacknowledgedSOSCount > 0
+                    ? "Telemetry received from field · Realtime SAR Incident Dispatch console activated"
+                    : "Alarm silenced by the duty officer · dispatch a unit, then stand down when the trekker is safe"}
                 </div>
               </div>
             </div>
@@ -7171,7 +7400,7 @@ export default function AdminPanel() {
               }}
               style={{
                 background: "#ffffff",
-                color: "#b91c1c",
+                color: unacknowledgedSOSCount > 0 ? "#b91c1c" : "#92400e",
                 border: "none",
                 borderRadius: 8,
                 padding: "8px 18px",
@@ -7181,13 +7410,15 @@ export default function AdminPanel() {
                 boxShadow: "0 2px 10px rgba(0,0,0,0.3)",
               }}
             >
-              🚨 VIEW RESCUE DISPATCH HUD →
+              {unacknowledgedSOSCount > 0 ? "🚨 VIEW RESCUE DISPATCH HUD →" : "🛰 OPEN DISPATCH HUD →"}
             </button>
           </div>
         )}
 
         <main className="admin-main" style={{ flex: 1, overflow: "auto", padding: 24 }}>
-          {pages[page] || <div style={{ color: C.muted }}>Page not found.</div>}
+          <PageErrorBoundary key={page}>
+            {pages[page] || <div style={{ color: C.muted }}>Page not found.</div>}
+          </PageErrorBoundary>
         </main>
       </div>
     </div>

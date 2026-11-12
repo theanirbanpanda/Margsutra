@@ -831,6 +831,44 @@ async function createSOSEvent(sosData = {}) {
   return { success: true, event: payload };
 }
 
+async function acknowledgeSOSEvent(eventId, acknowledgedBy = "admin@margsutra.app", note = "") {
+  const docRef = db.collection("sos_events").doc(eventId);
+  const docSnap = await docRef.get();
+  if (!docSnap.exists) return { error: "SOS event not found" };
+
+  const eventData = docSnap.data();
+  const now = new Date();
+
+  // Acknowledging does NOT clear the incident — it only tells the console
+  // (and the trekker) that a human has seen it and is acting on it.
+  await docRef.set({
+    acknowledged: true,
+    acknowledgedBy: acknowledgedBy || "admin@margsutra.app",
+    acknowledgedAt: now,
+    acknowledgedNote: note || "",
+    updatedAt: now,
+  }, { merge: true });
+
+  if (eventData.userId) {
+    const userRef = db.collection("users").doc(eventData.userId);
+    await userRef.set({
+      sosAcknowledged: true,
+      sosAcknowledgedBy: acknowledgedBy || "admin@margsutra.app",
+      sosAcknowledgedAt: now,
+      updatedAt: now,
+    }, { merge: true });
+  }
+
+  return {
+    success: true,
+    eventId,
+    userId: eventData.userId || null,
+    acknowledged: true,
+    acknowledgedBy: acknowledgedBy || "admin@margsutra.app",
+    acknowledgedAt: now,
+  };
+}
+
 async function resolveSOSEvent(eventId, notes = "Resolved by SAR Commander", resolvedBy = "admin@margsutra.app") {
   const docRef = db.collection("sos_events").doc(eventId);
   const docSnap = await docRef.get();
@@ -1143,6 +1181,7 @@ module.exports = {
   getUserActiveTrip,
   createSOSEvent,
   resolveSOSEvent,
+  acknowledgeSOSEvent,
   cancelUserSOS,
   listSOSEvents,
   listPendingAdmins,

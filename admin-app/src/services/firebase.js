@@ -851,6 +851,31 @@ export const resolveSOSEvent = async (eventId, userId = null, notes = "Incident 
   return { success, channels, errors };
 };
 
+/**
+ * Acknowledge a distress beacon: a duty officer has seen it and is acting.
+ * The incident stays active — only a stand-down clears it — but the console
+ * stops the alarm and the trekker sees that command is on it.
+ */
+export const acknowledgeSOSEvent = async (eventId, acknowledgedBy = "Lead Command Admin", note = "") => {
+  if (!eventId) return { success: false, errors: ["Missing incident id"] };
+  const errors = [];
+  let apiOk = false;
+
+  try {
+    const res = await api(`/sos/${eventId}/acknowledge`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ acknowledgedBy, note }),
+    });
+    apiOk = res.ok;
+    if (!res.ok) errors.push(`api: HTTP ${res.status}`);
+  } catch (err) {
+    errors.push(`api: ${err?.message || "failed"}`);
+  }
+
+  return { success: apiOk, channels: { api: apiOk }, errors };
+};
+
 export const triggerDemoSOSEvent = async ({
   name = "Anirban Panda",
   userId = "9OovuZiHQnQKrLTuPF1J",

@@ -34,8 +34,59 @@ input, button, select, textarea {
   border: 0;
 }
 
+/* ── Shell ─────────────────────────────────────────────────────────────────
+   Desktop : persistent vertical control panel on the left.
+   Mobile  : the same vertical panel slides in from the left (hamburger),
+             so the console keeps one consistent navigation model everywhere.
+   ────────────────────────────────────────────────────────────────────────── */
+.admin-shell {
+  display: grid;
+  grid-template-columns: 244px 1fr;
+  min-height: 100vh;
+}
 
-/* ── Responsive shell ─────────────────────────────────────────────── */
+.admin-sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.admin-mobile-bar {
+  display: none;
+}
+
+.admin-backdrop {
+  display: none;
+}
+
+.admin-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  color: #e2e8f0;
+  font-size: 17px;
+  cursor: pointer;
+  font-family: inherit;
+  flex-shrink: 0;
+}
+
+.admin-drawer-close {
+  display: none;
+}
+
+/* ── Responsive content helpers ─────────────────────────────────────────── */
+.resp-2col { grid-template-columns: 1fr 320px; }
+.resp-3col { grid-template-columns: 240px 1fr 310px; }
+.resp-4col { grid-template-columns: repeat(4, 1fr); }
+.resp-2up { grid-template-columns: 1fr 1fr; }
+.resp-32 { grid-template-columns: 1.7fr 1.3fr; }
+
 .page-header {
   display: flex;
   align-items: center;
@@ -44,71 +95,156 @@ input, button, select, textarea {
   flex-wrap: wrap;
 }
 
-@media (max-width: 1000px) {
+@media (max-width: 1180px) {
+  .resp-4col { grid-template-columns: repeat(2, 1fr) !important; }
+}
+
+@media (max-width: 1080px) {
+  .resp-3col {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 960px) {
+  .resp-2col,
+  .resp-32 {
+    grid-template-columns: 1fr !important;
+  }
+
+  .resp-2up {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 780px) {
   .admin-shell {
     grid-template-columns: 1fr !important;
-    align-content: start;
     min-height: 100vh !important;
   }
 
-  .admin-sidebar {
-    flex-direction: row !important;
+  /* Compact top bar — the panel itself lives in the drawer. */
+  .admin-mobile-bar {
+    display: flex !important;
     align-items: center;
-    overflow-x: auto;
-    border-right: none !important;
-    border-bottom: 1px solid rgba(80, 140, 220, 0.14);
+    gap: 10px;
+    padding: 10px 12px;
+    background: rgba(11, 20, 34, 0.97);
+    border-bottom: 1px solid rgba(80, 140, 220, 0.16);
     position: sticky;
     top: 0;
-    z-index: 80;
+    z-index: 130;
+    backdrop-filter: blur(10px);
   }
 
-  .admin-brand,
-  .admin-profile,
-  .admin-footer {
-    display: none !important;
-  }
-
-  .admin-nav {
-    display: flex !important;
+  .admin-mobile-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #e2e8f0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     flex: 1;
-    overflow-x: auto !important;
-    overflow-y: hidden !important;
-    padding: 6px !important;
+    min-width: 0;
   }
 
-  .admin-nav-section {
-    display: flex !important;
+  .admin-mobile-sub {
+    font-size: 10px;
+    color: #7f9dc4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Vertical control panel, off-canvas until opened. */
+  .admin-sidebar {
+    position: fixed !important;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 272px;
+    max-width: 84vw;
+    height: 100vh;
+    z-index: 320;
+    transform: translateX(-102%);
+    transition: transform 0.24s cubic-bezier(0.22, 0.61, 0.36, 1);
+    box-shadow: 0 0 48px rgba(0, 0, 0, 0.65);
+    border-right: 1px solid rgba(80, 140, 220, 0.2) !important;
+  }
+
+  .admin-sidebar.nav-open {
+    transform: translateX(0);
+  }
+
+  .admin-drawer-close {
+    display: inline-flex;
     align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #cbd5e1;
+    font-size: 14px;
+    cursor: pointer;
+    font-family: inherit;
+    margin-left: auto;
+    flex-shrink: 0;
   }
 
-  .admin-nav-section > div:first-child {
-    display: none !important;
+  .admin-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(2, 6, 16, 0.66);
+    backdrop-filter: blur(2px);
+    z-index: 310;
+  }
+
+  .admin-backdrop.nav-closed {
+    display: none;
   }
 
   .admin-nav-item {
-    flex-direction: column;
-    justify-content: center;
-    gap: 1px !important;
-    padding: 5px 9px !important;
-    border-left: none !important;
-    border-radius: 8px;
-    min-width: 62px;
+    padding: 11px 16px !important;
   }
 
   .admin-nav-item span:last-of-type {
-    font-size: 9.5px !important;
-    line-height: 1.2;
-  }
-
-  .admin-nav-item div {
-    display: none;
+    font-size: 13px !important;
   }
 
   .admin-main {
     padding: 14px !important;
   }
 
+  .resp-4col {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
   .ms-drawer-panel {
     width: 100% !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .resp-4col {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ── Wide tables: scroll instead of breaking the layout ────────────────── */
+.admin-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.admin-table-wrap table {
+  min-width: 720px;
+}
+
+@media (max-width: 780px) {
+  .admin-table-wrap table {
+    min-width: 640px;
   }
 }
