@@ -956,16 +956,25 @@ async function seedDemoTrip() {
     return { created: false, upgraded: true, id: doc.id };
   }
 
-  const trip = await createTrip({
-    ...DEMO_TRIP_FIELDS,
-    code: DEMO_TRIP_CODE,
-    createdBy: adminProfile.id,
-    adminInCharge: adminProfile.id,
-    status: "upcoming",
-    lat: 18.8286,
-    lon: 73.3986,
-    geofence: { lat: 18.8286, lon: 73.3986, radius: 2500, zoneName: "Rajmachi Safe Trek Corridor" },
-  });
+  let trip;
+  try {
+    trip = await createTrip({
+      ...DEMO_TRIP_FIELDS,
+      code: DEMO_TRIP_CODE,
+      createdBy: adminProfile.id,
+      adminInCharge: adminProfile.id,
+      status: "upcoming",
+      lat: 18.8286,
+      lon: 73.3986,
+      geofence: { lat: 18.8286, lon: 73.3986, radius: 2500, zoneName: "Rajmachi Safe Trek Corridor" },
+    });
+  } catch (error) {
+    if (error instanceof HttpError && error.status === 409) {
+      console.warn("⚠️  Demo trip not seeded — the demo admin is already in charge of another expedition.");
+      return { created: false, skipped: true };
+    }
+    throw error;
+  }
 
   console.log(`🌱 Seeded demo expedition "${trip.name}" (${trip.code})`);
   return { created: true, id: trip.id };

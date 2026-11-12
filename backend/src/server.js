@@ -893,21 +893,35 @@ app.delete("/api/users/:id/devices/:deviceId", requireSelf, async (req, res) => 
   }
 });
 
+const SEED_RETRY_MS = 10 * 60 * 1000;
+const SEED_MAX_RETRIES = 72; // ~12 hours of retries (covers a daily quota reset)
+
+async function ensureDemoSeed(attempt = 0) {
+  try {
+    await seedDemoTrip();
+  } catch (seedError) {
+    console.warn("⚠️  Demo trip seed not applied:", seedError?.message || seedError);
+    if (attempt < SEED_MAX_RETRIES) {
+      console.warn(`   Retrying in 10 minutes (attempt ${attempt + 1}/${SEED_MAX_RETRIES}).`);
+      const timer = setTimeout(() => ensureDemoSeed(attempt + 1), SEED_RETRY_MS);
+      if (typeof timer.unref === "function") timer.unref();
+    }
+  }
+}
+
 async function bootstrap() {
   try {
     // Verify Firestore connection (non-fatal: the API still starts and
     // individual routes report their own errors if Firestore is unavailable).
     await db.collection("users").limit(1).get();
     console.log("✅ Firebase Firestore connected successfully");
-
-    try {
-      await seedDemoTrip();
-    } catch (seedError) {
-      console.warn("⚠️  Demo trip seed skipped:", seedError?.message || seedError);
-    }
   } catch (error) {
     console.warn("⚠️  Firestore probe failed:", error?.message || error);
   }
+
+  // Idempotent: creates the demo expedition once, or upgrades the legacy
+  // RAJM26 document. Retries so it self-heals after a Firestore quota reset.
+  ensureDemoSeed();
 
   app.listen(PORT, () => {
     console.log(`🚀 Margsutra backend listening on http://localhost:${PORT}`);
