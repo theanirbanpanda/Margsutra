@@ -231,6 +231,13 @@ async function setAppThemeConfig(config) {
   return data;
 }
 
+function genTripCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let out = "";
+  for (let i = 0; i < 6; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
+
 async function listTrips() {
   const snapshot = await db.collection("trips").get();
   return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -242,6 +249,62 @@ async function findTripByCode(code) {
   if (snapshot.empty) return null;
   const doc = snapshot.docs[0];
   return { id: doc.id, ...doc.data() };
+}
+
+async function createTrip(tripData = {}) {
+  const code = tripData.code ? String(tripData.code).trim().toUpperCase() : genTripCode();
+  const now = new Date();
+  const newTrip = {
+    name: tripData.name || "Sahyadri Mountain Expedition",
+    date: tripData.date || "Date TBD",
+    location: tripData.location || "Rajmachi Fort, Maharashtra",
+    elevation: tripData.elevation || "829m ASL",
+    difficulty: tripData.difficulty || "Moderate",
+    leader: tripData.leader || "Field Guide Ajay Saini",
+    vhfChannel: tripData.vhfChannel || "145.500 MHz",
+    code,
+    status: tripData.status || "active",
+    rosterCount: 0,
+    maxRoster: Number(tripData.maxRoster) || 25,
+    lat: Number(tripData.lat) || 18.8286,
+    lon: Number(tripData.lon) || 73.3986,
+    geofence: {
+      lat: Number(tripData.geofence?.lat) || Number(tripData.lat) || 18.8286,
+      lon: Number(tripData.geofence?.lon) || Number(tripData.lon) || 73.3986,
+      radius: Number(tripData.geofence?.radius) || 2500,
+      zoneName: tripData.geofence?.zoneName || tripData.name || "Rajmachi Safe Trek Corridor",
+    },
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const docRef = await db.collection("trips").add(newTrip);
+  return { id: docRef.id, ...newTrip };
+}
+
+async function updateTrip(tripId, updates = {}) {
+  const docRef = db.collection("trips").doc(tripId);
+  const doc = await docRef.get();
+  if (!doc.exists) return null;
+
+  const dataToUpdate = {
+    ...updates,
+    updatedAt: new Date(),
+  };
+
+  // If geofence is updated, merge cleanly
+  if (updates.geofence) {
+    const existingGeofence = doc.data().geofence || {};
+    dataToUpdate.geofence = {
+      ...existingGeofence,
+      ...updates.geofence,
+      radius: typeof updates.geofence.radius === "number" ? updates.geofence.radius : existingGeofence.radius || 2500,
+    };
+  }
+
+  await docRef.set(dataToUpdate, { merge: true });
+  const updatedDoc = await docRef.get();
+  return { id: updatedDoc.id, ...updatedDoc.data() };
 }
 
 async function joinTrip(tripId, userId, userData = {}) {
@@ -455,6 +518,8 @@ module.exports = {
   setAppThemeConfig,
   listTrips,
   findTripByCode,
+  createTrip,
+  updateTrip,
   joinTrip,
   leaveTrip,
   getTripRoster,

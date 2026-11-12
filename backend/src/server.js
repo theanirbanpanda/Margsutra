@@ -20,6 +20,8 @@ const {
   setAppThemeConfig,
   listTrips,
   findTripByCode,
+  createTrip,
+  updateTrip,
   joinTrip,
   leaveTrip,
   getTripRoster,
@@ -117,6 +119,42 @@ app.get("/api/trips", async (_req, res) => {
   } catch (error) {
     console.error("List trips error:", error);
     res.status(500).json({ error: "Failed to load trips." });
+  }
+});
+
+app.post("/api/trips", optionalAuth, async (req, res) => {
+  try {
+    const tripData = req.body || {};
+    if (!tripData.name) {
+      return res.status(400).json({ error: "Expedition name is required." });
+    }
+    const newTrip = await createTrip(tripData);
+    res.status(201).json({ success: true, trip: newTrip });
+  } catch (error) {
+    console.error("Create trip error:", error);
+    res.status(500).json({ error: "Failed to create expedition." });
+  }
+});
+
+app.patch("/api/trips/:tripId", optionalAuth, async (req, res) => {
+  try {
+    const updated = await updateTrip(req.params.tripId, req.body || {});
+    if (!updated) return res.status(404).json({ error: "Expedition not found." });
+    res.json({ success: true, trip: updated });
+  } catch (error) {
+    console.error("Update trip error:", error);
+    res.status(500).json({ error: "Failed to update expedition." });
+  }
+});
+
+app.put("/api/trips/:tripId", optionalAuth, async (req, res) => {
+  try {
+    const updated = await updateTrip(req.params.tripId, req.body || {});
+    if (!updated) return res.status(404).json({ error: "Expedition not found." });
+    res.json({ success: true, trip: updated });
+  } catch (error) {
+    console.error("Update trip error:", error);
+    res.status(500).json({ error: "Failed to update expedition." });
   }
 });
 

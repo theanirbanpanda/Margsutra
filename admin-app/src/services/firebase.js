@@ -345,18 +345,96 @@ const genTripCode = () => {
   return out;
 };
 
-export const createTrip = async (name, date, location) => {
+export const createTrip = async (nameOrData, dateArg, locationArg) => {
+  const isObj = typeof nameOrData === "object" && nameOrData !== null;
+  const name = isObj ? nameOrData.name : nameOrData;
+  const date = isObj ? nameOrData.date : dateArg;
+  const location = isObj ? nameOrData.location : locationArg;
+  const code = (isObj && nameOrData.code) ? String(nameOrData.code).trim().toUpperCase() : genTripCode();
+
+  const payload = {
+    name: name || "Sahyadri Mountain Expedition",
+    date: date || "Date TBD",
+    location: location || "Rajmachi Fort, Maharashtra",
+    elevation: (isObj && nameOrData.elevation) || "829m ASL",
+    difficulty: (isObj && nameOrData.difficulty) || "Moderate",
+    leader: (isObj && nameOrData.leader) || "Field Guide Ajay Saini",
+    vhfChannel: (isObj && nameOrData.vhfChannel) || "145.500 MHz",
+    code,
+    status: (isObj && nameOrData.status) || "active",
+    rosterCount: (isObj && Number(nameOrData.rosterCount)) || 0,
+    maxRoster: (isObj && Number(nameOrData.maxRoster)) || 25,
+    lat: (isObj && Number(nameOrData.lat)) || 18.8286,
+    lon: (isObj && Number(nameOrData.lon)) || 73.3986,
+    geofence: {
+      lat: (isObj && Number(nameOrData.geofence?.lat)) || (isObj && Number(nameOrData.lat)) || 18.8286,
+      lon: (isObj && Number(nameOrData.geofence?.lon)) || (isObj && Number(nameOrData.lon)) || 73.3986,
+      radius: (isObj && Number(nameOrData.geofence?.radius)) || 2500,
+      zoneName: (isObj && nameOrData.geofence?.zoneName) || name || "Rajmachi Safe Trek Corridor",
+    },
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  // 1. Try Backend API first
   try {
-    const code = genTripCode();
-    const docRef = await addDoc(collection(db, "trips"), {
-      name, date, location: location || "",
-      code, status: "active", roster: 1,
-      createdAt: new Date().toISOString(),
+    const res = await fetch(`${AUTH_API_URL}/trips`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
-    return { success: true, id: docRef.id, code };
+    if (res.ok) {
+      const data = await res.json();
+      return { success: true, id: data.trip?.id, code: data.trip?.code || code, trip: data.trip };
+    }
+  } catch {}
+
+  // 2. Direct Firestore fallback
+  try {
+    const docRef = await addDoc(collection(db, "trips"), payload);
+    return { success: true, id: docRef.id, code, trip: { id: docRef.id, ...payload } };
   } catch (error) {
     return { success: false, error: error.message };
   }
+};
+
+export const updateTrip = async (tripId, updates = {}) => {
+  // 1. Try Backend API first
+  try {
+    const res = await fetch(`${AUTH_API_URL}/trips/${tripId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return { success: true, trip: data.trip };
+    }
+  } catch {}
+
+  // 2. Direct Firestore fallback
+  try {
+    const docRef = doc(db, "trips", tripId);
+    await updateDoc(docRef, {
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    });
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+export const updateTripGeofence = async (tripId, geofenceUpdates = {}) => {
+  const updates = {
+    geofence: {
+      radius: Number(geofenceUpdates.radius) || 2500,
+      zoneName: geofenceUpdates.zoneName || "Rajmachi Safe Trek Corridor",
+      lat: Number(geofenceUpdates.lat) || 18.8286,
+      lon: Number(geofenceUpdates.lon) || 73.3986,
+    },
+  };
+  return updateTrip(tripId, updates);
 };
 
 export const subscribeToTrips = (callback) => {
