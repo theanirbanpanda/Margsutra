@@ -615,6 +615,26 @@ app.post("/api/admin/reject-admin/:id", async (req, res) => {
   }
 });
 
+// Persist per-user feature access toggles from the admin console.
+app.post("/api/admin/users/:id/features", requireAuth, async (req, res) => {
+  try {
+    const { features } = req.body || {};
+    if (!features || typeof features !== "object" || Array.isArray(features)) {
+      return res.status(400).json({ error: "features must be an object of { featureName: boolean }." });
+    }
+    const target = await findUserById(req.params.id);
+    if (!target) return res.status(404).json({ error: "User not found." });
+    const updated = await updateUser(req.params.id, {
+      features,
+      featuresUpdatedAt: new Date().toISOString(),
+    });
+    res.json({ success: true, userId: req.params.id, features: updated?.features || features });
+  } catch (error) {
+    console.error("Update feature access error:", error);
+    res.status(500).json({ error: "Failed to persist feature access." });
+  }
+});
+
 app.get("/api/admin/pending-trip-requests", async (_req, res) => {
   try {
     const pending = await listPendingTripRequests();

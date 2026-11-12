@@ -43,13 +43,43 @@ export const storage = getStorage(app);
 
 export const AUTH_API_URL = import.meta.env.VITE_AUTH_API_URL || "http://localhost:5050/api";
 
+// Admin API token issued by POST /api/auth/login. Without it every protected
+// backend route (including GET /api/users) answers 401.
+export const getAdminToken = () => {
+  try {
+    return localStorage.getItem("margsutra_admin_token") || "";
+  } catch {
+    return "";
+  }
+};
+
+export const setAdminToken = (token) => {
+  try {
+    if (token) localStorage.setItem("margsutra_admin_token", token);
+    else localStorage.removeItem("margsutra_admin_token");
+  } catch {
+    /* storage unavailable */
+  }
+};
+
+export const authHeaders = (extra = {}) => {
+  const token = getAdminToken();
+  return { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...extra };
+};
+
+const api = (path, options = {}) =>
+  fetch(`${AUTH_API_URL}${path}`, {
+    ...options,
+    headers: authHeaders(options.headers || {}),
+  });
+
 // ===== AUTHENTICATION =====
 export const adminLogin = async (email, password) => {
   const normalizedEmail = (email || "").trim().toLowerCase();
 
   // 1. Try Backend API first (validates Firestore credentials and checks pending approval)
   try {
-    const res = await fetch(`${AUTH_API_URL}/auth/login`, {
+    const res = await api(`/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: normalizedEmail, password }),
@@ -118,7 +148,7 @@ export const registerAdminAccount = async ({ name, email, password, phone, organ
 
   // 1. Try Backend Registration API
   try {
-    const res = await fetch(`${AUTH_API_URL}/auth/register-admin`, {
+    const res = await api(`/auth/register-admin`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -175,7 +205,7 @@ export const registerAdminAccount = async ({ name, email, password, phone, organ
 
 export const fetchPendingAdmins = async () => {
   try {
-    const res = await fetch(`${AUTH_API_URL}/admin/pending-admins`);
+    const res = await api(`/admin/pending-admins`);
     if (res.ok) {
       const data = await res.json();
       return data.pendingAdmins || [];
@@ -197,7 +227,7 @@ export const fetchPendingAdmins = async () => {
 
 export const approveAdmin = async (adminId, approvedBy = "admin@margsutra.app") => {
   try {
-    const res = await fetch(`${AUTH_API_URL}/admin/approve-admin/${adminId}`, {
+    const res = await api(`/admin/approve-admin/${adminId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ approvedBy }),
@@ -219,7 +249,7 @@ export const approveAdmin = async (adminId, approvedBy = "admin@margsutra.app") 
 
 export const rejectAdmin = async (adminId, rejectedBy = "admin@margsutra.app") => {
   try {
-    const res = await fetch(`${AUTH_API_URL}/admin/reject-admin/${adminId}`, {
+    const res = await api(`/admin/reject-admin/${adminId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ rejectedBy }),
@@ -271,11 +301,14 @@ export const getUserById = async (userId) => {
 
 export const updateUserFeatureAccess = async (userId, features) => {
   try {
-    await updateDoc(doc(db, "users", userId), {
-      features: features,
-      updatedAt: new Date().toISOString(),
+    const res = await api(`/admin/users/${userId}/features`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ features }),
     });
-    return { success: true };
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { success: false, error: data.error || `HTTP ${res.status}` };
+    return { success: true, features: data.features || features };
   } catch (error) {
     return { success: false, error: error.message };
   }
@@ -389,7 +422,7 @@ export const createTrip = async (nameOrData, dateArg, locationArg) => {
 
   // 1. Try Backend API first
   try {
-    const res = await fetch(`${AUTH_API_URL}/trips`, {
+    const res = await api(`/trips`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -412,7 +445,7 @@ export const createTrip = async (nameOrData, dateArg, locationArg) => {
 export const updateTrip = async (tripId, updates = {}) => {
   // 1. Try Backend API first
   try {
-    const res = await fetch(`${AUTH_API_URL}/trips/${tripId}`, {
+    const res = await api(`/trips/${tripId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(updates),
@@ -451,7 +484,7 @@ export const updateTripGeofence = async (tripId, geofenceUpdates = {}) => {
 export const deleteTrip = async (tripId) => {
   // 1. Try Backend API
   try {
-    const res = await fetch(`${AUTH_API_URL}/trips/${tripId}`, {
+    const res = await api(`/trips/${tripId}`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
     });
@@ -490,7 +523,7 @@ export const deleteTrip = async (tripId) => {
 export const setActiveManagedTrip = async (tripId) => {
   // 1. Try Backend API
   try {
-    const res = await fetch(`${AUTH_API_URL}/trips/${tripId}/manage`, {
+    const res = await api(`/trips/${tripId}/manage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
     });
@@ -552,7 +585,7 @@ export const getTripByCode = async (code) => {
 export const fetchPendingTripRequests = async () => {
   // 1. Try Backend API
   try {
-    const res = await fetch(`${AUTH_API_URL}/admin/pending-trip-requests`);
+    const res = await api(`/admin/pending-trip-requests`);
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data.pending)) return data.pending;
@@ -588,7 +621,7 @@ export const fetchPendingTripRequests = async () => {
 export const approveTrekker = async (tripId, userId, approvedBy = "admin@margsutra.app") => {
   // 1. Try Backend API
   try {
-    const res = await fetch(`${AUTH_API_URL}/admin/trips/${tripId}/approve-user/${userId}`, {
+    const res = await api(`/admin/trips/${tripId}/approve-user/${userId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ approvedBy }),
@@ -632,7 +665,7 @@ export const approveTrekker = async (tripId, userId, approvedBy = "admin@margsut
 export const removeTrekker = async (tripId, userId, removedBy = "admin@margsutra.app") => {
   // 1. Try Backend API
   try {
-    const res = await fetch(`${AUTH_API_URL}/admin/trips/${tripId}/remove-user/${userId}`, {
+    const res = await api(`/admin/trips/${tripId}/remove-user/${userId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ removedBy }),
@@ -674,7 +707,7 @@ export const removeTrekker = async (tripId, userId, removedBy = "admin@margsutra
 export const fetchTripRoster = async (tripId) => {
   // 1. Try Backend API
   try {
-    const res = await fetch(`${AUTH_API_URL}/trips/${tripId}/roster`);
+    const res = await api(`/trips/${tripId}/roster`);
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data.roster)) return data.roster;
@@ -750,6 +783,9 @@ export const updateSOSEventStatus = async (eventId, status, notes = "") => {
 
 export const resolveSOSEvent = async (eventId, userId = null, notes = "Incident resolved and standing down SAR", resolvedBy = "Lead Command Admin") => {
   const now = new Date().toISOString();
+  const channels = { firestore: false, api: false };
+  const errors = [];
+
   try {
     if (eventId) {
       await updateDoc(doc(db, "sos_events", eventId), {
@@ -768,22 +804,28 @@ export const resolveSOSEvent = async (eventId, userId = null, notes = "Incident 
         updatedAt: now,
       });
     }
+    channels.firestore = true;
   } catch (err) {
-    console.warn("resolveSOSEvent firestore error:", err);
+    errors.push(`firestore: ${err?.message || "write failed"}`);
   }
 
-  // Sync to backend API as well
-  try {
-    if (eventId) {
-      await fetch(`http://localhost:5050/api/sos/${eventId}/resolve`, {
+  // Stand-down must also reach the tracking server (live map + trekker app).
+  if (eventId) {
+    try {
+      const res = await api(`/sos/${eventId}/resolve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes, resolvedBy }),
+        body: JSON.stringify({ notes, resolvedBy, userId }),
       });
+      channels.api = res.ok;
+      if (!res.ok) errors.push(`api: HTTP ${res.status}`);
+    } catch (err) {
+      errors.push(`api: ${err?.message || "failed"}`);
     }
-  } catch {}
+  }
 
-  return { success: true };
+  const success = channels.api || channels.firestore;
+  return { success, channels, errors };
 };
 
 export const triggerDemoSOSEvent = async ({
@@ -821,6 +863,7 @@ export const triggerDemoSOSEvent = async ({
     ec,
     type,
     priority,
+    isDrill: true,
     status: "active",
     message: "Field SAR operational drill triggered from Admin Dispatch Console",
     timestamp: now,
@@ -829,27 +872,15 @@ export const triggerDemoSOSEvent = async ({
   };
 
   try {
+    // Drills are recorded as drill events only: they must never flip a real
+    // trekker's duty-of-care status to "sos" or look like a live incident.
     await setDoc(doc(db, "sos_events", eventId), payload);
-    if (userId) {
-      await updateDoc(doc(db, "users", userId), {
-        status: "sos",
-        activeSosId: eventId,
-        updatedAt: now,
-      });
-    }
   } catch (err) {
     console.warn("triggerDemoSOSEvent error:", err);
+    return { success: false, error: err?.message || "Could not record drill event" };
   }
 
-  try {
-    await fetch("http://localhost:5050/api/sos/trigger", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-  } catch {}
-
-  return { success: true, eventId, payload };
+  return { success: true, eventId, payload, isDrill: true };
 };
 
 export const subscribeToSOSEvents = (callback) => {

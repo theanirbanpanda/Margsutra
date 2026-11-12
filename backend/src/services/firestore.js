@@ -677,7 +677,7 @@ async function resolveSOSEvent(eventId, notes = "Resolved by SAR Commander", res
     }, { merge: true });
   }
 
-  return { success: true, eventId, status: "resolved" };
+  return { success: true, eventId, userId: eventData.userId || null, status: "resolved" };
 }
 
 async function cancelUserSOS(userId, reason = "user_cancelled") {

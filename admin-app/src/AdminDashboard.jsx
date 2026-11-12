@@ -24,6 +24,9 @@ import {
   subscribeToSOSEvents,
   resolveSOSEvent,
   triggerDemoSOSEvent,
+  updateUserFeatureAccess,
+  setAdminToken,
+  authHeaders,
 } from "./services/firebase";
 import {
   calculateDistanceMeters,
@@ -659,15 +662,23 @@ const PageSOSNavigation = ({
     if (!selectedSOS) return;
     setIsSubmitting(true);
     try {
-      if (onResolveSOS) {
-        await onResolveSOS(selectedSOS.eventId || selectedSOS.id, selectedSOS.userId, resolutionNote);
+      const result = onResolveSOS
+        ? await onResolveSOS(selectedSOS.eventId || selectedSOS.id, selectedSOS.userId, resolutionNote)
+        : { success: false };
+      if (!result?.success) {
+        setCalloutMsg(
+          `❌ Stand-down NOT confirmed for ${selectedSOS.user}. ${result?.errors?.[0] || "No channel accepted the stand-down."} Retry before leaving the incident.`
+        );
+        setTimeout(() => setCalloutMsg(""), 8000);
+        return;
       }
       setResolvingModal(false);
       setNavMode(false);
-      setCalloutMsg(`✅ SAR Stand-down logged for ${selectedSOS.user}. Beacon cleared, user reset to active.`);
+      setCalloutMsg(`✅ SAR Stand-down confirmed for ${selectedSOS.user}. Beacon cleared, user reset to active.`);
       setTimeout(() => setCalloutMsg(""), 5000);
     } catch (err) {
       console.error("Stand-down error:", err);
+      setCalloutMsg(`❌ Stand-down failed: ${err?.message || "unknown error"}. Incident remains active.`);
     } finally {
       setIsSubmitting(false);
     }
@@ -1515,7 +1526,10 @@ const PageAdminAuth = ({ onLogin }) => {
       const res = await adminLogin(trimmedEmail, loginPass);
       if (res.success) {
         setLoginLoading(false);
-        onLogin(res.userData || { email: trimmedEmail, name: "Admin", role: "admin" });
+        onLogin({
+          ...(res.userData || { email: trimmedEmail, name: "Admin", role: "admin" }),
+          token: res.token || null,
+        });
         return;
       }
       setLoginLoading(false);
@@ -2960,12 +2974,20 @@ const PageTripRosters = ({
 
     setSavingGeofence((p) => ({ ...p, [tripId]: true }));
     try {
-      await updateTripGeofenceRemote(tripId, {
+      const saveResult = await updateTripGeofenceRemote(tripId, {
         radius: Number(currentRadius),
         zoneName: currentZone,
         lat: trip.lat || 18.8286,
         lon: trip.lon || 73.3986,
       });
+      if (saveResult && saveResult.success === false) {
+        setGeofenceToast((p) => ({
+          ...p,
+          [tripId]: `✕ Perimeter NOT saved — ${saveResult.error || "backend rejected the update"}`,
+        }));
+        setTimeout(() => setGeofenceToast((p) => ({ ...p, [tripId]: null })), 7000);
+        return;
+      }
 
       setTrips((prev) =>
         prev.map((t) => {
@@ -4646,7 +4668,7 @@ const PageAllUsers = ({ users = [], navigate }) => {
                 <TD>{u.city || "Rajmachi Trail"}</TD>
                 <TD><Pill color="blue">{u.badge || u.role || "Trekker"}</Pill></TD>
                 <TD><Pill color={statusColor[u.status] || "green"}>{u.status || "active"}</Pill></TD>
-                <TD style={{ color: C.muted, fontSize: 12 }}>{u.lastSeen || "Just now"}</TD>
+                <TD style={{ color: C.muted, fontSize: 12 }}>{u.lastSeen || "—"}</TD>
                 <TD><Pill color="red">🩸 {u.blood || "B+"}</Pill></TD>
                 <TD style={{ fontSize: 11.5, color: u.medical && u.medical !== "None" && u.medical !== "None reported" ? "#fcd34d" : C.muted2 }}>
                   {u.medical || "None reported"}
@@ -4790,7 +4812,7 @@ const PageAllUsers = ({ users = [], navigate }) => {
 const PageDeviceTracking = ({ users = USERS, connectionState = "disconnected" }) => {
   const [sel, setSel] = useState("REMOTE_01");
   const [spreadingFactor, setSpreadingFactor] = useState(7);
-  const [serialConnected, setSerialConnected] = useState(true);
+  const [serialConnected, setSerialConnected] = useState(false);
   const [serialConnecting, setSerialConnecting] = useState(false);
   const [serialPortName, setSerialPortName] = useState("ESP32-SX1276 Gateway (Virtual COM3 @ 115200)");
   const [activeTab, setActiveTab] = useState("fleet"); // "fleet" | "terminal" | "rf-mesh"
@@ -5264,15 +5286,21 @@ const PageDeviceTracking = ({ users = USERS, connectionState = "disconnected" })
         right={
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <Pill color={serialConnected ? "green" : "amber"}>
-              ● {serialConnected ? "Gateway Connected" : "Connecting..."}
+              {serialConnected ? "● USB Gateway Connected" : "◐ Simulated feed — no gateway"}
             </Pill>
-            <Pill color="teal">● 6/6 Mesh Nodes Linked</Pill>
+            <Pill color="amber">◐ 6 demo nodes</Pill>
             <Btn variant="primary" onClick={handleConnectSerial} disabled={serialConnecting}>
               🔌 {serialConnected ? "Switch USB Port" : "Connect Physical ESP32"}
             </Btn>
           </div>
         }
       />
+
+      <div style={{ background: "rgba(245,158,11,0.09)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "#fcd34d", marginBottom: 14 }}>
+        ◐ <strong>Simulated hardware feed.</strong> No ESP32 gateway is attached. Packet counters, RSSI/SNR values,
+        node telemetry and downlink ACKs on this page are generated locally for demonstration. Real gateway data is
+        written to RTDB <code>weather_nodes</code> and is not yet ingested by the console.
+      </div>
 
       {/* RF Radio Transceiver Parameters HUD */}
       <Card style={{ marginBottom: 16, background: "linear-gradient(135deg, rgba(16, 30, 54, 0.8), rgba(9, 14, 24, 0.95))" }}>
@@ -5323,9 +5351,9 @@ const PageDeviceTracking = ({ users = USERS, connectionState = "disconnected" })
             ["RF Frequency", "865.0625 MHz", "India IN865 Ch 1", C.teal],
             ["Bandwidth", "125 kHz", "Standard LoRa", C.accent],
             ["Coding Rate", "4/5", "Hamming FEC", C.purple],
-            ["TX Power", "+20 dBm", "100 mW EIRP", C.amber],
-            ["Noise Floor", "-119 dBm", "Quiet Western Ghats", C.green],
-            ["Packet Loss", "0.4 %", "1,482 RX Frames", C.green],
+            ["TX Power", "+14 dBm", "Configured (25 mW ERP)", C.amber],
+            ["Noise Floor", "—", "No gateway telemetry", C.muted],
+            ["Packet Loss", "—", "No gateway telemetry", C.muted],
           ].map(([label, val, sub, col]) => (
             <div key={label} style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 10px" }}>
               <div style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>
@@ -5782,7 +5810,9 @@ const PageFeatureAccess = ({ users = [] }) => {
       if (!u?.id) return;
       init[u.id] = {};
       FEATURES.forEach(f => {
-        init[u.id][f] = u.role === "Field Guide" || ["Weather", "Emergency SOS"].includes(f);
+        init[u.id][f] = u.features && typeof u.features[f] === "boolean"
+          ? u.features[f]
+          : u.role === "Field Guide" || ["Weather", "Emergency SOS"].includes(f);
       });
     });
     return init;
@@ -5790,21 +5820,36 @@ const PageFeatureAccess = ({ users = [] }) => {
 
   const [access, setAccess] = useState(computeInit);
   const [saved, setSaved] = useState(false);
+  const [saveErr, setSaveErr] = useState("");
   const allUsers = users && users.length > 0 ? users : USERS;
 
   const toggle = (uid, feat) => setAccess(a => ({ ...a, [uid]: { ...a[uid], [feat]: !a[uid][feat] } }));
   const grantAll = uid => setAccess(a => ({ ...a, [uid]: Object.fromEntries(FEATURES.map(f => [f, true])) }));
   const revokeAll = uid => setAccess(a => ({ ...a, [uid]: Object.fromEntries(FEATURES.map(f => [f, false])) }));
   const save = async () => {
+    setSaveErr("");
+    const targets = allUsers.filter(u => u?.id && access[u.id]);
+    if (!targets.length) {
+      setSaveErr("No users to persist.");
+      return;
+    }
+    const results = await Promise.all(
+      targets.map(u => updateUserFeatureAccess(u.id, access[u.id]))
+    );
+    const failed = results.filter(r => !r?.success);
+    if (failed.length) {
+      setSaved(false);
+      setSaveErr(`${failed.length} of ${targets.length} users could not be saved — ${failed[0]?.error || "unknown error"}`);
+      return;
+    }
     setSaved(true);
-    // Save to backend (TODO: implement persistence)
-    console.log("Feature access saved:", access);
     setTimeout(() => setSaved(false), 2500);
   };
   return (
     <div>
       <PageHeader title="Feature Access Control" sub="Grant or revoke access per user" right={<Btn variant="primary" onClick={save}>{saved ? "✓ Saved" : "Save changes"}</Btn>} />
-      {saved && <div style={{ background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.25)", borderRadius: 10, padding: "10px 16px", fontSize: 13, color: "#86efac", marginBottom: 16 }}>Access settings saved successfully.</div>}
+      {saved && <div style={{ background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.25)", borderRadius: 10, padding: "10px 16px", fontSize: 13, color: "#86efac", marginBottom: 16 }}>Access settings saved to Firestore.</div>}
+      {saveErr && <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 10, padding: "10px 16px", fontSize: 13, color: "#fca5a5", marginBottom: 16 }}>Save failed — {saveErr}</div>}
       <Card style={{ padding: 0, overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead><tr><TH style={{ minWidth: 180 }}>User</TH>{FEATURES.map(f => <TH key={f} style={{ textAlign: "center", minWidth: 90, fontSize: 10 }}>{f}</TH>)}<TH style={{ textAlign: "center" }}>Actions</TH></tr></thead>
@@ -5922,7 +5967,8 @@ const PageWearablesRadar = ({ users = USERS }) => {
         sub="Continuous physiological telemetry streamed from trekkers' paired fitness gadgets and smartwatches"
         right={
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <Pill color="green">● 6/6 Wearables Synced</Pill>
+            <Pill color="amber">◐ 6 demo wearables</Pill>
+            <Pill color="amber">◐ Simulated telemetry</Pill>
             <Pill color="blue">LoRa + Cellular Mesh</Pill>
             <button
               type="button"
@@ -5946,6 +5992,11 @@ const PageWearablesRadar = ({ users = USERS }) => {
           </div>
         }
       />
+
+      <div style={{ background: "rgba(245,158,11,0.09)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "#fcd34d", marginBottom: 14 }}>
+        ◐ <strong>Simulated vitals.</strong> No wearable is paired and no biometric stream is received. Heart rate,
+        SpO₂, steps and device names below are generated for demonstration.
+      </div>
 
       {syncToast && (
         <div
@@ -6279,13 +6330,13 @@ const PageLiveTracking = ({ navigate, users = USERS, connectionState = "disconne
                     {[
                       ["Distance from Leader", `${distStr} away`],
                       ["Trail Status", u.trailStatus || "Ascending Trail"],
-                      ["Altitude", u.altitude ? `${u.altitude}m ASL` : "820m ASL"],
-                      ["Battery", u.battery ? `${u.battery}%` : "85%"],
-                      ["Heart Rate", u.heartRate ? `${u.heartRate} bpm` : "82 bpm"],
-                      ["Blood SpO2", `${u.spO2 || 98}% (Optimal Saturation)`],
-                      ["Synced Wearable", u.wearable || "Garmin Instinct 2 (BLE Synced)"],
-                      ["Latitude", `${u.lat?.toFixed(4)}°N` || "—"],
-                      ["Longitude", `${u.lon?.toFixed(4)}°E` || "—"],
+                      ["Altitude", u.altitude ? `${u.altitude}m ASL` : "—"],
+                      ["Battery", u.battery ? `${u.battery}%` : "—"],
+                      ["Heart Rate", u.heartRate ? `${u.heartRate} bpm` : "—"],
+                      ["Blood SpO2", u.spO2 ? `${u.spO2}%` : "—"],
+                      ["Synced Wearable", u.wearable || "No wearable linked"],
+                      ["Latitude", Number.isFinite(Number(u.lat)) ? `${Number(u.lat).toFixed(4)}°N` : "—"],
+                      ["Longitude", Number.isFinite(Number(u.lon)) ? `${Number(u.lon).toFixed(4)}°E` : "—"],
                       ["Blood", u.blood],
                       ["Emergency Contact", u.ec1Name ? `${u.ec1Name} (${u.ec1Rel || "Family"}) · ${u.ec1Ph || ""}` : "Registered"],
                     ].map(([k, v]) => (
@@ -6299,7 +6350,7 @@ const PageLiveTracking = ({ navigate, users = USERS, connectionState = "disconne
                         🗺 Route Team
                       </Btn>
                       {u.status === "sos" && (
-                        <Btn variant="danger" style={{ flex: 1, justifyContent: "center", fontSize: 11 }}>
+                        <Btn variant="danger" style={{ flex: 1, justifyContent: "center", fontSize: 11 }} onClick={() => navigate("sos-navigation")}>
                           SOS Dispatch
                         </Btn>
                       )}
@@ -6401,6 +6452,7 @@ const PageMountainWeather = () => {
   const [loading, setLoading] = useState(true);
   const [sensorOnline, setSensorOnline] = useState(true);
   const [advisorySent, setAdvisorySent] = useState(false);
+  const [advisoryErr, setAdvisoryErr] = useState("");
   const [advisoryText, setAdvisoryText] = useState("");
   const [sensor, setSensor] = useState({
     temp: 24.2, humidity: 82, pressure: 928.4, windSpeed: 18.5, windDir: 240,
@@ -6443,38 +6495,24 @@ const PageMountainWeather = () => {
     return () => clearInterval(t);
   }, []);
 
-  // ── Simulate live hardware sensor drift at Manoranjan Ridge (842m ASL) ──────────────────────
-  useEffect(() => {
-    const t = setInterval(() => {
-      if (!sensorOnline) return;
-      setSensor(p => ({
-        ...p,
-        temp: +(p.temp + (Math.random() - 0.5) * 0.2).toFixed(1),
-        humidity: +Math.min(100, Math.max(0, p.humidity + (Math.random() - 0.5))).toFixed(1),
-        windSpeed: +Math.max(0, (p.windSpeed + (Math.random() - 0.5) * 1.5)).toFixed(1),
-        co2: Math.round(p.co2 + (Math.random() - 0.5) * 4),
-        aqi: Math.min(200, Math.max(10, Math.round(p.aqi + (Math.random() - 0.5) * 2))),
-        lastSync: new Date().toLocaleTimeString("en-IN"),
-      }));
-    }, 2000);
-    return () => clearInterval(t);
-  }, [sensorOnline]);
+  // Sensor readings come only from Open-Meteo — no synthetic drift.
 
   const handleBroadcastAdvisory = async () => {
     if (!advisoryText.trim()) return;
-    try {
-      await createSafetyProtocol({
-        title: "⚡ Urgent Trail Weather Advisory",
-        body: advisoryText.trim(),
-        status: "published",
-        author: "Field Guide Ajay Saini",
-      });
-      setAdvisorySent(true);
-      setAdvisoryText("");
-      setTimeout(() => setAdvisorySent(false), 5000);
-    } catch (err) {
-      console.error("Failed to broadcast advisory:", err);
+    setAdvisoryErr("");
+    const res = await createSafetyProtocol({
+      title: "⚡ Urgent Trail Weather Advisory",
+      body: advisoryText.trim(),
+      status: "published",
+      author: "Field Guide Ajay Saini",
+    });
+    if (!res?.success) {
+      setAdvisoryErr(res?.error || "Advisory was not saved. Check backend/Firestore connectivity.");
+      return;
     }
+    setAdvisorySent(true);
+    setAdvisoryText("");
+    setTimeout(() => setAdvisorySent(false), 5000);
   };
 
   const cur = wx?.current;
@@ -6595,6 +6633,12 @@ const PageMountainWeather = () => {
               <Btn variant="primary" onClick={handleBroadcastAdvisory} disabled={!advisoryText.trim()}>
                 Broadcast Directive to Group →
               </Btn>
+              {advisorySent && (
+                <div style={{ fontSize: 11.5, color: "#86efac", marginTop: 8 }}>✓ Advisory published to the safety protocol feed.</div>
+              )}
+              {advisoryErr && (
+                <div style={{ fontSize: 11.5, color: "#fca5a5", marginTop: 8 }}>✕ {advisoryErr}</div>
+              )}
             </Card>
           </div>
 
@@ -6634,22 +6678,11 @@ const PageMountainWeather = () => {
               ))}
             </Card>
             <Card>
-              <div style={{ fontSize: 12, fontWeight: 600, color: C.text, marginBottom: 10 }}>📊 Ridge Air Quality &amp; Particulates (PMS5003 Laser)</div>
-              {[
-                ["AQI Index", sensor.aqi, 200, sensor.aqi < 50 ? C.green : sensor.aqi < 100 ? C.amber : C.red],
-                ["CO₂ Level", sensor.co2 - 350, 200, sensor.co2 < 450 ? C.green : C.amber],
-                ["Relative Humidity", sensor.humidity, 100, C.teal],
-              ].map(([label, val, max, col]) => (
-                <div key={label} style={{ marginBottom: 10 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 3 }}>
-                    <span style={{ color: C.muted }}>{label}</span>
-                    <span style={{ color: col, fontWeight: 600 }}>{label === "CO₂ Level" ? sensor.co2 + " ppm" : label === "AQI Index" ? sensor.aqi : sensor.humidity + "%"}</span>
-                  </div>
-                  <div style={{ height: 5, borderRadius: 4, background: "rgba(255,255,255,0.07)" }}>
-                    <div style={{ height: "100%", width: `${Math.min(100, (val / max) * 100)}%`, borderRadius: 4, background: col, transition: "width 0.5s" }} />
-                  </div>
-                </div>
-              ))}
+              <div style={{ fontSize: 12, fontWeight: 600, color: C.text, marginBottom: 6 }}>📊 Ridge Air Quality &amp; Particulates</div>
+              <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.55 }}>
+                No PMS5003 particulate or CO₂ sensor is linked to this console, so AQI and CO₂ are <strong>not measured</strong>.
+                Temperature, humidity, wind, UV and pressure above come live from Open-Meteo.
+              </div>
             </Card>
           </div>
         </div>
@@ -6692,9 +6725,7 @@ const PageMountainWeather = () => {
               { label: "Pressure", value: `${sensor.pressure?.toFixed(1)} hPa`, icon: "🌀", color: C.purple, status: "Stable" },
               { label: "Wind Speed", value: `${sensor.windSpeed} km/h`, icon: "🌬️", color: sensor.windSpeed > 50 ? C.red : sensor.windSpeed > 25 ? C.amber : C.accent, status: sensor.windSpeed > 50 ? "Alert" : sensor.windSpeed > 25 ? "Moderate" : "Calm" },
               { label: "UV Index", value: `${sensor.uvIndex}`, icon: "☀️", color: sensor.uvIndex > 7 ? C.red : sensor.uvIndex > 3 ? C.amber : C.green, status: sensor.uvIndex > 7 ? "Danger" : sensor.uvIndex > 3 ? "Moderate" : "Low" },
-              { label: "CO₂", value: `${sensor.co2} ppm`, icon: "🌿", color: sensor.co2 > 450 ? C.amber : C.green, status: sensor.co2 > 450 ? "Elevated" : "Normal" },
               { label: "Rainfall", value: `${sensor.rainfall} mm/h`, icon: "🌧️", color: sensor.rainfall > 5 ? C.red : sensor.rainfall > 0 ? C.teal : C.muted, status: sensor.rainfall > 5 ? "Heavy" : sensor.rainfall > 0 ? "Light" : "None" },
-              { label: "AQI", value: `${sensor.aqi}`, icon: "💨", color: sensor.aqi < 50 ? C.green : sensor.aqi < 100 ? C.amber : C.red, status: sensor.aqi < 50 ? "Good" : sensor.aqi < 100 ? "Moderate" : "Poor" },
               { label: "Altitude", value: `${sensor.altitude}m ASL`, icon: "🏔️", color: C.muted, status: "Fixed GPS" },
             ].map(({ label, value, icon, color, status }) => (
               <Card key={label} style={{ marginBottom: 0 }}>
@@ -6847,6 +6878,7 @@ const NAV = [
     items: [
       { id: "trip-rosters", label: "Expeditions & Rosters", icon: "🧭" },
       { id: "all-users", label: "All Registered Users", icon: "👥" },
+      { id: "feature-access", label: "Feature Access Control", icon: "🔐" },
       { id: "admin-approvals", label: "Admin Duty Clearances", icon: "🛡️" },
     ],
   },
@@ -7109,7 +7141,7 @@ export default function AdminPanel() {
     if (res?.success) {
       await loadPendingAdmins();
       try {
-        const response = await fetch(`${AUTH_API_URL}/users`);
+        const response = await fetch(`${AUTH_API_URL}/users`, { headers: authHeaders() });
         if (response.ok) {
           const data = await response.json();
           if (Array.isArray(data?.users)) setFirestoreUsers(data.users);
@@ -7130,27 +7162,13 @@ export default function AdminPanel() {
   };
 
   const approvedAdmins = useMemo(() => {
-    const list = firestoreUsers
+    return firestoreUsers
       .filter((u) => {
         const email = (u.email || "").toLowerCase();
         const role = (u.role || "").toLowerCase();
         return role === "admin" || email === "admin@margsutra.app";
       })
       .filter((u) => u.status !== "pending_approval" && u.status !== "rejected");
-
-    if (!list.some((u) => (u.email || "").toLowerCase() === "admin@margsutra.app")) {
-      list.unshift({
-        id: "demo-admin-001",
-        name: "Super Admin",
-        email: "admin@margsutra.app",
-        role: "admin",
-        roleTitle: "Lead Command Dispatcher",
-        organization: "Margsutra SAR Dispatch",
-        phone: "+91 98765 00000",
-        status: "approved",
-      });
-    }
-    return list;
   }, [firestoreUsers]);
 
   useEffect(() => {
@@ -7180,14 +7198,21 @@ export default function AdminPanel() {
     let cancelled = false;
     const loadUsers = async () => {
       try {
-        const response = await fetch(`${AUTH_API_URL}/users`);
+        const response = await fetch(`${AUTH_API_URL}/users`, { headers: authHeaders() });
+        if (response.status === 401) {
+          // Session restored from localStorage without a valid API token.
+          // Force a clean re-login instead of silently showing stale data.
+          setAdminToken(null);
+          if (!cancelled) handleLogout();
+          return;
+        }
         if (!response.ok) return;
         const data = await response.json();
         if (!cancelled && Array.isArray(data?.users) && data.users.length > 0) {
           setFirestoreUsers(data.users);
         }
       } catch {
-        // Keep static users as fallback if backend is not reachable.
+        // Backend unreachable — keep whatever live Firestore data we have.
       }
     };
 
@@ -7204,7 +7229,9 @@ export default function AdminPanel() {
     const adminObj = adminUser || { email: "admin@margsutra.app", name: "Super Admin", role: "admin" };
     setActiveAdmin(adminObj);
     try {
-      localStorage.setItem("margsutra_admin_session", JSON.stringify(adminObj));
+      const { token, ...session } = adminObj;
+      if (token) setAdminToken(token);
+      localStorage.setItem("margsutra_admin_session", JSON.stringify(session));
     } catch { }
     setLoggedIn(true);
   };
@@ -7212,6 +7239,7 @@ export default function AdminPanel() {
   const handleLogout = () => {
     try {
       localStorage.removeItem("margsutra_admin_session"); localStorage.removeItem("coordage_admin_session");
+      setAdminToken(null);
     } catch { }
     setActiveAdmin(null);
     setLoggedIn(false);
@@ -7263,7 +7291,7 @@ export default function AdminPanel() {
     bluetooth: <PageWearablesRadar users={displayUsers} />,
     "weather-admin": <PageMountainWeather />,
     "weather-maps": <PageMountainWeather />,
-    "feature-access": <PageWearablesRadar users={displayUsers} />,
+    "feature-access": <PageFeatureAccess users={displayUsers} />,
   };
 
   return (
@@ -7357,14 +7385,14 @@ export default function AdminPanel() {
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>
-                  Rajmachi Fort Monsoon Expedition — Batch 12
+                  {activeAdmin?.organization || "Margsutra Expedition Command"}
                 </span>
-                <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: "rgba(34, 197, 94, 0.15)", color: "#86efac", fontWeight: 600 }}>
-                  IN-FIELD ACTIVE
+                <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: "rgba(245, 158, 11, 0.15)", color: "#fcd34d", fontWeight: 600 }}>
+                  ◐ DEMO CONTEXT
                 </span>
               </div>
               <div style={{ fontSize: 11, color: C.muted }}>
-                Base Camp: Udhewadi Village (829m ASL) · VHF: 145.500 MHz · Geofence: 2.5 km
+                Rajmachi Fort Monsoon Expedition — Batch 12 · Base Camp: Udhewadi Village (829m ASL) · VHF: 145.500 MHz
               </div>
             </div>
           </div>
