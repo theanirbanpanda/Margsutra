@@ -1909,81 +1909,20 @@ const PageAdminAuth = ({ onLogin }) => {
               style={{
                 width: "100%",
                 height: 46,
-                borderRadius: 12,
-                border: "none",
                 background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
+                border: "1px solid rgba(255, 255, 255, 0.15)",
+                borderRadius: 12,
                 color: "#ffffff",
-                fontSize: 14,
+                fontSize: 14.5,
                 fontWeight: 600,
                 cursor: loginLoading ? "not-allowed" : "pointer",
-                boxShadow: "0 8px 24px rgba(37, 99, 235, 0.45)",
-                transition: "all 0.2s ease",
-                opacity: loginLoading ? 0.7 : 1,
+                boxShadow: "0 4px 20px rgba(37, 99, 235, 0.4)",
+                opacity: loginLoading ? 0.75 : 1,
+                transition: "transform 0.15s ease, box-shadow 0.15s ease",
               }}
             >
-              {loginLoading ? "Authorizing..." : "Sign in to Margsutra"}
+              {loginLoading ? "Authenticating…" : "Log In"}
             </button>
-
-            {/* Demo Admin One-Click Helper */}
-            <div
-              style={{
-                marginTop: 14,
-                padding: "8px 12px",
-                background: "rgba(59, 130, 246, 0.08)",
-                border: "1px solid rgba(59, 130, 246, 0.22)",
-                borderRadius: 10,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                fontSize: 11.5,
-              }}
-            >
-              <div style={{ color: "rgba(180, 210, 245, 0.85)" }}>
-                <span style={{ color: "#60a5fa", fontWeight: 700 }}>Demo Admin:</span> admin@margsutra.app / admin123
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setLoginEmail("admin@margsutra.app");
-                  setLoginPass("admin123");
-                  setLoginErr("");
-                }}
-                style={{
-                  background: "rgba(59, 130, 246, 0.2)",
-                  border: "1px solid rgba(59, 130, 246, 0.4)",
-                  borderRadius: 6,
-                  color: "#93c5fd",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  padding: "3px 8px",
-                  cursor: "pointer",
-                }}
-              >
-                Auto-Fill ⚡
-              </button>
-            </div>
-
-            <div style={{ textAlign: "center", marginTop: 18, fontSize: 12, color: "rgba(180, 210, 245, 0.7)" }}>
-              Need administrator access?{" "}
-              <button
-                type="button"
-                onClick={() => {
-                  setTab("register");
-                  setLoginErr("");
-                }}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "#60a5fa",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  padding: 0,
-                  textDecoration: "underline",
-                }}
-              >
-                Request Admin Access →
-              </button>
-            </div>
           </form>
         )}
 

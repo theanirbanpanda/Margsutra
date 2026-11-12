@@ -22,38 +22,51 @@ const db = getFirestore(app);
 const rtdb = getDatabase(app);
 const auth = getAuth(app);
 
-const ADMIN_EMAIL = "admin@margsutra.app";
-const ADMIN_PASSWORD = "Margsutra@123";
-const USER_EMAIL = "guide@margsutra.app";
-const USER_PASSWORD = "Margsutra@123";
+const bcrypt = require("bcryptjs");
 
-// Creates the auth user if it doesn't exist yet, or reuses it if it does
-// (safe to re-run this script without getting "email already exists" errors).
+const ADMIN_EMAIL = "admin@margsutra.app";
+const ADMIN_PASSWORD = "admin123";
+const USER_EMAIL = "guide@margsutra.app";
+const USER_PASSWORD = "user123";
+
+// Creates the auth user if it doesn't exist yet, or updates password if it does
 async function getOrCreateAuthUser(email, password, displayName) {
   try {
-    return await auth.getUserByEmail(email);
+    const u = await auth.getUserByEmail(email);
+    await auth.updateUser(u.uid, { password, displayName });
+    return u;
   } catch {
     return await auth.createUser({ email, password, displayName });
   }
 }
 
 async function seed() {
-  const adminRecord = await getOrCreateAuthUser(ADMIN_EMAIL, ADMIN_PASSWORD, "Demo Admin");
+  const adminHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
+  const adminRecord = await getOrCreateAuthUser(ADMIN_EMAIL, ADMIN_PASSWORD, "Super Admin");
   const adminUid = adminRecord.uid;
 
-  await db.collection("users").doc(adminUid).set({
+  const adminProfile = {
     uid: adminUid,
+    id: adminUid,
     email: ADMIN_EMAIL,
-    displayName: "Demo Admin",
-    phone: "+91 90000 00000",
+    displayName: "Super Admin",
+    name: "Super Admin",
+    phone: "+91 98765 00000",
     role: "admin",
+    status: "approved",
+    approved: true,
+    passwordHash: adminHash,
     bloodGroup: "O+",
     emergencyContacts: [],
     registeredAt: Timestamp.now(),
     lastSeen: Timestamp.now(),
-  });
+  };
+
+  await db.collection("users").doc(adminUid).set(adminProfile, { merge: true });
+  await db.collection("users").doc("demo-admin-001").set(adminProfile, { merge: true });
 
   await rtdb.ref(`admins/${adminUid}`).set(true);
+  await rtdb.ref("admins/demo-admin-001").set(true);
 
   const userRecord = await getOrCreateAuthUser(USER_EMAIL, USER_PASSWORD, "Anirban Panda");
   const userUid = userRecord.uid;

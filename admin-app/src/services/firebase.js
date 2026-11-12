@@ -72,9 +72,6 @@ export const adminLogin = async (email, password) => {
         token: data.token,
       };
     }
-    if (!res.ok && data?.error && !data.error.includes("Unable to sign in")) {
-      return { success: false, error: data.error };
-    }
   } catch (backendErr) {
     console.warn("Backend auth failed, falling back to Firebase Auth client:", backendErr);
   }
