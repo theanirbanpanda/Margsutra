@@ -11,6 +11,8 @@ import {
   subscribeToUserActiveTrip,
   joinTripInFirestore,
   leaveTripInFirestore,
+  triggerSOSEvent,
+  cancelSOSEvent,
 } from "./services/firebase";
 
 
@@ -1925,11 +1927,12 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
             <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>Expedition Details</div>
             {[
               ["🏔️ Trail Peak", joinedTrip.name],
-              ["📍 Location", joinedTrip.location],
-              ["🧭 Leader", joinedTrip.leader || "Field Guide"],
+              ["🚌 Assembly", joinedTrip.pickupLocation || "Lonavala Station"],
+              ["🏕️ Base Camp", joinedTrip.baseLocation || "Udhewadi Camp"],
+              ["🧭 Leader", joinedTrip.leader || "Field Guide Ajay Saini"],
               ["👥 Roster", `${joinedTrip.rosterCount || 0} Trekkers`],
-              ["🚑 SAR Unit", joinedTrip.rescueUnit || "Team Alpha"],
-              ["📻 Radio VHF", joinedTrip.emergencyFrequency || "145.500 MHz"],
+              ["🚑 SAR Unit", joinedTrip.rescueUnit || "Team Alpha (SAR)"],
+              ["📻 Walkie-Talkie (VHF)", joinedTrip.vhfChannel || joinedTrip.emergencyFrequency || "145.500 MHz (VHF Ch 1)"],
             ].map(([k,v])=>(
               <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:12,
                 padding:"6px 0",borderBottom:`1px solid ${C.border}`}}>
@@ -2226,11 +2229,20 @@ const FALLBACK_TRIPS = [
     name: "Rajmachi Fort Monsoon Expedition — Batch 12",
     location: "Rajmachi, Lonavala, Maharashtra",
     leader: "Field Guide Ajay Saini",
-    date: "May 3–4, 2026",
-    status: "active",
-    rosterCount: 18,
+    date: "May 3, 2026 · 06:30 AM – May 4, 2026 · 05:00 PM",
+    startDate: "May 3, 2026",
+    startTime: "06:30 AM",
+    endDate: "May 4, 2026",
+    endTime: "05:00 PM",
+    duration: "2 Days / 1 Night",
+    pickupLocation: "Lonavala Railway Station (Platform 1 Exit, Ticket Counter)",
+    baseLocation: "Udhewadi Base Village Camp (829m ASL)",
+    vhfChannel: "145.500 MHz (VHF Ch 1)",
+    status: "in-field",
+    isManaged: true,
+    rosterCount: 5,
     maxRoster: 25,
-    elevation: "829m",
+    elevation: "829m ASL",
     lat: 18.8286,
     lon: 73.3986,
     geofence: {
@@ -2239,7 +2251,7 @@ const FALLBACK_TRIPS = [
       radius: 2500,
       zoneName: "Rajmachi Safe Trek Corridor"
     },
-    difficulty: "Moderate",
+    difficulty: "Moderate (14 km Trail Circuit)",
     rescueUnit: "Team Alpha (Lonavala SAR)"
   },
   {
@@ -2247,12 +2259,21 @@ const FALLBACK_TRIPS = [
     code: "HAR26",
     name: "Harishchandragad Peak & Konkan Kada Trek",
     location: "Harishchandragad, Ahmednagar, Maharashtra",
-    leader: "Trek Leader Sneha Kulkarni",
-    date: "May 10–11, 2026",
-    status: "active",
-    rosterCount: 14,
+    leader: "Field Guide Ajay Saini",
+    date: "May 10, 2026 · 05:30 AM – May 11, 2026 · 06:00 PM",
+    startDate: "May 10, 2026",
+    startTime: "05:30 AM",
+    endDate: "May 11, 2026",
+    endTime: "06:00 PM",
+    duration: "2 Days / 1 Night",
+    pickupLocation: "Kasara Railway Station (Main Concourse Exit)",
+    baseLocation: "Khireshwar Base Village Camp (1,424m ASL)",
+    vhfChannel: "146.520 MHz (VHF Ch 2)",
+    status: "upcoming",
+    isManaged: false,
+    rosterCount: 0,
     maxRoster: 20,
-    elevation: "1,424m",
+    elevation: "1,424m ASL",
     lat: 19.3853,
     lon: 73.7786,
     geofence: {
@@ -2261,7 +2282,7 @@ const FALLBACK_TRIPS = [
       radius: 3000,
       zoneName: "Harishchandragad Plateau Safety Perimeter"
     },
-    difficulty: "Challenging",
+    difficulty: "Challenging (Rock Patches & Cliff Edge)",
     rescueUnit: "Team Bravo (Malshej Ghat Rescue)"
   }
 ];
@@ -2360,12 +2381,13 @@ const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) 
                   ? "Your request has been submitted to expedition organizers. Awaiting clearance before live GPS and telemetry activate."
                   : "Officially registered. Telemetry, geofence perimeter, and emergency SOS dispatch are active."}
               </div>
-              <div style={{ fontSize: 12, color: C.muted, marginTop: 6, display: "flex", gap: 16, flexWrap: "wrap" }}>
-                <span>📍 {joinedTrip.location}</span>
-                <span>📅 {joinedTrip.date}</span>
-                <span>🏔️ Elevation: {joinedTrip.elevation || "829m"}</span>
-                <span>🧭 Leader: {joinedTrip.leader || "Field Guide"}</span>
-                <span>🔒 Admin Geofence: {joinedTrip.geofence?.radius ? (joinedTrip.geofence.radius / 1000).toFixed(1) + " km" : "2.5 km"}</span>
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 8, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 6 }}>
+                <span>📅 <strong>Schedule:</strong> {joinedTrip.startDate || joinedTrip.date} {joinedTrip.startTime ? `at ${joinedTrip.startTime}` : ""} → {joinedTrip.endDate || ""} {joinedTrip.endTime ? `at ${joinedTrip.endTime}` : ""} {joinedTrip.duration ? `(${joinedTrip.duration})` : ""}</span>
+                <span>🚌 <strong>Pickup Point:</strong> {joinedTrip.pickupLocation || "Lonavala Station (Exit Gate 1)"}</span>
+                <span>🏕️ <strong>Base Village:</strong> {joinedTrip.baseLocation || "Udhewadi Base Camp (829m ASL)"}</span>
+                <span>📻 <strong>Walkie-Talkie Channel:</strong> <span style={{ color: "#fbbf24" }}>{joinedTrip.vhfChannel || "145.500 MHz (VHF Ch 1)"}</span></span>
+                <span>🏔️ <strong>Elevation:</strong> {joinedTrip.elevation || "829m ASL"} · 🧭 <strong>Leader:</strong> {joinedTrip.leader || "Field Guide Ajay Saini"}</span>
+                <span>🔒 <strong>Admin Geofence:</strong> {joinedTrip.geofence?.radius ? (joinedTrip.geofence.radius / 1000).toFixed(1) + " km" : "2.5 km"}</span>
               </div>
             </div>
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -2637,18 +2659,24 @@ const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) 
                     </div>
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8, marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8, marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
                     <div style={{ fontSize: 11.5, color: C.muted }}>
-                      <span style={{ color: C.muted2 }}>📍 Location:</span> {t.location}
+                      <span style={{ color: C.muted2 }}>📅 Schedule:</span> {t.startDate || t.date} {t.startTime ? `at ${t.startTime}` : ""} → {t.endDate || ""} {t.endTime ? `at ${t.endTime}` : ""} {t.duration ? `(${t.duration})` : ""}
                     </div>
                     <div style={{ fontSize: 11.5, color: C.muted }}>
-                      <span style={{ color: C.muted2 }}>📅 Date:</span> {t.date}
+                      <span style={{ color: C.muted2 }}>🚌 Pickup / Assembly:</span> {t.pickupLocation || "Lonavala Railway Station"}
                     </div>
                     <div style={{ fontSize: 11.5, color: C.muted }}>
-                      <span style={{ color: C.muted2 }}>🏔️ Elevation:</span> {t.elevation || "—"}
+                      <span style={{ color: C.muted2 }}>🏕️ Base Village Camp:</span> {t.baseLocation || "Udhewadi Base Camp (829m ASL)"}
                     </div>
                     <div style={{ fontSize: 11.5, color: C.muted }}>
-                      <span style={{ color: C.muted2 }}>🧭 Leader:</span> {t.leader || "Field Guide"}
+                      <span style={{ color: C.muted2 }}>📻 Walkie-Talkie Channel:</span> <span style={{ color: "#fbbf24" }}>{t.vhfChannel || "145.500 MHz (VHF Ch 1)"}</span>
+                    </div>
+                    <div style={{ fontSize: 11.5, color: C.muted }}>
+                      <span style={{ color: C.muted2 }}>🏔️ Region & Peak:</span> {t.location} ({t.elevation || "829m"})
+                    </div>
+                    <div style={{ fontSize: 11.5, color: C.muted }}>
+                      <span style={{ color: C.muted2 }}>🧭 Leader:</span> {t.leader || "Field Guide Ajay Saini"}
                     </div>
                     <div style={{ fontSize: 11.5, color: C.muted }}>
                       <span style={{ color: C.muted2 }}>👥 Roster:</span> {t.rosterCount || 0} / {t.maxRoster || 25} Trekkers
@@ -4309,8 +4337,36 @@ export default function UserDashboard() {
     return localStorage.getItem("coordage_joined_trip") ? "dashboard" : "join-trip";
   });
 
-  const [activeSOS, setActiveSOS] = useState(false);
+  const [activeSOS, setActiveSOS] = useState(() => user?.status === "sos");
+  const [activeSosId, setActiveSosId] = useState(() => user?.activeSosId || null);
   const [joinError, setJoinError] = useState("");
+
+  const handleSOSToggle = async (activate) => {
+    if (activate) {
+      setActiveSOS(true);
+      setPage("sos-nav");
+      try {
+        const res = await triggerSOSEvent(user, joinedTrip, {
+          lat: user?.lat || 18.8286,
+          lon: user?.lon || 73.3986,
+          altitude: user?.altitude || 829,
+        });
+        if (res?.eventId) {
+          setActiveSosId(res.eventId);
+        }
+      } catch (e) {
+        console.warn("Failed to trigger SOS in database:", e);
+      }
+    } else {
+      setActiveSOS(false);
+      try {
+        await cancelSOSEvent(user?.id, activeSosId, "user_cancelled");
+      } catch (e) {
+        console.warn("Failed to cancel SOS in database:", e);
+      }
+      setActiveSosId(null);
+    }
+  };
 
   const handleJoinTrip = async (tripOrCode) => {
     setJoinError("");
@@ -4471,10 +4527,10 @@ export default function UserDashboard() {
   const navigate = (p) => setPage(p);
 
   const PAGES = {
-    "dashboard": <PageDashboard user={user} onNavigate={navigate} activeSOS={activeSOS} joinedTrip={joinedTrip} onSOS={v=>{ setActiveSOS(v); if(v) setPage("sos-nav"); }}/>,
-    "sos-nav":   <PageSOSNav user={user} activeSOS={activeSOS} onSOS={v=>setActiveSOS(v)} onNavigate={navigate}/>,
+    "dashboard": <PageDashboard user={user} onNavigate={navigate} activeSOS={activeSOS} joinedTrip={joinedTrip} onSOS={handleSOSToggle}/>,
+    "sos-nav":   <PageSOSNav user={user} activeSOS={activeSOS} onSOS={handleSOSToggle} onNavigate={navigate}/>,
     "geofencing":<PageGeofencing user={user} joinedTrip={joinedTrip} onNavigate={navigate}/>,
-    "live-tracking": <PageLiveTracking user={user} joinedTrip={joinedTrip} onNavigate={navigate} activeSOS={activeSOS} onSOS={v=>{ setActiveSOS(v); if(v) setPage("sos-nav"); }}/>,
+    "live-tracking": <PageLiveTracking user={user} joinedTrip={joinedTrip} onNavigate={navigate} activeSOS={activeSOS} onSOS={handleSOSToggle}/>,
     "weather":   <PageWeatherMaps joinedTrip={joinedTrip} onNavigate={navigate}/>,
     "fitness-devices": (
       <div>

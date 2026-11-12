@@ -254,16 +254,31 @@ async function findTripByCode(code) {
 async function createTrip(tripData = {}) {
   const code = tripData.code ? String(tripData.code).trim().toUpperCase() : genTripCode();
   const now = new Date();
+  
+  const startDate = tripData.startDate || (tripData.date ? tripData.date.split("–")[0].trim() : "May 3, 2026");
+  const startTime = tripData.startTime || "06:30 AM";
+  const endDate = tripData.endDate || (tripData.date && tripData.date.includes("–") ? tripData.date.split("–")[1].trim() : "May 4, 2026");
+  const endTime = tripData.endTime || "05:00 PM";
+  const formattedDate = tripData.date || `${startDate} · ${startTime} – ${endDate} · ${endTime}`;
+
   const newTrip = {
     name: tripData.name || "Sahyadri Mountain Expedition",
-    date: tripData.date || "Date TBD",
+    date: formattedDate,
+    startDate,
+    startTime,
+    endDate,
+    endTime,
+    duration: tripData.duration || "2 Days / 1 Night",
+    pickupLocation: tripData.pickupLocation || "Lonavala Railway Station (Platform 1 Exit, Ticket Counter)",
+    baseLocation: tripData.baseLocation || "Udhewadi Base Village Camp (829m ASL)",
     location: tripData.location || "Rajmachi Fort, Maharashtra",
     elevation: tripData.elevation || "829m ASL",
-    difficulty: tripData.difficulty || "Moderate",
+    difficulty: tripData.difficulty || "Moderate (14 km Trail Circuit)",
     leader: tripData.leader || "Field Guide Ajay Saini",
-    vhfChannel: tripData.vhfChannel || "145.500 MHz",
+    vhfChannel: tripData.vhfChannel || "145.500 MHz (VHF Ch 1)",
     code,
-    status: tripData.status || "active",
+    isManaged: !!tripData.isManaged,
+    status: tripData.status || (tripData.isManaged ? "in-field" : "upcoming"),
     rosterCount: 0,
     maxRoster: Number(tripData.maxRoster) || 25,
     lat: Number(tripData.lat) || 18.8286,
@@ -280,6 +295,70 @@ async function createTrip(tripData = {}) {
 
   const docRef = await db.collection("trips").add(newTrip);
   return { id: docRef.id, ...newTrip };
+}
+
+async function deleteTrip(tripId) {
+  const tripRef = db.collection("trips").doc(tripId);
+  const tripDoc = await tripRef.get();
+  if (!tripDoc.exists) return { error: "Expedition not found." };
+
+  const tripData = tripDoc.data();
+
+  // 1. Delete all documents in the roster subcollection
+  const rosterSnap = await tripRef.collection("roster").get();
+  const deleteBatch = db.batch();
+  for (const doc of rosterSnap.docs) {
+    deleteBatch.delete(doc.ref);
+  }
+  await deleteBatch.commit();
+
+  // 2. Clear active trip from all users who had this trip as their active trip
+  const usersWithTripSnap = await db.collection("users").where("activeTripId", "==", tripId).get();
+  for (const uDoc of usersWithTripSnap.docs) {
+    await uDoc.ref.set({
+      activeTripId: null,
+      activeTripCode: null,
+      activeTripName: null,
+      tripStatus: null,
+      tripRequestedAt: null,
+      tripApprovedAt: null,
+      updatedAt: new Date(),
+    }, { merge: true });
+  }
+
+  // 3. Delete the trip document itself
+  await tripRef.delete();
+
+  return { success: true, tripId, deletedName: tripData.name };
+}
+
+async function setActiveManagedTrip(tripId) {
+  const tripRef = db.collection("trips").doc(tripId);
+  const tripDoc = await tripRef.get();
+  if (!tripDoc.exists) return { error: "Expedition not found." };
+
+  // Set all trips: only tripId is isManaged: true and status: "in-field"
+  const allTripsSnap = await db.collection("trips").get();
+  for (const doc of allTripsSnap.docs) {
+    if (doc.id === tripId) {
+      await doc.ref.set({
+        isManaged: true,
+        status: "in-field",
+        managedAt: new Date(),
+        updatedAt: new Date(),
+      }, { merge: true });
+    } else {
+      const prevStatus = doc.data().status;
+      await doc.ref.set({
+        isManaged: false,
+        status: prevStatus === "in-field" ? "upcoming" : (prevStatus || "upcoming"),
+        updatedAt: new Date(),
+      }, { merge: true });
+    }
+  }
+
+  const updatedDoc = await tripRef.get();
+  return { success: true, trip: { id: updatedDoc.id, ...updatedDoc.data() } };
 }
 
 async function updateTrip(tripId, updates = {}) {
@@ -431,6 +510,20 @@ async function approveTripUser(tripId, userId, approvedBy = "admin@coordage.app"
   const rDoc = await rosterRef.get();
   if (!rDoc.exists) return { error: "User is not in the expedition roster." };
 
+  // Enforce strict single-trip policy: remove user from any other trip's roster
+  const allTripsSnap = await db.collection("trips").get();
+  for (const tDoc of allTripsSnap.docs) {
+    if (tDoc.id !== tripId) {
+      const otherRosterRef = tDoc.ref.collection("roster").doc(userId);
+      const otherDoc = await otherRosterRef.get();
+      if (otherDoc.exists) {
+        await otherRosterRef.delete();
+        const otherApprovedSnap = await tDoc.ref.collection("roster").where("status", "==", "approved").get();
+        await tDoc.ref.update({ rosterCount: otherApprovedSnap.size });
+      }
+    }
+  }
+
   const now = new Date();
   await rosterRef.update({
     status: "approved",
@@ -506,6 +599,122 @@ async function getUserActiveTrip(userId) {
   };
 }
 
+async function createSOSEvent(sosData = {}) {
+  const now = new Date();
+  const eventId = sosData.id || `sos_${sosData.userId || "anon"}_${Date.now()}`;
+  const docRef = db.collection("sos_events").doc(eventId);
+
+  const payload = {
+    id: eventId,
+    userId: sosData.userId || "",
+    name: sosData.name || "Trekker",
+    email: sosData.email || "",
+    phone: sosData.phone || "",
+    blood: sosData.blood || "B+",
+    medical: sosData.medical || "None",
+    ec1Name: sosData.ec1Name || "",
+    ec1Rel: sosData.ec1Rel || "Family",
+    ec1Ph: sosData.ec1Ph || "",
+    lat: Number(sosData.lat) || 18.8286,
+    lon: Number(sosData.lon) || 73.3986,
+    altitude: Number(sosData.altitude) || 829,
+    tripId: sosData.tripId || "trip-001",
+    tripName: sosData.tripName || "Rajmachi Fort Expedition",
+    tripCode: sosData.tripCode || "RAJM26",
+    status: "active",
+    type: sosData.type || "Manual SOS Beacon",
+    priority: sosData.priority || "critical",
+    message: sosData.message || "Emergency SOS broadcast activated",
+    timestamp: now,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await docRef.set(payload, { merge: true });
+
+  if (sosData.userId) {
+    const userRef = db.collection("users").doc(sosData.userId);
+    await userRef.set({
+      status: "sos",
+      activeSosId: eventId,
+      lastSosAt: now,
+      updatedAt: now,
+    }, { merge: true });
+  }
+
+  return { success: true, event: payload };
+}
+
+async function resolveSOSEvent(eventId, notes = "Resolved by SAR Commander", resolvedBy = "admin@coordage.app") {
+  const docRef = db.collection("sos_events").doc(eventId);
+  const docSnap = await docRef.get();
+  if (!docSnap.exists) return { error: "SOS event not found" };
+
+  const eventData = docSnap.data();
+  const now = new Date();
+
+  await docRef.set({
+    status: "resolved",
+    resolutionNotes: notes || "Resolved by SAR Commander",
+    resolvedBy: resolvedBy || "admin@coordage.app",
+    resolvedAt: now,
+    updatedAt: now,
+  }, { merge: true });
+
+  if (eventData.userId) {
+    const userRef = db.collection("users").doc(eventData.userId);
+    await userRef.set({
+      status: "active",
+      activeSosId: null,
+      updatedAt: now,
+    }, { merge: true });
+  }
+
+  return { success: true, eventId, status: "resolved" };
+}
+
+async function cancelUserSOS(userId, reason = "user_cancelled") {
+  if (!userId) return { error: "User ID required" };
+  const now = new Date();
+
+  const activeSnap = await db.collection("sos_events")
+    .where("userId", "==", userId)
+    .where("status", "==", "active")
+    .get();
+
+  for (const doc of activeSnap.docs) {
+    await doc.ref.set({
+      status: "resolved",
+      resolution: reason || "user_cancelled",
+      resolutionNotes: "Trekker cancelled SOS beacon (Self-Resolved)",
+      resolvedAt: now,
+      updatedAt: now,
+    }, { merge: true });
+  }
+
+  const userRef = db.collection("users").doc(userId);
+  await userRef.set({
+    status: "active",
+    activeSosId: null,
+    updatedAt: now,
+  }, { merge: true });
+
+  return { success: true, userId, resolvedCount: activeSnap.size };
+}
+
+async function listSOSEvents(limitCount = 50) {
+  try {
+    const snapshot = await db.collection("sos_events")
+      .orderBy("createdAt", "desc")
+      .limit(limitCount)
+      .get();
+    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch {
+    const snapshot = await db.collection("sos_events").get();
+    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+  }
+}
+
 module.exports = {
   db,
   toSafeProfile,
@@ -519,6 +728,8 @@ module.exports = {
   listTrips,
   findTripByCode,
   createTrip,
+  deleteTrip,
+  setActiveManagedTrip,
   updateTrip,
   joinTrip,
   leaveTrip,
@@ -527,6 +738,10 @@ module.exports = {
   approveTripUser,
   removeTripUser,
   getUserActiveTrip,
+  createSOSEvent,
+  resolveSOSEvent,
+  cancelUserSOS,
+  listSOSEvents,
   listPendingAdmins,
   approveAdminUser,
   rejectAdminUser,

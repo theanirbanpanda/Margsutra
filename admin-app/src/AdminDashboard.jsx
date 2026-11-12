@@ -15,10 +15,15 @@ import {
   subscribeToSafetyProtocols,
   updateSafetyProtocol,
   createTrip as createTripRemote,
+  deleteTrip as deleteTripRemote,
+  setActiveManagedTrip as setActiveManagedTripRemote,
   updateTrip as updateTripRemote,
   updateTripGeofence as updateTripGeofenceRemote,
   subscribeToTrips,
   subscribeToUsers,
+  subscribeToSOSEvents,
+  resolveSOSEvent,
+  triggerDemoSOSEvent,
 } from "./services/firebase";
 import {
   calculateDistanceMeters,
@@ -49,15 +54,23 @@ const TRIPS = [
   {
     id: "trip-001",
     name: "Rajmachi Fort Monsoon Trek — Batch 12",
-    date: "May 3–4, 2026",
+    date: "May 3, 2026 · 06:30 AM – May 4, 2026 · 05:00 PM",
+    startDate: "May 3, 2026",
+    startTime: "06:30 AM",
+    endDate: "May 4, 2026",
+    endTime: "05:00 PM",
+    duration: "2 Days / 1 Night",
+    pickupLocation: "Lonavala Railway Station (Platform 1 Exit, Ticket Counter)",
+    baseLocation: "Udhewadi Base Village Camp (829m ASL)",
     location: "Rajmachi Fort, Maharashtra",
     elevation: "829m ASL",
-    difficulty: "Moderate",
+    difficulty: "Moderate (14 km Trail Circuit)",
     leader: "Field Guide Ajay Saini",
-    vhfChannel: "145.500 MHz",
-    rosterCount: 6,
+    vhfChannel: "145.500 MHz (VHF Ch 1)",
+    rosterCount: 5,
     maxRoster: 25,
-    status: "active",
+    isManaged: true,
+    status: "in-field",
     code: "RAJM26",
     lat: 18.8286,
     lon: 73.3986,
@@ -66,6 +79,36 @@ const TRIPS = [
       lon: 73.3986,
       radius: 2500,
       zoneName: "Rajmachi Safe Trek Corridor",
+    },
+  },
+  {
+    id: "trip-002",
+    name: "Harishchandragad Peak & Konkan Kada Trek",
+    date: "May 10, 2026 · 05:30 AM – May 11, 2026 · 06:00 PM",
+    startDate: "May 10, 2026",
+    startTime: "05:30 AM",
+    endDate: "May 11, 2026",
+    endTime: "06:00 PM",
+    duration: "2 Days / 1 Night",
+    pickupLocation: "Kasara Railway Station (Main Concourse Exit)",
+    baseLocation: "Khireshwar Base Village Camp (1,424m ASL)",
+    location: "Harishchandragad, Ahmednagar, Maharashtra",
+    elevation: "1,424m ASL",
+    difficulty: "Challenging (Rock Patches & Cliff Edge)",
+    leader: "Field Guide Ajay Saini",
+    vhfChannel: "146.520 MHz (VHF Ch 2)",
+    rosterCount: 0,
+    maxRoster: 20,
+    isManaged: false,
+    status: "upcoming",
+    code: "HAR26",
+    lat: 19.3853,
+    lon: 73.7786,
+    geofence: {
+      lat: 19.3853,
+      lon: 73.7786,
+      radius: 3000,
+      zoneName: "Harishchandragad Plateau Safety Perimeter",
     },
   },
 ];
@@ -97,14 +140,20 @@ const BT_DEVICES = [
 
 const SOS_EVENTS = [
   {
-    id: "SOS001",
+    id: "SOS-HIST-001",
     user: "Anirban Panda",
     userId: "9OovuZiHQnQKrLTuPF1J",
     city: "Rajmachi Fort Trail (Stream Crossing)",
+    tripName: "Rajmachi Fort Monsoon Trek",
+    tripCode: "RAJM26",
     lat: 18.8286,
     lon: 73.3986,
-    time: "14:32",
-    status: "active",
+    time: "Yesterday 14:32",
+    status: "resolved",
+    resolution: "user_cancelled",
+    resolutionNotes: "Trekker cancelled SOS beacon (Self-Resolved)",
+    resolvedBy: "Trekker (Self-Resolved)",
+    resolvedAt: "Yesterday 14:38",
     type: "Manual SOS Beacon",
     team: "Team Alpha (Lonavala Mountain SAR)",
     priority: "critical",
@@ -112,7 +161,7 @@ const SOS_EVENTS = [
     medical: "None reported",
     phone: "+91 86375 40813",
     ec: "Deepak Panda (Brother) · +91 91531 91902",
-    vitals: { hr: 114, spo2: 96, alt: 829, battery: 88 },
+    vitals: { hr: 78, spo2: 98, alt: 829, battery: 88 },
   },
 ];
 
@@ -122,16 +171,16 @@ const SOS_TEAMS = [
     name: "Team Alpha (Lonavala Mountain SAR)",
     lead: "Inspector R. Gaikwad (Shivdurga Rescue)",
     members: 6,
-    status: "deployed",
+    status: "standby",
     lat: 18.7612,
     lon: 73.3714,
     heading: 32,
-    speed: "35 km/h",
+    speed: "0 km/h",
     eta: "14 min",
     vehicle: "4x4 Tactical QRV & Alpine Stretcher Unit",
     vhf: "145.500 MHz",
     base: "Khandala Mountain Safety Post",
-    assignedTo: "SOS001",
+    assignedTo: null,
   },
   {
     id: "T002",
@@ -415,177 +464,280 @@ const LiveMap = ({ points=[], teams=[], height=380, showPulse=true, routeFrom=nu
   );
 };
 
-const PageSOSNavigation = ({ users=USERS, sosEvents=[] }) => {
-  const liveSOS = useMemo(() => {
-    const eventIncidents = sosEvents
-      .filter((event) => event?.status !== "resolved")
-      .map((event) => {
-        const profile = users.find((candidate) => candidate.id === event.userId || candidate.name === event.name);
-        const fallback = SOS_EVENTS.find((incident) => incident.userId === event.userId) || SOS_EVENTS.find((incident) => incident.user === event.name) || SOS_EVENTS[0];
+const PageSOSNavigation = ({
+  users = USERS,
+  sosEvents = [],
+  onResolveSOS,
+  onTriggerDemo,
+}) => {
+  // 1. Separate Active Distress Incidents from Resolved Incidents
+  const activeIncidents = useMemo(() => {
+    const list = [];
+    const seenUserIds = new Set();
 
-        return {
-          ...fallback,
-          id: event.id || fallback.id,
-          userId: event.userId || profile?.id || fallback.userId,
-          user: event.name || profile?.name || fallback.user,
-          city: profile?.city || fallback.city,
-          lat: typeof event.lat === "number" ? event.lat : profile?.lat ?? fallback.lat,
-          lon: typeof event.lon === "number" ? event.lon : profile?.lon ?? fallback.lon,
-          blood: event.blood || profile?.blood || fallback.blood,
-          medical: event.medical || profile?.medical || fallback.medical,
+    // From sosEvents where status === 'active'
+    sosEvents.forEach((ev) => {
+      if (!ev) return;
+      if (ev.status === "active") {
+        const u = users.find((item) => item.id === ev.userId || item.name === ev.userName || item.name === ev.name);
+        const userId = ev.userId || u?.id || ev.id;
+        seenUserIds.add(userId);
+
+        list.push({
+          id: ev.id || `sos-${userId}`,
+          eventId: ev.id,
+          userId: userId,
+          user: ev.userName || ev.name || u?.name || "Trekker in Distress",
+          city: ev.city || (u?.city ? `${u.city} (Trail)` : "Rajmachi Fort Trail (Stream Crossing)"),
+          tripName: ev.tripName || "Rajmachi Fort Expedition",
+          tripCode: ev.tripCode || "RAJM26",
+          lat: typeof ev.lat === "number" ? ev.lat : (u?.lat ?? 18.8286),
+          lon: typeof ev.lon === "number" ? ev.lon : (u?.lon ?? 73.3986),
+          altitude: ev.altitude || u?.altitude || 829,
+          blood: ev.blood || u?.blood || "B+",
+          medical: ev.medical || u?.medical || "None reported",
+          phone: ev.phone || u?.phone || "+91 86375 40813",
+          ec: ev.ec || u?.ec || "Deepak Panda (Brother) · +91 91531 91902",
+          time: ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : (ev.time || "Just now"),
           status: "active",
-          ec: profile?.ec || fallback.ec,
-          source: "live-sos-event",
-        };
-      });
-
-    const userIncidents = users
-      .filter((user) => user.status === "sos")
-      .map((user) => {
-        const profile = USERS.find((candidate) => candidate.id === user.id || candidate.name === user.name);
-        const fallback = SOS_EVENTS.find((incident) => incident.userId === user.id) || SOS_EVENTS.find((incident) => incident.user === user.name) || SOS_EVENTS[0];
-
-        return {
-          ...fallback,
-          id: fallback.id,
-          userId: user.id,
-          user: user.name || profile?.name || fallback.user,
-          city: user.city || profile?.city || fallback.city,
-          lat: typeof user.lat === "number" ? user.lat : fallback.lat,
-          lon: typeof user.lon === "number" ? user.lon : fallback.lon,
-          blood: user.blood || profile?.blood || fallback.blood,
-          medical: user.medical || profile?.medical || fallback.medical,
-          status: "active",
-          ec: profile?.ec || fallback.ec,
-          source: "live-user-status",
-        };
-      });
-
-    const merged = new Map();
-    [...eventIncidents, ...userIncidents].forEach((incident) => {
-      merged.set(incident.userId || incident.id, incident);
+          type: ev.type || "Manual SOS Beacon",
+          priority: ev.priority || "critical",
+          vitals: ev.vitals || { hr: 114, spo2: 96, alt: 829, battery: 88 },
+        });
+      }
     });
 
-    return Array.from(merged.values());
-  }, [users, sosEvents]);
+    // Also check live users with status === 'sos'
+    users.forEach((u) => {
+      if (u.status === "sos" && !seenUserIds.has(u.id)) {
+        seenUserIds.add(u.id);
+        list.push({
+          id: u.activeSosId || `sos-${u.id}`,
+          eventId: u.activeSosId,
+          userId: u.id,
+          user: u.name,
+          city: u.city ? `${u.city} (Trail)` : "Rajmachi Fort Trail (Sector 3)",
+          tripName: u.tripName || "Rajmachi Fort Expedition",
+          tripCode: u.tripCode || "RAJM26",
+          lat: typeof u.lat === "number" ? u.lat : 18.8286,
+          lon: typeof u.lon === "number" ? u.lon : 73.3986,
+          altitude: u.altitude || 829,
+          blood: u.blood || "B+",
+          medical: u.medical || "None reported",
+          phone: u.phone || "+91 86375 40813",
+          ec: u.ec || "Emergency Contact · +91 91531 91902",
+          time: u.lastSosAt ? new Date(u.lastSosAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Just now",
+          status: "active",
+          type: "Manual SOS Beacon",
+          priority: "critical",
+          vitals: { hr: 114, spo2: 96, alt: u.altitude || 829, battery: 88 },
+        });
+      }
+    });
 
-  const userById = useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
-  const liveUserRoster = useMemo(() => users.slice(0, 8), [users]);
-  const nearestSOS = useMemo(() => {
-    if (liveSOS.length === 0) return null;
-    const referenceTeam = SOS_TEAMS.find((team) => team.status === "deployed") || SOS_TEAMS[0];
-    return liveSOS.reduce((closest, current) => {
-      if (!closest) return current;
-      return distanceKm(referenceTeam, current) < distanceKm(referenceTeam, closest) ? current : closest;
-    }, null);
-  }, [liveSOS]);
+    return list;
+  }, [sosEvents, users]);
 
-  const [selectedSOS, setSelectedSOS] = useState(() => liveSOS[0] || SOS_EVENTS.find(e=>e.status==="active"));
+  // 2. Resolved & Stand-down Historical Incidents Archive
+  const resolvedIncidents = useMemo(() => {
+    const list = [];
+    sosEvents.forEach((ev) => {
+      if (!ev) return;
+      if (ev.status === "resolved" || ev.resolution) {
+        const u = users.find((item) => item.id === ev.userId || item.name === ev.userName || item.name === ev.name);
+        list.push({
+          id: ev.id,
+          userId: ev.userId || u?.id,
+          user: ev.userName || ev.name || u?.name || "Trekker",
+          tripName: ev.tripName || "Rajmachi Fort Expedition",
+          city: ev.city || "Rajmachi Fort Trail",
+          lat: ev.lat,
+          lon: ev.lon,
+          resolvedAt: ev.resolvedAt ? new Date(ev.resolvedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : (ev.updatedAt ? new Date(ev.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Resolved"),
+          resolution: ev.resolution === "user_cancelled" ? "Cancelled by Trekker (Self-Resolved)" : (ev.resolutionNotes || "SAR Stand Down Executed"),
+          resolvedBy: ev.resolvedBy || (ev.resolution === "user_cancelled" ? "Trekker (App Button)" : "SAR Command Admin"),
+          time: ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : (ev.time || "Logged"),
+          status: "resolved",
+          type: ev.type || "SOS Beacon",
+        });
+      }
+    });
+
+    if (list.length === 0) {
+      return SOS_EVENTS;
+    }
+    return list;
+  }, [sosEvents, users]);
+
+  // Selected active incident
+  const [selectedId, setSelectedId] = useState(null);
+  const selectedSOS = useMemo(() => {
+    if (activeIncidents.length === 0) return null;
+    if (selectedId) {
+      const found = activeIncidents.find((i) => i.id === selectedId || i.userId === selectedId);
+      if (found) return found;
+    }
+    return activeIncidents[0];
+  }, [activeIncidents, selectedId]);
+
+  // Team Assignment State
+  const [teamsState, setTeamsState] = useState(SOS_TEAMS);
   const [navMode, setNavMode] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [teamPos, setTeamPos] = useState(null);
   const [elapsed, setElapsed] = useState(0);
-  const [dispatched, setDispatched] = useState({});
   const [zoom, setZoom] = useState(1);
   const [voiceOn, setVoiceOn] = useState(true);
   const [calloutMsg, setCalloutMsg] = useState("");
+  const [resolvingModal, setResolvingModal] = useState(false);
+  const [resolutionNote, setResolutionNote] = useState("Victim safely assisted by Lead Guide Ajay Saini; safe and escorted back to base camp");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Sync teams when activeSOS changes
   useEffect(() => {
-    if (!liveSOS.length) return;
-    setSelectedSOS((current) => {
-      if (current) {
-        const matched = liveSOS.find((incident) => incident.userId === current.userId);
-        if (matched) return matched;
-      }
-      return nearestSOS || liveSOS[0];
-    });
-  }, [liveSOS, nearestSOS]);
+    if (!selectedSOS) {
+      setTeamsState((prev) =>
+        prev.map((t) => ({ ...t, status: "standby", speed: "0 km/h", assignedTo: null }))
+      );
+    } else {
+      setTeamsState((prev) =>
+        prev.map((t, idx) =>
+          idx === 0
+            ? { ...t, status: "deployed", speed: "35 km/h", assignedTo: selectedSOS.id }
+            : { ...t, status: "standby", speed: "0 km/h", assignedTo: null }
+        )
+      );
+    }
+  }, [selectedSOS]);
 
-  const activeSOS = liveSOS;
-
-  const assignedTeam = selectedSOS ? SOS_TEAMS.find(t=>t.assignedTo===selectedSOS.id) : null;
+  const assignedTeam = selectedSOS ? teamsState.find((t) => t.assignedTo === selectedSOS.id) || teamsState[0] : null;
   const steps = selectedSOS ? buildFallbackRoute(selectedSOS) : [];
-  const etaVal = assignedTeam ? parseInt(assignedTeam.eta)||0 : 8;
-  const remainingEta = Math.max(0, etaVal - Math.floor(elapsed/60));
-  const selectedUser = selectedSOS ? userById.get(selectedSOS.userId) : null;
-  const selectUserIncident = (user) => {
-    const incident = liveSOS.find((item) => item.userId === user.id || item.user === user.name);
-    if (incident) {
-      setSelectedSOS(incident);
-      setCalloutMsg(`${user.name} synced to realtime navigation.`);
-      setTimeout(() => setCalloutMsg(""), 2500);
+  const etaVal = assignedTeam ? parseInt(assignedTeam.eta) || 14 : 14;
+  const remainingEta = Math.max(0, etaVal - Math.floor(elapsed / 60));
+
+  // Animate team position toward SOS target
+  useEffect(() => {
+    if (!selectedSOS || !assignedTeam || assignedTeam.status !== "deployed") return;
+    setTeamPos({ lat: assignedTeam.lat, lon: assignedTeam.lon });
+    const t = setInterval(() => {
+      setTeamPos((prev) => {
+        if (!prev) return prev;
+        const dlat = (selectedSOS.lat - prev.lat) * 0.015;
+        const dlon = (selectedSOS.lon - prev.lon) * 0.015;
+        return { lat: prev.lat + dlat, lon: prev.lon + dlon };
+      });
+      setElapsed((e) => e + 4);
+    }, 1000);
+    return () => clearInterval(t);
+  }, [selectedSOS, assignedTeam]);
+
+  // Turn-by-turn auto-advance
+  useEffect(() => {
+    if (!navMode) return;
+    const t = setInterval(() => setCurrentStep((s) => Math.min(s + 1, steps.length - 1)), 8000);
+    return () => clearInterval(t);
+  }, [navMode, steps.length]);
+
+  const distToTarget = selectedSOS && teamPos ? (
+    Math.sqrt(Math.pow((selectedSOS.lat - teamPos.lat) * 111, 2) + Math.pow((selectedSOS.lon - teamPos.lon) * 111, 2)).toFixed(1)
+  ) : selectedSOS ? (
+    (calculateDistanceMeters(RAJMACHI_ADMIN.lat, RAJMACHI_ADMIN.lon, selectedSOS.lat, selectedSOS.lon) / 1000).toFixed(1)
+  ) : "—";
+
+  const speedKmh = assignedTeam && assignedTeam.status === "deployed" ? parseInt(assignedTeam.speed) || 35 : 0;
+  const compass = assignedTeam?.heading || 32;
+
+  const handleDispatch = (teamId, sosId) => {
+    setTeamsState((prev) =>
+      prev.map((t) => (t.id === teamId ? { ...t, status: "deployed", speed: "35 km/h", assignedTo: sosId } : t))
+    );
+    setCalloutMsg("🚑 Rescue Unit assigned and en route to coordinates.");
+    setTimeout(() => setCalloutMsg(""), 3500);
+  };
+
+  const handleStandDown = async () => {
+    if (!selectedSOS) return;
+    setIsSubmitting(true);
+    try {
+      if (onResolveSOS) {
+        await onResolveSOS(selectedSOS.eventId || selectedSOS.id, selectedSOS.userId, resolutionNote);
+      }
+      setResolvingModal(false);
+      setNavMode(false);
+      setCalloutMsg(`✅ SAR Stand-down logged for ${selectedSOS.user}. Beacon cleared, user reset to active.`);
+      setTimeout(() => setCalloutMsg(""), 5000);
+    } catch (err) {
+      console.error("Stand-down error:", err);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  // Animate team position toward SOS target
-  useEffect(()=>{
-    if(!selectedSOS||!assignedTeam) return;
-    setTeamPos({lat:assignedTeam.lat, lon:assignedTeam.lon});
-    const t = setInterval(()=>{
-      setTeamPos(prev=>{
-        if(!prev) return prev;
-        const dlat = (selectedSOS.lat - prev.lat)*0.015;
-        const dlon = (selectedSOS.lon - prev.lon)*0.015;
-        return {lat:prev.lat+dlat, lon:prev.lon+dlon};
-      });
-      setElapsed(e=>e+4);
-    }, 1000);
-    return ()=>clearInterval(t);
-  },[selectedSOS, assignedTeam]);
-
-  // Auto-advance nav steps
-  useEffect(()=>{
-    if(!navMode) return;
-    const t = setInterval(()=>setCurrentStep(s=>Math.min(s+1,steps.length-1)),8000);
-    return ()=>clearInterval(t);
-  },[navMode, steps.length]);
-
-  const handleDispatch = (teamId, sosId) => {
-    setDispatched(d=>({...d,[sosId]:teamId}));
-    setCalloutMsg("Team dispatched. Navigation started.");
-    setTimeout(()=>setCalloutMsg(""),3000);
+  const handleTriggerDrill = async () => {
+    setIsSubmitting(true);
+    try {
+      if (onTriggerDemo) {
+        await onTriggerDemo();
+      }
+      setCalloutMsg("⚠️ Simulated SAR Emergency Drill activated! Dispatch radar locked on beacon.");
+      setTimeout(() => setCalloutMsg(""), 4500);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const distToTarget = selectedSOS && teamPos ? (
-    Math.sqrt(Math.pow((selectedSOS.lat-teamPos.lat)*111,2)+Math.pow((selectedSOS.lon-teamPos.lon)*111,2)).toFixed(1)
-  ) : "—";
-
-  const speedKmh = assignedTeam ? parseInt(assignedTeam.speed)||0 : 0;
-  const compass = assignedTeam?.heading||45;
+  const handleVhfCheck = () => {
+    setCalloutMsg("📻 VHF Tactical Link (156.800 MHz): Field Guide Ajay Saini reports signal 5x5. All trekkers safe in line-of-sight.");
+    setTimeout(() => setCalloutMsg(""), 5000);
+  };
 
   // ── Navigation Mode (fullscreen overlay) ──
-  if(navMode && selectedSOS) {
-    const step = steps[currentStep]||steps[0];
-    const pct = ((currentStep)/(steps.length-1))*100;
+  if (navMode && selectedSOS) {
+    const step = steps[currentStep] || steps[0];
+    const pct = ((currentStep) / (steps.length - 1)) * 100;
     return (
-      <div style={{position:"fixed",inset:0,background:"#0a0f1e",zIndex:200,display:"flex",flexDirection:"column",fontFamily:"inherit",color:C.text}}>
+      <div style={{ position: "fixed", inset: 0, background: "#0a0f1e", zIndex: 200, display: "flex", flexDirection: "column", fontFamily: "inherit", color: C.text }}>
         {/* Top bar */}
-        <div style={{background:"rgba(0,0,0,0.7)",backdropFilter:"blur(8px)",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:`1px solid ${C.border}`}}>
-          <div style={{display:"flex",alignItems:"center",gap:12}}>
-            <div style={{width:10,height:10,borderRadius:"50%",background:C.red,boxShadow:`0 0 8px ${C.red}`,animation:"ping 1s infinite"}}/>
-            <span style={{fontSize:14,fontWeight:600}}>LIVE SOS NAVIGATION</span>
-            <Pill color="red">ACTIVE</Pill>
+        <div style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)", padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 10, height: 10, borderRadius: "50%", background: C.red, boxShadow: `0 0 8px ${C.red}`, animation: "ping 1s infinite" }} />
+            <span style={{ fontSize: 14, fontWeight: 700 }}>TACTICAL TURN-BY-TURN RESCUE NAVIGATION</span>
+            <Pill color="red">TARGET: {selectedSOS.user}</Pill>
           </div>
-          <div style={{display:"flex",gap:10,alignItems:"center"}}>
-            <button onClick={()=>setVoiceOn(v=>!v)} style={{background:voiceOn?"rgba(59,130,246,0.2)":"rgba(255,255,255,0.05)",border:`1px solid ${voiceOn?C.accent:C.border}`,borderRadius:8,padding:"6px 12px",color:voiceOn?C.accent:C.muted,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>{voiceOn?"🔊 Voice On":"🔇 Voice Off"}</button>
-            <button onClick={()=>{setNavMode(false);setCurrentStep(0);}} style={{background:"rgba(239,68,68,0.15)",border:`1px solid rgba(239,68,68,0.3)`,borderRadius:8,padding:"6px 14px",color:C.red,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>✕ Exit Navigation</button>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <button onClick={() => setVoiceOn((v) => !v)} style={{ background: voiceOn ? "rgba(59,130,246,0.2)" : "rgba(255,255,255,0.05)", border: `1px solid ${voiceOn ? C.accent : C.border}`, borderRadius: 8, padding: "6px 12px", color: voiceOn ? C.accent : C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+              {voiceOn ? "🔊 Voice Guidance On" : "🔇 Voice Off"}
+            </button>
+            <button onClick={() => setResolvingModal(true)} style={{ background: "rgba(34,197,94,0.2)", border: `1px solid ${C.green}`, borderRadius: 8, padding: "6px 14px", color: C.green, fontSize: 12, cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>
+              ✓ Stand Down SAR
+            </button>
+            <button onClick={() => { setNavMode(false); setCurrentStep(0); }} style={{ background: "rgba(239,68,68,0.15)", border: `1px solid rgba(239,68,68,0.3)`, borderRadius: 8, padding: "6px 14px", color: C.red, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+              ✕ Exit Navigation
+            </button>
           </div>
         </div>
 
         {/* Main nav area */}
-        <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 360px",overflow:"hidden"}}>
+        <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 380px", overflow: "hidden" }}>
           {/* Simulated map view */}
-          <div style={{position:"relative",overflow:"hidden",background:"#0d1b2e"}}>
-            <LiveMap points={users} teams={assignedTeam?[{...assignedTeam,lat:teamPos?.lat||assignedTeam.lat,lon:teamPos?.lon||assignedTeam.lon}]:[]}
-              routeFrom={teamPos||assignedTeam} routeTo={selectedSOS} height={420}/>
+          <div style={{ position: "relative", overflow: "hidden", background: "#0d1b2e" }}>
+            <LiveMap
+              points={users}
+              teams={assignedTeam ? [{ ...assignedTeam, lat: teamPos?.lat || assignedTeam.lat, lon: teamPos?.lon || assignedTeam.lon }] : []}
+              routeFrom={teamPos || assignedTeam}
+              routeTo={selectedSOS}
+              height={460}
+            />
 
             {/* Compass */}
-            <div style={{position:"absolute",bottom:24,right:24,width:64,height:64,borderRadius:"50%",background:"rgba(8,15,26,0.92)",border:`2px solid ${C.border2}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <svg width="50" height="50" viewBox="0 0 50 50">
-                <circle cx="25" cy="25" r="23" fill="none" stroke="rgba(80,140,220,0.2)" strokeWidth="1"/>
+            <div style={{ position: "absolute", bottom: 24, right: 24, width: 68, height: 68, borderRadius: "50%", background: "rgba(8,15,26,0.92)", border: `2px solid ${C.border2}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg width="54" height="54" viewBox="0 0 50 50">
+                <circle cx="25" cy="25" r="23" fill="none" stroke="rgba(80,140,220,0.2)" strokeWidth="1" />
                 <g transform={`rotate(${compass},25,25)`}>
-                  <polygon points="25,6 28,25 25,22 22,25" fill={C.red}/>
-                  <polygon points="25,44 28,25 25,28 22,25" fill="rgba(255,255,255,0.4)"/>
+                  <polygon points="25,6 28,25 25,22 22,25" fill={C.red} />
+                  <polygon points="25,44 28,25 25,28 22,25" fill="rgba(255,255,255,0.4)" />
                 </g>
                 <text x="25" y="13" textAnchor="middle" fontSize="7" fill={C.red} fontFamily="monospace" fontWeight="700">N</text>
                 <text x="25" y="40" textAnchor="middle" fontSize="7" fill={C.muted} fontFamily="monospace">S</text>
@@ -595,294 +747,703 @@ const PageSOSNavigation = ({ users=USERS, sosEvents=[] }) => {
             </div>
 
             {/* Speed indicator */}
-            <div style={{position:"absolute",bottom:24,left:24,background:"rgba(8,15,26,0.92)",border:`1px solid ${C.border}`,borderRadius:12,padding:"10px 18px",textAlign:"center"}}>
-              <div style={{fontSize:28,fontWeight:800,color:C.text,lineHeight:1}}>{speedKmh}</div>
-              <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em"}}>KM/H</div>
+            <div style={{ position: "absolute", bottom: 24, left: 24, background: "rgba(8,15,26,0.92)", border: `1px solid ${C.border}`, borderRadius: 12, padding: "10px 18px", textAlign: "center" }}>
+              <div style={{ fontSize: 28, fontWeight: 800, color: C.text, lineHeight: 1 }}>{speedKmh}</div>
+              <div style={{ fontSize: 10, color: C.muted, letterSpacing: "0.1em" }}>KM/H</div>
             </div>
           </div>
 
           {/* Navigation panel */}
-          <div style={{background:"#0b1422",borderLeft:`1px solid ${C.border}`,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+          <div style={{ background: "#0b1422", borderLeft: `1px solid ${C.border}`, display: "flex", flexDirection: "column", overflow: "hidden" }}>
             {/* Current instruction */}
-            <div style={{background:`linear-gradient(135deg,rgba(59,130,246,0.15),rgba(59,130,246,0.05))`,borderBottom:`1px solid ${C.border}`,padding:"20px 18px"}}>
-              <div style={{fontSize:48,textAlign:"center",marginBottom:12,lineHeight:1}}>{step?.icon}</div>
-              <div style={{fontSize:16,fontWeight:700,textAlign:"center",marginBottom:4,color:C.text}}>{step?.instr}</div>
-              {step?.road&&<div style={{fontSize:12,color:C.muted,textAlign:"center"}}>{step.road}</div>}
+            <div style={{ background: `linear-gradient(135deg,rgba(59,130,246,0.15),rgba(59,130,246,0.05))`, borderBottom: `1px solid ${C.border}`, padding: "20px 18px" }}>
+              <div style={{ fontSize: 44, textAlign: "center", marginBottom: 10, lineHeight: 1 }}>{step?.icon}</div>
+              <div style={{ fontSize: 15, fontWeight: 700, textAlign: "center", marginBottom: 4, color: C.text }}>{step?.instr}</div>
+              {step?.road && <div style={{ fontSize: 12, color: C.muted, textAlign: "center" }}>{step.road}</div>}
             </div>
 
             {/* ETA / Distance */}
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:1,background:C.border}}>
-              {[["ETA",`${remainingEta} min`,C.green],["Distance",`${distToTarget} km`,C.accent]].map(([l,v,col])=>(
-                <div key={l} style={{background:"#0b1422",padding:"14px 18px",textAlign:"center"}}>
-                  <div style={{fontSize:24,fontWeight:800,color:col}}>{v}</div>
-                  <div style={{fontSize:10,color:C.muted,letterSpacing:"0.1em",marginTop:2}}>{l}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: C.border }}>
+              {[["ETA TO SCENE", `${remainingEta} min`, C.green], ["DISTANCE", `${distToTarget} km`, C.accent]].map(([l, v, col]) => (
+                <div key={l} style={{ background: "#0b1422", padding: "14px 18px", textAlign: "center" }}>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: col }}>{v}</div>
+                  <div style={{ fontSize: 10, color: C.muted, letterSpacing: "0.1em", marginTop: 2 }}>{l}</div>
                 </div>
               ))}
             </div>
 
             {/* Progress bar */}
-            <div style={{padding:"10px 18px",borderBottom:`1px solid ${C.border}`}}>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:C.muted,marginBottom:5}}>
-                <span>Step {currentStep+1} of {steps.length}</span>
+            <div style={{ padding: "10px 18px", borderBottom: `1px solid ${C.border}` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: C.muted, marginBottom: 5 }}>
+                <span>Step {currentStep + 1} of {steps.length}</span>
                 <span>{Math.round(pct)}% complete</span>
               </div>
-              <div style={{height:4,background:"rgba(255,255,255,0.07)",borderRadius:4}}>
-                <div style={{height:"100%",borderRadius:4,background:`linear-gradient(90deg,${C.accent},${C.green})`,width:`${pct}%`,transition:"width 0.5s"}}/>
+              <div style={{ height: 4, background: "rgba(255,255,255,0.07)", borderRadius: 4 }}>
+                <div style={{ height: "100%", borderRadius: 4, background: `linear-gradient(90deg,${C.accent},${C.green})`, width: `${pct}%`, transition: "width 0.5s" }} />
               </div>
             </div>
 
             {/* Turn-by-turn list */}
-            <div style={{flex:1,overflowY:"auto",padding:"10px 0"}}>
-              {steps.map((s,i)=>(
-                <div key={i} style={{display:"flex",alignItems:"flex-start",gap:12,padding:"10px 18px",background:i===currentStep?"rgba(59,130,246,0.1)":"transparent",borderLeft:`3px solid ${i===currentStep?C.accent:"transparent"}`,transition:"background 0.3s"}}>
-                  <div style={{width:28,height:28,borderRadius:"50%",background:i===currentStep?"rgba(59,130,246,0.25)":i<currentStep?"rgba(34,197,94,0.15)":"rgba(255,255,255,0.05)",border:`1px solid ${i===currentStep?C.accent:i<currentStep?C.green:C.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0,color:i<currentStep?C.green:C.text}}>
-                    {i<currentStep?"✓":s.icon}
+            <div style={{ flex: 1, overflowY: "auto", padding: "10px 0" }}>
+              {steps.map((s, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "10px 18px", background: i === currentStep ? "rgba(59,130,246,0.1)" : "transparent", borderLeft: `3px solid ${i === currentStep ? C.accent : "transparent"}`, transition: "background 0.3s" }}>
+                  <div style={{ width: 28, height: 28, borderRadius: "50%", background: i === currentStep ? "rgba(59,130,246,0.25)" : i < currentStep ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.05)", border: `1px solid ${i === currentStep ? C.accent : i < currentStep ? C.green : C.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0, color: i < currentStep ? C.green : C.text }}>
+                    {i < currentStep ? "✓" : s.icon}
                   </div>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:12,color:i===currentStep?C.text:C.muted,fontWeight:i===currentStep?600:400}}>{s.instr}</div>
-                    <div style={{fontSize:10,color:C.muted2,marginTop:2}}>{s.dist}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, color: i === currentStep ? C.text : C.muted, fontWeight: i === currentStep ? 600 : 400 }}>{s.instr}</div>
+                    <div style={{ fontSize: 10, color: C.muted2, marginTop: 2 }}>{s.dist}</div>
                   </div>
                 </div>
               ))}
             </div>
 
             {/* SOS Target info */}
-            <div style={{background:"rgba(239,68,68,0.08)",borderTop:`1px solid rgba(239,68,68,0.2)`,padding:"12px 18px"}}>
-              <div style={{fontSize:10,color:"#fca5a5",letterSpacing:"0.1em",marginBottom:6}}>TARGET · SOS VICTIM</div>
-              <div style={{fontSize:13,fontWeight:600,marginBottom:2}}>{selectedSOS.user}</div>
-              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            <div style={{ background: "rgba(239,68,68,0.08)", borderTop: `1px solid rgba(239,68,68,0.2)`, padding: "14px 18px" }}>
+              <div style={{ fontSize: 10, color: "#fca5a5", letterSpacing: "0.1em", marginBottom: 6 }}>EMERGENCY TARGET · VICTIM TRIAGE</div>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 2 }}>{selectedSOS.user}</div>
+              <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>{selectedSOS.city} · {selectedSOS.altitude}m ASL</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
                 <Pill color="red">🩸 {selectedSOS.blood}</Pill>
-                {selectedSOS.medical!=="None"&&<Pill color="amber">⚕ {selectedSOS.medical}</Pill>}
+                {selectedSOS.medical !== "None" && <Pill color="amber">⚕ {selectedSOS.medical}</Pill>}
               </div>
-              <div style={{fontSize:11,color:C.muted,marginTop:6}}>EC: {selectedSOS.ec}</div>
+              <div style={{ fontSize: 11, color: C.muted }}>EC: {selectedSOS.ec}</div>
             </div>
           </div>
         </div>
 
         {/* Bottom controls */}
-        <div style={{background:"rgba(0,0,0,0.7)",backdropFilter:"blur(8px)",padding:"10px 20px",borderTop:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:12}}>
-          <button onClick={()=>setCurrentStep(s=>Math.max(0,s-1))} style={{padding:"8px 16px",background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>← Prev step</button>
-          <button onClick={()=>setCurrentStep(s=>Math.min(steps.length-1,s+1))} style={{padding:"8px 16px",background:C.accent,border:"none",borderRadius:8,color:"#fff",fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Next step →</button>
-          <div style={{flex:1}}/>
-          <div style={{fontSize:11,color:C.muted}}>Assigned: <span style={{color:C.amber}}>{assignedTeam?.name||"—"}</span> · {assignedTeam?.vehicle||"—"} · Lead: {assignedTeam?.lead||"—"}</div>
+        <div style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)", padding: "10px 20px", borderTop: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 12 }}>
+          <button onClick={() => setCurrentStep((s) => Math.max(0, s - 1))} style={{ padding: "8px 16px", background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+            ← Prev Waypoint
+          </button>
+          <button onClick={() => setCurrentStep((s) => Math.min(steps.length - 1, s + 1))} style={{ padding: "8px 16px", background: C.accent, border: "none", borderRadius: 8, color: "#fff", fontSize: 12, cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>
+            Next Waypoint →
+          </button>
+          <div style={{ flex: 1 }} />
+          <div style={{ fontSize: 11, color: C.muted }}>
+            Unit: <span style={{ color: C.amber, fontWeight: 600 }}>{assignedTeam?.name || "Team Alpha"}</span> · {assignedTeam?.vehicle} · VHF: {assignedTeam?.vhf}
+          </div>
         </div>
       </div>
     );
   }
 
-  // ── Dashboard view ──
+  // ── Stand Down Confirmation Modal ──
+  const renderStandDownModal = () => {
+    if (!resolvingModal || !selectedSOS) return null;
+    return (
+      <div style={{
+        position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)",
+        backdropFilter: "blur(8px)", zIndex: 300, display: "flex",
+        alignItems: "center", justifyContent: "center", padding: 20
+      }}>
+        <div style={{
+          background: "#0d1b2e", border: `1px solid ${C.border2}`,
+          borderRadius: 16, width: "100%", maxWidth: 520, padding: 24,
+          boxShadow: "0 20px 50px rgba(0,0,0,0.7)"
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+            <div style={{ width: 42, height: 42, borderRadius: 12, background: "rgba(34,197,94,0.15)", border: `1px solid ${C.green}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+              🛡️
+            </div>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Execute SAR Stand-Down & Resolve Emergency</div>
+              <div style={{ fontSize: 12, color: C.muted }}>Distressed Trekker: <strong style={{ color: C.text }}>{selectedSOS.user}</strong> ({selectedSOS.tripName})</div>
+            </div>
+          </div>
+
+          <p style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, marginBottom: 14 }}>
+            Executing Stand-Down will mark this emergency distress beacon as <strong style={{ color: C.green }}>resolved</strong> in Firestore, reset the trekker's status back to <strong style={{ color: C.green }}>Active/Safe</strong>, recall dispatched SAR units back to tactical standby, and archive the incident record.
+          </p>
+
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 11, color: C.muted2, display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>Resolution Notes & Incident Debrief</label>
+            <textarea
+              value={resolutionNote}
+              onChange={(e) => setResolutionNote(e.target.value)}
+              rows={3}
+              style={{
+                width: "100%", background: "rgba(255,255,255,0.04)", border: `1px solid ${C.border}`,
+                borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 12,
+                fontFamily: "inherit", resize: "vertical"
+              }}
+            />
+          </div>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 18 }}>
+            {[
+              "Victim safely assisted by Lead Guide Ajay Saini; safe and escorted back to base camp",
+              "Trekker cancelled SOS beacon (Self-Resolved)",
+              "Minor sprain treated on trail, proceeding to camp",
+              "False alarm verified and cleared by dispatch",
+            ].map((preset) => (
+              <button
+                key={preset}
+                onClick={() => setResolutionNote(preset)}
+                style={{
+                  background: resolutionNote === preset ? "rgba(59,130,246,0.2)" : "rgba(255,255,255,0.03)",
+                  border: `1px solid ${resolutionNote === preset ? C.accent : C.border}`,
+                  borderRadius: 6, padding: "4px 8px", fontSize: 10, color: resolutionNote === preset ? C.accent : C.muted,
+                  cursor: "pointer", fontFamily: "inherit"
+                }}
+              >
+                + {preset.slice(0, 38)}…
+              </button>
+            ))}
+          </div>
+
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button
+              onClick={() => setResolvingModal(false)}
+              disabled={isSubmitting}
+              style={{
+                padding: "9px 18px", borderRadius: 8, background: "rgba(255,255,255,0.05)",
+                border: `1px solid ${C.border}`, color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit"
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleStandDown}
+              disabled={isSubmitting}
+              style={{
+                padding: "9px 20px", borderRadius: 8, background: `linear-gradient(135deg, ${C.green}, #16a34a)`,
+                border: "none", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit"
+              }}
+            >
+              {isSubmitting ? "Stand-Down Executing…" : "✓ Stand Down SAR & Mark Safe"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ════════════════════════════════════════════════════════════════════════
+  // VIEW A: ALL CLEAR / SAR TACTICAL STANDBY (0 Active Incidents)
+  // ════════════════════════════════════════════════════════════════════════
+  if (activeIncidents.length === 0) {
+    return (
+      <div>
+        {renderStandDownModal()}
+
+        <PageHeader
+          title="Realtime SOS Command & SAR Dispatch"
+          sub="Search & rescue tactical command — zero active distress alerts across Sahyadri trails"
+          right={
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <Pill color="green">🟢 ALL CLEAR · STANDBY</Pill>
+              <Pill color="blue">📻 VHF 145.500 & 156.800 MHz</Pill>
+            </div>
+          }
+        />
+
+        {calloutMsg && (
+          <div style={{ background: "rgba(34,197,94,0.12)", border: `1px solid rgba(34,197,94,0.35)`, borderRadius: 10, padding: "10px 16px", fontSize: 13, color: C.green, marginBottom: 14 }}>
+            {calloutMsg}
+          </div>
+        )}
+
+        {/* Tactical Readiness Banner */}
+        <div style={{
+          background: "linear-gradient(135deg, rgba(34,197,94,0.12), rgba(16,185,129,0.04))",
+          border: `1px solid rgba(34,197,94,0.3)`,
+          borderRadius: 14,
+          padding: "16px 20px",
+          marginBottom: 16,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 14
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(34,197,94,0.18)", border: `1px solid ${C.green}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
+              🛡️
+            </div>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: C.green, display: "flex", alignItems: "center", gap: 8 }}>
+                SAR STATUS: ALL TRAILS NORMAL · OPERATIONAL MONITORING ACTIVE
+              </div>
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
+                All expedition sectors secure. 0 active distress beacons. Mountain rescue teams staged at Khandala and Karjat safety posts. Field Guide Ajay Saini maintaining live escort on Rajmachi Fort trail.
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={handleTriggerDrill}
+              disabled={isSubmitting}
+              style={{
+                padding: "8px 16px", borderRadius: 8, background: "rgba(239,68,68,0.15)",
+                border: `1px solid rgba(239,68,68,0.35)`, color: "#fca5a5", fontSize: 12,
+                fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6
+              }}
+            >
+              🚨 Simulate SAR Emergency Drill
+            </button>
+            <button
+              onClick={handleVhfCheck}
+              style={{
+                padding: "8px 16px", borderRadius: 8, background: "rgba(59,130,246,0.15)",
+                border: `1px solid rgba(59,130,246,0.35)`, color: C.accent, fontSize: 12,
+                fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6
+              }}
+            >
+              📻 VHF Check with Guide Ajay Saini
+            </button>
+          </div>
+        </div>
+
+        {/* 4 KPI Cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 18 }}>
+          <StatCard label="Active SOS Distress Alerts" value="0" sub="All trails normal" color={C.green} icon="🛡️" />
+          <StatCard label="SAR Teams on Standby" value="2 Units" sub="Khandala & Karjat Bases" color={C.accent} icon="🚑" />
+          <StatCard label="VHF Tactical Radio SNR" value="100%" sub="145.500 MHz (Ch 1)" color={C.amber} icon="📻" />
+          <StatCard label="Audited Incidents" value={`${resolvedIncidents.length} Closed`} sub="Complete audit trail" color={C.teal} icon="📋" />
+        </div>
+
+        {/* Main 2-Column Grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "1.7fr 1.3fr", gap: 16 }}>
+          {/* LEFT: Tactical Trail Map & Staging Units */}
+          <div>
+            <Card style={{ padding: 0, overflow: "hidden", marginBottom: 14 }}>
+              <div style={{ padding: "12px 18px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>Live Sector Overview & SAR Staging Bases</div>
+                  <div style={{ fontSize: 11, color: C.muted }}>Rajmachi Fort Trail Corridor · Monitoring 6 registered trekkers</div>
+                </div>
+                <Pill color="green">● Telemetry Live</Pill>
+              </div>
+              <LiveMap points={users} teams={teamsState} height={380} zoom={zoom} onZoom={(d) => setZoom((z) => Math.max(0.5, Math.min(3, z + d * 0.5)))} />
+            </Card>
+
+            {/* Standby Deployment Units Card */}
+            <Card>
+              <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>
+                Search & Rescue Deployment Units (Standby Ready)
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {teamsState.map((t) => (
+                  <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "rgba(255,255,255,0.02)", border: `1px solid ${C.border}`, borderRadius: 10 }}>
+                    <div style={{ width: 10, height: 10, borderRadius: "50%", background: C.green, boxShadow: `0 0 6px ${C.green}` }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{t.name}</div>
+                      <div style={{ fontSize: 11, color: C.muted }}>Lead: {t.lead} · {t.members} Members · Vehicle: {t.vehicle}</div>
+                      <div style={{ fontSize: 10, color: C.muted2, marginTop: 2 }}>Staging Base: {t.base} · Tactical VHF: {t.vhf}</div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <Pill color="green">STANDBY READY</Pill>
+                      <div style={{ fontSize: 11, color: C.amber, marginTop: 4, fontWeight: 600 }}>ETA {t.eta}</div>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Field Guide Unit */}
+                <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "rgba(245,158,11,0.04)", border: `1px solid rgba(245,158,11,0.25)`, borderRadius: 10 }}>
+                  <div style={{ width: 10, height: 10, borderRadius: "50%", background: C.amber, boxShadow: `0 0 6px ${C.amber}` }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>Field Guide Ajay Saini (Trail Escort Unit)</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>Equipped with Garmin InReach Mini 2 & Alpine First Aid trauma pack</div>
+                    <div style={{ fontSize: 10, color: C.muted2, marginTop: 2 }}>Direct Tactical Frequency: 156.800 MHz (Channel 16)</div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <Pill color="amber">ON-TRAIL ESCORT</Pill>
+                    <div style={{ fontSize: 11, color: C.green, marginTop: 4 }}>In Direct Contact</div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </div>
+
+          {/* RIGHT: Incident Log & Stand-Down History */}
+          <div>
+            <Card style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>SAR Incident Log & Stand-Down Archive</div>
+                  <div style={{ fontSize: 11, color: C.muted }}>Historical emergency beacons and self-cancellations</div>
+                </div>
+                <Pill color="teal">{resolvedIncidents.length} Records</Pill>
+              </div>
+
+              <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
+                {resolvedIncidents.map((incident) => (
+                  <div
+                    key={incident.id}
+                    style={{
+                      background: "rgba(255,255,255,0.02)",
+                      border: `1px solid ${C.border}`,
+                      borderRadius: 10,
+                      padding: "12px 14px",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{incident.user}</div>
+                        <div style={{ fontSize: 11, color: C.muted }}>📍 {incident.city} · {incident.tripName}</div>
+                      </div>
+                      <Pill color={incident.resolution?.includes("Self-Resolved") ? "green" : "blue"}>
+                        {incident.resolution?.includes("Self-Resolved") ? "✓ Self-Resolved" : "✓ Stood Down"}
+                      </Pill>
+                    </div>
+
+                    <div style={{ background: "rgba(0,0,0,0.25)", borderRadius: 6, padding: "8px 10px", marginTop: 6, fontSize: 11, color: C.text }}>
+                      <span style={{ color: C.muted2 }}>Debrief Note: </span>
+                      {incident.resolution || "Trekker cancelled SOS beacon (Self-Resolved)"}
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: C.muted2, marginTop: 8 }}>
+                      <span>Triggered: {incident.time}</span>
+                      <span>Resolved: {incident.resolvedAt} ({incident.resolvedBy})</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // VIEW B: ACTIVE EMERGENCY DISPATCH CONSOLE (Active SOS > 0)
+  // ════════════════════════════════════════════════════════════════════════
   return (
     <div>
-      <PageHeader title="Realtime SOS Navigation"
-        sub="Live route tracking — navigate teams to emergency locations"
-        right={<div style={{display:"flex",gap:8}}>
-          {activeSOS.length>0&&<Pill color="red">🚨 {activeSOS.length} Active SOS</Pill>}
-          <Pill color="green">● Live</Pill>
-        </div>}/>
+      {renderStandDownModal()}
 
-      {calloutMsg&&<div style={{background:"rgba(34,197,94,0.1)",border:`1px solid rgba(34,197,94,0.3)`,borderRadius:10,padding:"10px 16px",fontSize:13,color:C.green,marginBottom:14}}>{calloutMsg}</div>}
+      <PageHeader
+        title="Realtime SOS Command & SAR Dispatch"
+        sub="🚨 CRITICAL RESCUE OPERATION IN PROGRESS — ROUTING RESCUE TEAMS"
+        right={
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <Pill color="red">🚨 {activeIncidents.length} ACTIVE DISTRESS BEACON{activeIncidents.length > 1 ? "S" : ""}</Pill>
+            <Pill color="green">● Tactical Live</Pill>
+          </div>
+        }
+      />
 
-      <div style={{display:"grid",gridTemplateColumns:"220px 1fr 280px",gap:14}}>
+      {calloutMsg && (
+        <div style={{ background: "rgba(239,68,68,0.12)", border: `1px solid rgba(239,68,68,0.35)`, borderRadius: 10, padding: "10px 16px", fontSize: 13, color: "#fca5a5", marginBottom: 14 }}>
+          {calloutMsg}
+        </div>
+      )}
 
-        {/* LEFT: SOS incident list */}
+      {/* Flashing Emergency Beacon Banner */}
+      <div style={{
+        background: "linear-gradient(135deg, rgba(239,68,68,0.22), rgba(185,28,28,0.08))",
+        border: `1px solid rgba(239,68,68,0.5)`,
+        borderRadius: 14,
+        padding: "16px 20px",
+        marginBottom: 16,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        flexWrap: "wrap",
+        gap: 14
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(239,68,68,0.25)", border: `1px solid ${C.red}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, animation: "pulse 1.2s infinite" }}>
+            🚨
+          </div>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#fca5a5", display: "flex", alignItems: "center", gap: 8 }}>
+              CRITICAL DISTRESS SIGNAL ACTIVE · {selectedSOS.user.toUpperCase()}
+            </div>
+            <div style={{ fontSize: 12, color: C.text, marginTop: 2 }}>
+              Location: <strong>{selectedSOS.city}</strong> · Altitude: <strong>{selectedSOS.altitude}m ASL</strong> · Coordinates: <span style={{ fontFamily: "monospace" }}>{selectedSOS.lat}°N, {selectedSOS.lon}°E</span> · Blood: <strong style={{ color: C.red }}>{selectedSOS.blood}</strong>
+            </div>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            onClick={() => setResolvingModal(true)}
+            style={{
+              padding: "10px 18px", borderRadius: 8, background: `linear-gradient(135deg, ${C.green}, #16a34a)`,
+              border: "none", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+              display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(34,197,94,0.3)"
+            }}
+          >
+            ✓ STAND DOWN SAR & RESOLVE
+          </button>
+        </div>
+      </div>
+
+      {/* 3-Column SAR Dispatch Grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "240px 1fr 310px", gap: 14 }}>
+        {/* LEFT COLUMN: Active SOS Queue */}
         <div>
-          <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>SOS Incidents</div>
-          {SOS_EVENTS.map(ev=>(
-            <Card key={ev.id} onClick={()=>setSelectedSOS(ev)}
-              style={{marginBottom:8,cursor:"pointer",borderColor:selectedSOS?.id===ev.id?C.accent:ev.status==="active"?"rgba(239,68,68,0.35)":C.border,background:selectedSOS?.id===ev.id?"rgba(59,130,246,0.08)":C.card}}>
-              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
-                <div style={{width:7,height:7,borderRadius:"50%",background:ev.status==="active"?C.red:"#555",flexShrink:0}}/>
-                <div style={{fontSize:12,fontWeight:600,color:C.text,flex:1}}>{ev.user}</div>
-                <Pill color={ev.priority==="critical"?"red":ev.priority==="high"?"amber":"blue"}>{ev.priority}</Pill>
+          <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>
+            Distress Queue ({activeIncidents.length})
+          </div>
+
+          {activeIncidents.map((ev) => (
+            <Card
+              key={ev.id}
+              onClick={() => setSelectedId(ev.id)}
+              style={{
+                marginBottom: 8,
+                cursor: "pointer",
+                borderColor: selectedSOS?.id === ev.id ? C.red : "rgba(239,68,68,0.35)",
+                background: selectedSOS?.id === ev.id ? "rgba(239,68,68,0.12)" : C.card,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: C.red, animation: "ping 1s infinite", flexShrink: 0 }} />
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.text, flex: 1 }}>{ev.user}</div>
+                <Pill color="red">{ev.priority}</Pill>
               </div>
-              <div style={{fontSize:11,color:C.muted,marginBottom:3}}>📍 {ev.city} · {ev.time}</div>
-              <div style={{fontSize:10,color:C.muted2}}>{ev.type}</div>
-              <div style={{marginTop:8}}>
-                <Pill color={ev.status==="active"?"red":"green"}>{ev.status}</Pill>
+              <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>📍 {ev.city}</div>
+              <div style={{ fontSize: 10, color: C.muted2, marginBottom: 8 }}>Signal Ping: {ev.time}</div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <Pill color="red">🚨 ACTIVE BEACON</Pill>
+                <span style={{ fontSize: 11, color: C.amber, fontWeight: 600 }}>🩸 {ev.blood}</span>
               </div>
             </Card>
           ))}
 
-          {/* Stats */}
-          <div style={{marginTop:14,display:"flex",flexDirection:"column",gap:8}}>
-            {[["Active SOS",SOS_EVENTS.filter(e=>e.status==="active").length,C.red],["Teams deployed",SOS_TEAMS.filter(t=>t.status==="deployed").length,C.amber],["Resolved",SOS_EVENTS.filter(e=>e.status==="resolved").length,C.green]].map(([l,v,col])=>(
-              <Card key={l} style={{marginBottom:0,padding:"10px 14px"}}>
-                <div style={{fontSize:10,color:C.muted,marginBottom:2}}>{l}</div>
-                <div style={{fontSize:22,fontWeight:700,color:col}}>{v}</div>
+          {/* Quick Metrics */}
+          <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+            {[
+              ["Active Distress", activeIncidents.length, C.red],
+              ["Units Deployed", teamsState.filter((t) => t.status === "deployed").length, C.amber],
+              ["Resolved Today", resolvedIncidents.length, C.green],
+            ].map(([l, v, col]) => (
+              <Card key={l} style={{ marginBottom: 0, padding: "10px 14px" }}>
+                <div style={{ fontSize: 10, color: C.muted, marginBottom: 2 }}>{l}</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: col }}>{v}</div>
               </Card>
             ))}
           </div>
         </div>
 
-        {/* CENTER: Map */}
+        {/* CENTER COLUMN: Tactical Route Map & Navigation */}
         <div>
-          <LiveMap points={users}
-            teams={SOS_TEAMS.filter(t=>t.status==="deployed").map(t=>({...t,lat:teamPos&&assignedTeam?.id===t.id?teamPos.lat:t.lat,lon:teamPos&&assignedTeam?.id===t.id?teamPos.lon:t.lon}))}
-            routeFrom={teamPos||assignedTeam||undefined}
-            routeTo={selectedSOS||undefined}
-            height={400} zoom={zoom} onZoom={d=>setZoom(z=>Math.max(0.5,Math.min(3,z+d*0.5)))}/>
-
-          {/* Navigation stats row */}
-          {selectedSOS&&<div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginTop:12}}>
-            <StatCard label="Distance" value={`${distToTarget} km`} sub="to SOS target" color={C.accent} icon="📏"/>
-            <StatCard label="ETA" value={`${remainingEta} min`} sub={assignedTeam?.vehicle||"—"} color={C.green} icon="⏱"/>
-            <StatCard label="Team speed" value={assignedTeam?.speed||"—"} sub="current" color={C.amber} icon="🚑"/>
-            <StatCard label="GPS Acc." value="±6m" sub="Real-time" color={C.purple} icon="🛰"/>
-          </div>}
-
-          {/* Launch navigation button */}
-          {selectedSOS&&assignedTeam&&<button onClick={()=>{setNavMode(true);setCurrentStep(0);}}
-            style={{marginTop:14,width:"100%",padding:"14px",background:`linear-gradient(135deg,${C.red},${C.accent2})`,border:"none",borderRadius:12,color:"#fff",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:10,letterSpacing:"0.04em"}}>
-            🗺 LAUNCH REALTIME NAVIGATION → {selectedSOS.city}
-          </button>}
-        </div>
-
-        {/* RIGHT: Selected SOS detail */}
-        <div>
-          <Card style={{marginBottom:10}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-              <div>
-                <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em"}}>Live users</div>
-                <div style={{fontSize:12,color:C.text,marginTop:2}}>{users.length} current users</div>
-              </div>
-              <Pill color="green">Realtime</Pill>
-            </div>
-            <div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:2}}>
-              {liveUserRoster.map((user) => (
-                <button
-                  key={user.id}
-                  onClick={() => selectUserIncident(user)}
-                  style={{
-                    minWidth:92,
-                    border:`1px solid ${selectedUser?.id===user.id?C.accent:C.border}`,
-                    background:selectedUser?.id===user.id?"rgba(59,130,246,0.12)":"rgba(255,255,255,0.03)",
-                    borderRadius:12,
-                    padding:"10px 10px 9px",
-                    textAlign:"left",
-                    cursor:user.status==="sos"?"pointer":"default",
-                    color:C.text,
-                    fontFamily:"inherit",
-                    flexShrink:0,
-                  }}
-                >
-                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                    <Avatar initials={user.avatar} bg={user.color?.[0]} text={user.color?.[1]} size={28}/>
-                    <div style={{minWidth:0}}>
-                      <div style={{fontSize:11,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{user.name}</div>
-                      <div style={{fontSize:9,color:C.muted}}>{user.city}</div>
-                    </div>
-                  </div>
-                  <Pill color={user.status==="sos"?"red":user.status==="active"?"green":"gray"}>{user.status}</Pill>
-                </button>
-              ))}
-            </div>
+          <Card style={{ padding: 0, overflow: "hidden" }}>
+            <LiveMap
+              points={users}
+              teams={teamsState.filter((t) => t.status === "deployed").map((t) => ({
+                ...t,
+                lat: teamPos && assignedTeam?.id === t.id ? teamPos.lat : t.lat,
+                lon: teamPos && assignedTeam?.id === t.id ? teamPos.lon : t.lon,
+              }))}
+              routeFrom={teamPos || assignedTeam || undefined}
+              routeTo={selectedSOS || undefined}
+              height={400}
+              zoom={zoom}
+              onZoom={(d) => setZoom((z) => Math.max(0.5, Math.min(3, z + d * 0.5)))}
+            />
           </Card>
 
-          {selectedSOS ? <>
-            <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>Incident Detail</div>
+          {/* Live Navigation Telemetry Row */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginTop: 12 }}>
+            <StatCard label="Distance to Target" value={`${distToTarget} km`} sub="From Rescue Unit" color={C.accent} icon="📏" />
+            <StatCard label="Estimated Arrival" value={`${remainingEta} min`} sub={assignedTeam?.vehicle || "4x4 QRV"} color={C.green} icon="⏱" />
+            <StatCard label="Response Speed" value={assignedTeam?.speed || "35 km/h"} sub="Tactical Transit" color={C.amber} icon="🚑" />
+            <StatCard label="GPS Accuracy" value="±6m" sub="Live Satellite Fix" color={C.purple} icon="🛰" />
+          </div>
 
-            {/* Victim info */}
-            <Card style={{marginBottom:10,borderColor:"rgba(239,68,68,0.3)"}}>
-              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-                <Avatar initials={selectedUser?.avatar||"??"} bg={selectedUser?.color?.[0]} text={selectedUser?.color?.[1]} size={40}/>
-                <div><div style={{fontSize:14,fontWeight:600,color:C.text}}>{selectedSOS.user}</div><div style={{fontSize:11,color:C.muted}}>{selectedSOS.city}</div></div>
+          {/* Action Buttons Row */}
+          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1.3fr", gap: 10, marginTop: 12 }}>
+            <button
+              onClick={() => { setNavMode(true); setCurrentStep(0); }}
+              style={{
+                padding: "14px",
+                background: `linear-gradient(135deg, ${C.red}, ${C.accent2})`,
+                border: "none",
+                borderRadius: 10,
+                color: "#fff",
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                boxShadow: "0 4px 14px rgba(239,68,68,0.4)"
+              }}
+            >
+              🗺 LAUNCH REALTIME NAVIGATION
+            </button>
+
+            <button
+              onClick={() => window.open(`https://www.google.com/maps?q=${selectedSOS.lat},${selectedSOS.lon}`, "_blank")}
+              style={{
+                padding: "14px",
+                background: "rgba(255,255,255,0.06)",
+                border: `1px solid ${C.border}`,
+                borderRadius: 10,
+                color: C.text,
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6
+              }}
+            >
+              📍 Google Maps
+            </button>
+
+            <button
+              onClick={() => setResolvingModal(true)}
+              style={{
+                padding: "14px",
+                background: "rgba(34,197,94,0.18)",
+                border: `1px solid ${C.green}`,
+                borderRadius: 10,
+                color: C.green,
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6
+              }}
+            >
+              ✓ Stand Down SAR
+            </button>
+          </div>
+        </div>
+
+        {/* RIGHT COLUMN: Victim Triage & Medical Dossier */}
+        <div>
+          {/* Victim Details Card */}
+          <Card style={{ marginBottom: 10, borderColor: "rgba(239,68,68,0.4)" }}>
+            <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>
+              Victim Triage Dossier
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+              <Avatar initials={selectedSOS.user.slice(0, 2).toUpperCase()} bg="#E6F1FB" text="#0C447C" size={42} />
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{selectedSOS.user}</div>
+                <div style={{ fontSize: 11, color: C.muted }}>{selectedSOS.tripName} ({selectedSOS.tripCode})</div>
               </div>
-              {[
-                ["SOS type", selectedSOS.type],
-                ["Time", selectedSOS.time],
-                ["Priority", selectedSOS.priority.toUpperCase()],
-                ["Coordinates", `${selectedSOS.lat}°N, ${selectedSOS.lon}°E`],
-                ["Trail Elevation", `${selectedSOS.vitals?.alt || 829}m ASL`],
-                ["From Leader Ajay Saini", formatDistance(calculateDistanceMeters(RAJMACHI_ADMIN.lat, RAJMACHI_ADMIN.lon, selectedSOS.lat, selectedSOS.lon)) + " away"],
-                ["VHF Tactical Radio", "145.500 MHz (Channel 1)"],
-                ["Live Biometrics", `❤️ ${selectedSOS.vitals?.hr || 114} bpm · 🫁 ${selectedSOS.vitals?.spo2 || 96}% SpO2`],
-                ["Beacon Battery", `🔋 ${selectedSOS.vitals?.battery || 88}%`],
-              ].map(([k,v])=>(
-                <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"5px 0",borderBottom:`1px solid ${C.border}`}}>
-                  <span style={{color:C.muted2}}>{k}</span>
-                  <span style={{color:C.text,fontWeight:500,fontFamily:k==="Coordinates"?"monospace":"inherit",fontSize:k==="Coordinates"?10:12}}>{v}</span>
+            </div>
+
+            {[
+              ["Distress Type", selectedSOS.type],
+              ["Beacon Time", selectedSOS.time],
+              ["Coordinates", `${selectedSOS.lat}°N, ${selectedSOS.lon}°E`],
+              ["Trail Elevation", `${selectedSOS.altitude}m ASL`],
+              ["From Guide Ajay Saini", formatDistance(calculateDistanceMeters(RAJMACHI_ADMIN.lat, RAJMACHI_ADMIN.lon, selectedSOS.lat, selectedSOS.lon)) + " away"],
+              ["VHF Tactical Radio", "145.500 MHz (Channel 1)"],
+              ["Live Biometrics", `❤️ ${selectedSOS.vitals?.hr || 114} bpm · 🫁 ${selectedSOS.vitals?.spo2 || 96}% SpO2`],
+              ["Beacon Battery", `🔋 ${selectedSOS.vitals?.battery || 88}%`],
+            ].map(([k, v]) => (
+              <div key={k} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "5px 0", borderBottom: `1px solid ${C.border}` }}>
+                <span style={{ color: C.muted2 }}>{k}</span>
+                <span style={{ color: C.text, fontWeight: 500, fontFamily: k === "Coordinates" ? "monospace" : "inherit", fontSize: k === "Coordinates" ? 10 : 12 }}>{v}</span>
+              </div>
+            ))}
+          </Card>
+
+          {/* Medical Alerts & Emergency Contact Card */}
+          <Card style={{ marginBottom: 10, borderColor: "rgba(167,139,250,0.35)" }}>
+            <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
+              Medical Profile & Contacts
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+              <Pill color="red">🩸 {selectedSOS.blood}</Pill>
+              <Pill color={selectedSOS.medical === "None" || selectedSOS.medical === "None reported" ? "green" : "amber"}>
+                ⚕ {selectedSOS.medical}
+              </Pill>
+            </div>
+            <div style={{ fontSize: 11, color: C.muted, marginBottom: 2 }}>Primary Emergency Contact:</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: C.text, marginBottom: 10 }}>{selectedSOS.ec}</div>
+            <Btn
+              variant="success"
+              style={{ width: "100%", justifyContent: "center", fontSize: 11 }}
+              onClick={() => window.open(`tel:${(selectedSOS.ec || "").replace(/[^0-9+]/g, "") || "+919153191902"}`)}
+            >
+              📞 Direct Call Emergency Contact
+            </Btn>
+          </Card>
+
+          {/* Rescue Team Assignment Card */}
+          <Card>
+            <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
+              Assigned SAR Tactical Unit
+            </div>
+            {teamsState.map((t) => (
+              <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{t.name}</div>
+                  <div style={{ fontSize: 10, color: C.muted }}>{t.vehicle} · {t.members}m · ETA {t.eta}</div>
                 </div>
-              ))}
-            </Card>
-
-            {/* Medical info */}
-            <Card style={{marginBottom:10,borderColor:"rgba(167,139,250,0.3)"}}>
-              <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>Medical Info</div>
-              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
-                <Pill color="red">🩸 {selectedSOS.blood}</Pill>
-                <Pill color={selectedSOS.medical==="None"?"green":"amber"}>{selectedSOS.medical}</Pill>
-              </div>
-              <div style={{fontSize:11,color:C.muted,marginBottom:3}}>Emergency contact:</div>
-              <div style={{fontSize:12,color:C.text}}>{selectedSOS.ec}</div>
-              <div style={{marginTop:8}}>
-                <Btn
-                  variant="success"
-                  style={{width:"100%",justifyContent:"center",fontSize:11}}
-                  onClick={() => window.open(`tel:${(selectedSOS.ec || "").replace(/[^0-9+]/g, "") || "+919153191902"}`)}
+                <Pill color={t.status === "deployed" ? "amber" : "gray"}>{t.status}</Pill>
+                <button
+                  onClick={() => handleDispatch(t.id, selectedSOS.id)}
+                  style={{
+                    padding: "4px 10px", borderRadius: 6,
+                    border: `1px solid ${t.assignedTo === selectedSOS.id ? C.green : C.border}`,
+                    background: t.assignedTo === selectedSOS.id ? "rgba(34,197,94,0.15)" : "transparent",
+                    color: t.assignedTo === selectedSOS.id ? C.green : C.muted,
+                    fontSize: 10, cursor: "pointer", fontFamily: "inherit", fontWeight: 600
+                  }}
                 >
-                  📞 Direct Call Emergency Contact
-                </Btn>
+                  {t.assignedTo === selectedSOS.id ? "✓ En Route" : "Assign Unit"}
+                </button>
               </div>
-            </Card>
-
-            {/* Team assignment */}
-            <Card style={{marginBottom:10}}>
-              <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>Assign Rescue Team</div>
-              {SOS_TEAMS.map(t=>(
-                <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:12,fontWeight:500,color:C.text}}>{t.name}</div>
-                    <div style={{fontSize:10,color:C.muted}}>{t.vehicle} · {t.members}m · {t.speed}</div>
-                  </div>
-                  <Pill color={t.status==="deployed"?"amber":"gray"}>{t.status}</Pill>
-                  <button onClick={()=>handleDispatch(t.id,selectedSOS.id)}
-                    style={{padding:"4px 10px",borderRadius:7,border:`1px solid ${dispatched[selectedSOS.id]===t.id?C.green:C.border}`,background:dispatched[selectedSOS.id]===t.id?"rgba(34,197,94,0.12)":"transparent",color:dispatched[selectedSOS.id]===t.id?C.green:C.muted,fontSize:10,cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>
-                    {dispatched[selectedSOS.id]===t.id?"✓ Assigned":"Assign"}
-                  </button>
-                </div>
-              ))}
-            </Card>
-
-            {/* Turn preview */}
-            {steps.length>0&&<Card>
-              <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>Route Preview · {steps.length} turns</div>
-              {steps.slice(0,3).map((s,i)=>(
-                <div key={i} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"6px 0",borderBottom:`1px solid ${C.border}`}}>
-                  <div style={{width:22,height:22,borderRadius:"50%",background:"rgba(59,130,246,0.1)",border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,flexShrink:0}}>{s.icon}</div>
-                  <div><div style={{fontSize:11,color:C.text}}>{s.instr}</div><div style={{fontSize:9,color:C.muted2}}>{s.dist}</div></div>
-                </div>
-              ))}
-              {steps.length>3&&<div style={{fontSize:10,color:C.muted2,paddingTop:4}}>+{steps.length-3} more steps in navigation mode</div>}
-            </Card>}
-          </> : <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:300,color:C.muted2,fontSize:13}}>
-            <div style={{fontSize:32,marginBottom:8}}>🗺</div>
-            Select an SOS incident to view navigation details
-          </div>}
+            ))}
+          </Card>
         </div>
       </div>
 
-      {/* Team status table */}
-      <div style={{marginTop:20}}>
-        <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>SOS Team Live Status</div>
-        <Card style={{padding:0,overflowX:"auto"}}>
-          <table style={{width:"100%",borderCollapse:"collapse"}}>
-            <thead><tr>
-              {["Team","Lead","Members","Vehicle","Status","Speed","Heading","ETA","Assigned To"].map(h=><TH key={h}>{h}</TH>)}
-            </tr></thead>
-            <tbody>{SOS_TEAMS.map((t,i)=>{
-              const assignedEv=SOS_EVENTS.find(e=>e.id===t.assignedTo);
-              return <tr key={t.id} style={{background:i%2===0?"transparent":"rgba(255,255,255,0.012)"}}>
-                <TD><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:8,height:8,borderRadius:"50%",background:t.status==="deployed"?C.amber:C.muted2}}/><span style={{fontWeight:500}}>{t.name}</span></div></TD>
-                <TD>{t.lead}</TD>
-                <TD><Pill color="blue">{t.members} members</Pill></TD>
-                <TD>{t.vehicle}</TD>
-                <TD><Pill color={t.status==="deployed"?"amber":"gray"}>{t.status}</Pill></TD>
-                <TD style={{fontFamily:"monospace",color:t.status==="deployed"?C.green:C.muted}}>{t.speed}</TD>
-                <TD style={{fontFamily:"monospace"}}>{t.heading}°</TD>
-                <TD style={{color:t.eta==="—"?C.muted:C.amber,fontWeight:500}}>{t.eta}</TD>
-                <TD>{assignedEv?<div><div style={{fontSize:12,color:C.text}}>{assignedEv.user}</div><div style={{fontSize:10,color:C.muted}}>{assignedEv.city}</div></div>:<span style={{color:C.muted2}}>—</span>}</TD>
-              </tr>;
-            })}</tbody>
+      {/* Team Status Table */}
+      <div style={{ marginTop: 20 }}>
+        <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>
+          Search & Rescue Live Unit Status
+        </div>
+        <Card style={{ padding: 0, overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                {["Tactical Unit", "Field Commander", "Personnel", "Vehicle Payload", "Status", "Speed", "Heading", "ETA to Rajmachi", "Assigned Incident"].map((h) => (
+                  <TH key={h}>{h}</TH>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {teamsState.map((t, i) => {
+                const assignedEv = activeIncidents.find((e) => e.id === t.assignedTo);
+                return (
+                  <tr key={t.id} style={{ background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.012)" }}>
+                    <TD>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: t.status === "deployed" ? C.red : C.green }} />
+                        <span style={{ fontWeight: 600 }}>{t.name}</span>
+                      </div>
+                    </TD>
+                    <TD>{t.lead}</TD>
+                    <TD><Pill color="blue">{t.members} members</Pill></TD>
+                    <TD>{t.vehicle}</TD>
+                    <TD><Pill color={t.status === "deployed" ? "red" : "green"}>{t.status.toUpperCase()}</Pill></TD>
+                    <TD style={{ fontFamily: "monospace", color: t.status === "deployed" ? C.green : C.muted }}>{t.speed}</TD>
+                    <TD style={{ fontFamily: "monospace" }}>{t.heading}°</TD>
+                    <TD style={{ color: t.eta === "—" ? C.muted : C.amber, fontWeight: 600 }}>{t.eta}</TD>
+                    <TD>
+                      {assignedEv ? (
+                        <div>
+                          <div style={{ fontSize: 12, color: C.red, fontWeight: 600 }}>{assignedEv.user}</div>
+                          <div style={{ fontSize: 10, color: C.muted }}>{assignedEv.city}</div>
+                        </div>
+                      ) : (
+                        <span style={{ color: C.muted2 }}>Tactical Standby</span>
+                      )}
+                    </TD>
+                  </tr>
+                );
+              })}
+            </tbody>
           </table>
         </Card>
       </div>
@@ -2074,18 +2635,27 @@ const PageTripRosters = ({
   const [savingGeofence, setSavingGeofence] = useState({});
   const [geofenceToast, setGeofenceToast] = useState({});
 
-  // New Expedition Modal State
+  // New Expedition Modal & Command States
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creatingExpedition, setCreatingExpedition] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
+  const [deleteModalTrip, setDeleteModalTrip] = useState(null);
+  const [deletingTrip, setDeletingTrip] = useState(false);
+  const [managingTripId, setManagingTripId] = useState(null);
   const [newExpForm, setNewExpForm] = useState({
     name: "Rajmachi Fort Monsoon Trek — Batch 13",
-    date: "Jun 13–14, 2026",
+    startDate: "2026-06-13",
+    startTime: "06:30 AM",
+    endDate: "2026-06-14",
+    endTime: "05:00 PM",
+    duration: "2 Days / 1 Night",
+    pickupLocation: "Lonavala Railway Station (Platform 1 Exit, Ticket Counter)",
+    baseLocation: "Udhewadi Base Village Camp (829m ASL)",
     location: "Rajmachi Fort, Maharashtra",
     elevation: "829m ASL",
-    difficulty: "Moderate",
+    difficulty: "Moderate (14 km Trail Circuit)",
     leader: "Field Guide Ajay Saini",
-    vhfChannel: "145.500 MHz",
+    vhfChannel: "145.500 MHz (VHF Ch 1)",
     maxRoster: 25,
     geofenceRadius: 2500,
   });
@@ -2134,6 +2704,60 @@ const PageTripRosters = ({
       setRosters((p) => ({ ...p, [tripId]: updated }));
     } finally {
       setActionLoading((p) => ({ ...p, [key]: false }));
+    }
+  };
+
+  const handleSetInFieldCommand = async (trip) => {
+    const tripId = trip.id || trip.tripId;
+    setManagingTripId(tripId);
+    try {
+      const res = await setActiveManagedTripRemote(tripId);
+      if (res?.success) {
+        setTrips((prev) =>
+          prev.map((t) => {
+            const tid = t.id || t.tripId;
+            if (tid === tripId) {
+              return { ...t, isManaged: true, status: "in-field" };
+            }
+            return {
+              ...t,
+              isManaged: false,
+              status: t.status === "in-field" ? "upcoming" : (t.status || "upcoming"),
+            };
+          })
+        );
+        setToastMessage(`✓ In-Field Command transferred to "${trip.name}"! Lead Guide: ${trip.leader || "Field Guide Ajay Saini"}`);
+        setTimeout(() => setToastMessage(null), 5000);
+      }
+    } catch (err) {
+      console.error("Failed to switch active managed expedition:", err);
+    } finally {
+      setManagingTripId(null);
+    }
+  };
+
+  const handleConfirmDeleteTrip = async () => {
+    if (!deleteModalTrip || deletingTrip) return;
+    const tripId = deleteModalTrip.id || deleteModalTrip.tripId;
+    setDeletingTrip(true);
+    try {
+      const res = await deleteTripRemote(tripId);
+      if (res?.success) {
+        setTrips((prev) => prev.filter((t) => (t.id || t.tripId) !== tripId));
+        setRosters((prev) => {
+          const next = { ...prev };
+          delete next[tripId];
+          return next;
+        });
+        if (expandedTrip === tripId) setExpandedTrip(null);
+        setToastMessage(`✓ Expedition "${deleteModalTrip.name}" deleted and associated rosters cleared.`);
+        setTimeout(() => setToastMessage(null), 5000);
+      }
+    } catch (err) {
+      console.error("Failed to delete trip:", err);
+    } finally {
+      setDeletingTrip(false);
+      setDeleteModalTrip(null);
     }
   };
 
@@ -2186,15 +2810,25 @@ const PageTripRosters = ({
     if (!newExpForm.name.trim() || creatingExpedition) return;
     setCreatingExpedition(true);
     try {
+      const formattedDate = `${newExpForm.startDate} · ${newExpForm.startTime} – ${newExpForm.endDate} · ${newExpForm.endTime}`;
       const res = await createTripRemote({
         name: newExpForm.name.trim(),
-        date: newExpForm.date.trim(),
+        date: formattedDate,
+        startDate: newExpForm.startDate,
+        startTime: newExpForm.startTime,
+        endDate: newExpForm.endDate,
+        endTime: newExpForm.endTime,
+        duration: newExpForm.duration || "2 Days / 1 Night",
+        pickupLocation: newExpForm.pickupLocation || "Lonavala Railway Station (Platform 1 Exit, Ticket Counter)",
+        baseLocation: newExpForm.baseLocation || "Udhewadi Base Village Camp (829m ASL)",
         location: newExpForm.location.trim(),
         elevation: newExpForm.elevation.trim(),
         difficulty: newExpForm.difficulty,
-        leader: newExpForm.leader.trim(),
-        vhfChannel: newExpForm.vhfChannel.trim(),
+        leader: newExpForm.leader.trim() || "Field Guide Ajay Saini",
+        vhfChannel: newExpForm.vhfChannel.trim() || "145.500 MHz (VHF Ch 1)",
         maxRoster: Number(newExpForm.maxRoster) || 25,
+        isManaged: false,
+        status: "upcoming",
         lat: 18.8286,
         lon: 73.3986,
         geofence: {
@@ -2317,7 +2951,7 @@ const PageTripRosters = ({
               </button>
             </div>
 
-            <form onSubmit={handleCreateExpedition} style={{ padding: "20px 22px" }}>
+            <form onSubmit={handleCreateExpedition} style={{ padding: "20px 22px", maxHeight: "80vh", overflowY: "auto" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
                 <div style={{ gridColumn: "span 2" }}>
                   <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
@@ -2333,19 +2967,95 @@ const PageTripRosters = ({
 
                 <div>
                   <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
-                    Dates
+                    Start Date & Assembly Time
+                  </label>
+                  <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 6 }}>
+                    <Input
+                      type="date"
+                      value={newExpForm.startDate}
+                      onChange={(e) => setNewExpForm((p) => ({ ...p, startDate: e.target.value }))}
+                      required
+                    />
+                    <Input
+                      value={newExpForm.startTime}
+                      onChange={(e) => setNewExpForm((p) => ({ ...p, startTime: e.target.value }))}
+                      placeholder="06:30 AM"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
+                    End Date & Return Time
+                  </label>
+                  <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 6 }}>
+                    <Input
+                      type="date"
+                      value={newExpForm.endDate}
+                      onChange={(e) => setNewExpForm((p) => ({ ...p, endDate: e.target.value }))}
+                      required
+                    />
+                    <Input
+                      value={newExpForm.endTime}
+                      onChange={(e) => setNewExpForm((p) => ({ ...p, endTime: e.target.value }))}
+                      placeholder="05:00 PM"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
+                    Trip Duration
                   </label>
                   <Input
-                    value={newExpForm.date}
-                    onChange={(e) => setNewExpForm((p) => ({ ...p, date: e.target.value }))}
-                    placeholder="e.g. Jun 13–14, 2026"
+                    value={newExpForm.duration}
+                    onChange={(e) => setNewExpForm((p) => ({ ...p, duration: e.target.value }))}
+                    placeholder="e.g. 2 Days / 1 Night"
                     required
                   />
                 </div>
 
                 <div>
                   <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
-                    Location / Region
+                    Trail Difficulty
+                  </label>
+                  <Input
+                    value={newExpForm.difficulty}
+                    onChange={(e) => setNewExpForm((p) => ({ ...p, difficulty: e.target.value }))}
+                    placeholder="e.g. Moderate (14 km Trail Circuit)"
+                    required
+                  />
+                </div>
+
+                <div style={{ gridColumn: "span 2" }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
+                    Pickup & Assembly Point (Maharashtra Transit Hub)
+                  </label>
+                  <Input
+                    value={newExpForm.pickupLocation}
+                    onChange={(e) => setNewExpForm((p) => ({ ...p, pickupLocation: e.target.value }))}
+                    placeholder="e.g. Lonavala Railway Station (Platform 1 Exit, Ticket Counter)"
+                    required
+                  />
+                </div>
+
+                <div style={{ gridColumn: "span 2" }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
+                    Base Village / Trailhead Camp (Altitude & Camp)
+                  </label>
+                  <Input
+                    value={newExpForm.baseLocation}
+                    onChange={(e) => setNewExpForm((p) => ({ ...p, baseLocation: e.target.value }))}
+                    placeholder="e.g. Udhewadi Base Village Camp (829m ASL)"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
+                    Location / Mountain Region
                   </label>
                   <Input
                     value={newExpForm.location}
@@ -2366,14 +3076,19 @@ const PageTripRosters = ({
                   />
                 </div>
 
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
-                    VHF Radio Frequency
-                  </label>
+                <div style={{ gridColumn: "span 2" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                      Walkie-Talkie Channel (VHF Radio)
+                    </label>
+                    <span style={{ fontSize: 10, color: "#93c5fd" }}>
+                      Very High Frequency (136–174 MHz) for no-signal mountain valleys
+                    </span>
+                  </div>
                   <Input
                     value={newExpForm.vhfChannel}
                     onChange={(e) => setNewExpForm((p) => ({ ...p, vhfChannel: e.target.value }))}
-                    placeholder="e.g. 145.500 MHz"
+                    placeholder="e.g. 145.500 MHz (VHF Ch 1)"
                   />
                 </div>
 
@@ -2436,6 +3151,108 @@ const PageTripRosters = ({
                 </Btn>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: DELETE EXPEDITION CONFIRMATION */}
+      {deleteModalTrip && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 999,
+            background: "rgba(3, 7, 18, 0.85)",
+            backdropFilter: "blur(8px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 480,
+              background: "#0b1422",
+              border: "1px solid rgba(239, 68, 68, 0.4)",
+              borderRadius: 16,
+              boxShadow: "0 24px 60px rgba(0, 0, 0, 0.7)",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                padding: "16px 20px",
+                borderBottom: `1px solid ${C.border}`,
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                background: "rgba(239, 68, 68, 0.08)",
+              }}
+            >
+              <span style={{ fontSize: 24 }}>⚠️</span>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "#fca5a5" }}>
+                  Confirm Expedition Deletion
+                </div>
+                <div style={{ fontSize: 11, color: C.muted }}>
+                  Permanently remove this expedition from Coordage
+                </div>
+              </div>
+            </div>
+
+            <div style={{ padding: "20px 22px" }}>
+              <p style={{ fontSize: 13, color: C.text, lineHeight: 1.5, margin: 0, marginBottom: 12 }}>
+                Are you sure you want to permanently delete <strong>"{deleteModalTrip.name}"</strong> (Code: <strong>{deleteModalTrip.code}</strong>)?
+              </p>
+
+              <div
+                style={{
+                  background: "rgba(239, 68, 68, 0.08)",
+                  border: "1px solid rgba(239, 68, 68, 0.25)",
+                  borderRadius: 8,
+                  padding: "10px 14px",
+                  fontSize: 12,
+                  color: "#fca5a5",
+                  lineHeight: 1.45,
+                  marginBottom: 16,
+                }}
+              >
+                ⚠️ <strong>This will perform the following actions:</strong>
+                <ul style={{ margin: "6px 0 0 16px", padding: 0 }}>
+                  <li>Delete all enrolled trekker rosters for this expedition</li>
+                  <li>Clear active expedition status from all enrolled users so they can join new treks</li>
+                  <li>Erase expedition telemetry records from Cloud Firestore</li>
+                </ul>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                <Btn variant="default" onClick={() => setDeleteModalTrip(null)} disabled={deletingTrip}>
+                  Cancel
+                </Btn>
+                <button
+                  type="button"
+                  onClick={handleConfirmDeleteTrip}
+                  disabled={deletingTrip}
+                  style={{
+                    padding: "8px 18px",
+                    borderRadius: 8,
+                    background: "linear-gradient(135deg, #ef4444, #b91c1c)",
+                    border: "none",
+                    color: "#ffffff",
+                    fontSize: 12.5,
+                    fontWeight: 700,
+                    cursor: deletingTrip ? "not-allowed" : "pointer",
+                    boxShadow: "0 4px 14px rgba(239, 68, 68, 0.4)",
+                    fontFamily: "inherit",
+                    opacity: deletingTrip ? 0.7 : 1,
+                  }}
+                >
+                  {deletingTrip ? "Deleting Expedition..." : "Yes, Delete Expedition"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -2617,9 +3434,87 @@ const PageTripRosters = ({
 
       {/* SECTION 2: ACTIVE EXPEDITIONS & ROSTER MANAGEMENT */}
       <div>
+        {/* In-Field Single Active Command Banner */}
+        {(() => {
+          const inFieldTrip = trips.find((t) => t.isManaged || t.status === "in-field") || trips[0];
+          return (
+            <div
+              style={{
+                marginBottom: 20,
+                padding: "16px 20px",
+                borderRadius: 14,
+                background: "linear-gradient(135deg, rgba(34, 197, 94, 0.12), rgba(11, 20, 34, 0.95))",
+                border: "1px solid rgba(34, 197, 94, 0.35)",
+                boxShadow: "0 8px 24px rgba(0, 0, 0, 0.3)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: 14,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <div
+                  style={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: 12,
+                    background: "rgba(34, 197, 94, 0.2)",
+                    border: "1px solid rgba(34, 197, 94, 0.4)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 22,
+                  }}
+                >
+                  🛰️
+                </div>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 800,
+                        letterSpacing: "0.08em",
+                        textTransform: "uppercase",
+                        padding: "2px 8px",
+                        borderRadius: 6,
+                        background: "rgba(34, 197, 94, 0.25)",
+                        border: "1px solid rgba(34, 197, 94, 0.5)",
+                        color: "#86efac",
+                      }}
+                    >
+                      ● Active In-Field Command
+                    </span>
+                    <span style={{ fontSize: 11, color: C.muted2 }}>
+                      (Admin manages 1 live expedition in the field at a time)
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>
+                    {inFieldTrip?.name || "No Active In-Field Expedition"}
+                  </div>
+                  <div style={{ fontSize: 12, color: C.muted, marginTop: 4, display: "flex", gap: 16, flexWrap: "wrap" }}>
+                    <span>🔑 Join Code: <strong style={{ color: "#60a5fa" }}>{inFieldTrip?.code || "—"}</strong></span>
+                    <span>🧭 Field Guide: <strong style={{ color: C.text }}>{inFieldTrip?.leader || "Field Guide Ajay Saini"}</strong></span>
+                    <span>📻 Walkie-Talkie: <strong style={{ color: "#fbbf24" }}>{inFieldTrip?.vhfChannel || "145.500 MHz (VHF Ch 1)"}</strong></span>
+                    <span>👥 Enrolled: <strong style={{ color: "#34d399" }}>{inFieldTrip?.rosterCount || 0} / {inFieldTrip?.maxRoster || 25} Trekkers</strong></span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 11, color: C.muted2 }}>Field Safety Duty-of-Care</div>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: "#86efac" }}>🟢 Live Telemetry Linked</div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
           <span>🏔️</span>
-          <span>Active Expeditions & Roster Controls ({trips.length})</span>
+          <span>Expedition Batches & Management ({trips.length})</span>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -2628,49 +3523,156 @@ const PageTripRosters = ({
             const isExpanded = expandedTrip === tripId;
             const tripRoster = rosters[tripId] || [];
             const approvedMembers = tripRoster.filter((m) => m.status === "approved" || !m.status);
+            const isInField = !!(trip.isManaged || trip.status === "in-field");
 
             return (
-              <Card key={tripId} style={{ background: "rgba(11, 20, 34, 0.95)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
-                  <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <Card
+                key={tripId}
+                style={{
+                  background: isInField
+                    ? "linear-gradient(135deg, rgba(34, 197, 94, 0.06), rgba(11, 20, 34, 0.98))"
+                    : "rgba(11, 20, 34, 0.95)",
+                  border: isInField ? "1px solid rgba(34, 197, 94, 0.4)" : `1px solid ${C.border}`,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 12 }}>
+                  <div style={{ flex: "1 1 500px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
                       <span style={{ background: "rgba(59, 130, 246, 0.15)", border: "1px solid rgba(59, 130, 246, 0.3)", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700, color: "#60a5fa" }}>
                         {trip.code}
                       </span>
-                      <Pill color="green">● ACTIVE</Pill>
+                      {isInField ? (
+                        <span
+                          style={{
+                            fontSize: 10.5,
+                            fontWeight: 800,
+                            letterSpacing: "0.06em",
+                            padding: "3px 9px",
+                            borderRadius: 8,
+                            background: "rgba(34, 197, 94, 0.2)",
+                            border: "1px solid rgba(34, 197, 94, 0.45)",
+                            color: "#86efac",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 5,
+                          }}
+                        >
+                          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px #22c55e" }} />
+                          IN-FIELD COMMAND (ACTIVE)
+                        </span>
+                      ) : (
+                        <span
+                          style={{
+                            fontSize: 10.5,
+                            fontWeight: 700,
+                            padding: "3px 8px",
+                            borderRadius: 8,
+                            background: "rgba(148, 163, 184, 0.12)",
+                            border: "1px solid rgba(148, 163, 184, 0.25)",
+                            color: "#cbd5e1",
+                          }}
+                        >
+                          ⏳ UPCOMING SCHEDULED
+                        </span>
+                      )}
                       <span style={{ fontSize: 12, color: C.muted }}>📍 {trip.location}</span>
                     </div>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{trip.name}</div>
-                    <div style={{ fontSize: 12, color: C.muted, marginTop: 4, display: "flex", gap: 14, flexWrap: "wrap" }}>
-                      <span>📅 {trip.date}</span>
-                      <span>🏔️ Elevation: {trip.elevation || "829m"}</span>
-                      <span>🧭 Leader: {trip.leader || "Field Guide Ajay Saini"}</span>
-                      <span style={{ color: "#fbbf24", fontWeight: 600 }}>
-                        🔒 Geofence: {((geofenceRadiusMap[tripId] ?? (trip.geofence?.radius || 2500)) / 1000).toFixed(1)} km
-                      </span>
+
+                    <div style={{ fontSize: 16.5, fontWeight: 700, color: C.text }}>{trip.name}</div>
+
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 6, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 6 }}>
+                      <div>
+                        📅 <strong>Schedule:</strong> {trip.startDate || trip.date} {trip.startTime ? `at ${trip.startTime}` : ""} → {trip.endDate || ""} {trip.endTime ? `at ${trip.endTime}` : ""}
+                        {trip.duration ? ` (${trip.duration})` : ""}
+                      </div>
+                      <div>
+                        🚌 <strong>Assembly / Pickup:</strong> {trip.pickupLocation || "Lonavala Station (Exit Gate 1)"}
+                      </div>
+                      <div>
+                        🏕️ <strong>Base Camp:</strong> {trip.baseLocation || "Udhewadi Base Camp (829m ASL)"}
+                      </div>
+                      <div>
+                        📻 <strong>Walkie-Talkie Channel:</strong> <span style={{ color: "#fbbf24" }}>{trip.vhfChannel || "145.500 MHz (VHF Ch 1)"}</span>
+                      </div>
+                      <div>
+                        🏔️ <strong>Elevation:</strong> {trip.elevation || "829m ASL"} · <strong>Trail:</strong> {trip.difficulty || "Moderate"}
+                      </div>
+                      <div>
+                        🧭 <strong>Leader:</strong> {trip.leader || "Field Guide Ajay Saini"} · 🔒 <strong>Geofence:</strong> {((geofenceRadiusMap[tripId] ?? (trip.geofence?.radius || 2500)) / 1000).toFixed(1)} km
+                      </div>
                     </div>
                   </div>
 
-                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10 }}>
                     <div style={{ textAlign: "right" }}>
                       <div style={{ fontSize: 11, color: C.muted2 }}>Roster Strength</div>
                       <div style={{ fontSize: 14, fontWeight: 700, color: "#60a5fa" }}>
                         {trip.rosterCount || approvedMembers.length || 0} / {trip.maxRoster || 25} Trekkers
                       </div>
                     </div>
-                    <Btn
-                      variant={isExpanded ? "default" : "primary"}
-                      onClick={() => {
-                        if (isExpanded) {
-                          setExpandedTrip(null);
-                        } else {
-                          setExpandedTrip(tripId);
-                          loadRosterForTrip(tripId);
-                        }
-                      }}
-                    >
-                      {isExpanded ? "Hide Controls ▴" : "Manage Expedition ▾"}
-                    </Btn>
+
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      {!isInField && (
+                        <button
+                          type="button"
+                          onClick={() => handleSetInFieldCommand(trip)}
+                          disabled={managingTripId === tripId}
+                          style={{
+                            padding: "6px 12px",
+                            borderRadius: 8,
+                            background: "linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(16, 185, 129, 0.25))",
+                            border: "1px solid rgba(34, 197, 94, 0.4)",
+                            color: "#86efac",
+                            fontSize: 11.5,
+                            fontWeight: 700,
+                            cursor: managingTripId === tripId ? "not-allowed" : "pointer",
+                            fontFamily: "inherit",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 5,
+                            boxShadow: "0 2px 10px rgba(34, 197, 94, 0.15)",
+                          }}
+                        >
+                          {managingTripId === tripId ? "Transferring..." : "🧭 Take Field Command"}
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => setDeleteModalTrip(trip)}
+                        title="Cancel and delete this expedition from system"
+                        style={{
+                          padding: "6px 12px",
+                          borderRadius: 8,
+                          background: "transparent",
+                          border: "1px solid rgba(239, 68, 68, 0.35)",
+                          color: "#fca5a5",
+                          fontSize: 11.5,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          fontFamily: "inherit",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
+                        }}
+                      >
+                        🗑️ Delete Expedition
+                      </button>
+
+                      <Btn
+                        variant={isExpanded ? "default" : "primary"}
+                        onClick={() => {
+                          if (isExpanded) {
+                            setExpandedTrip(null);
+                          } else {
+                            setExpandedTrip(tripId);
+                            loadRosterForTrip(tripId);
+                          }
+                        }}
+                      >
+                        {isExpanded ? "Hide Controls ▴" : "Manage Expedition ▾"}
+                      </Btn>
+                    </div>
                   </div>
                 </div>
 
@@ -2982,8 +3984,8 @@ const PageTripRosters = ({
                                 <span style={{ color: "#86efac", fontWeight: 600 }}>Active (Locked to Admin)</span>
                               </div>
                               <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                <span>Emergency Radio:</span>
-                                <span style={{ color: "#60a5fa" }}>{trip.vhfChannel || "145.500 MHz VHF"}</span>
+                                <span>Walkie-Talkie Channel (VHF Radio):</span>
+                                <span style={{ color: "#60a5fa" }}>{trip.vhfChannel || "145.500 MHz (VHF Ch 1)"}</span>
                               </div>
                             </div>
                           </div>
@@ -3942,21 +4944,23 @@ const PageSOSAdmin = ({ navigate, users=USERS }) => {
       .filter((user) => user.status === "sos" && !resolvedUserIds.has(user.id))
       .map((user) => {
         const profile = USERS.find((candidate) => candidate.id === user.id || candidate.name === user.name);
-        const template = SOS_EVENTS.find((incident) => incident.userId === user.id) || SOS_EVENTS.find((incident) => incident.user === user.name) || SOS_EVENTS[0];
+        const template = SOS_EVENTS.find((incident) => incident.userId === user.id) || SOS_EVENTS[0] || {};
 
         return {
-          ...template,
-          id: template.id,
+          id: `sos-${user.id}`,
           userId: user.id,
-          user: user.name || profile?.name || template.user,
-          city: user.city || profile?.city || template.city,
-          lat: typeof user.lat === "number" ? user.lat : template.lat,
-          lon: typeof user.lon === "number" ? user.lon : template.lon,
-          blood: user.blood || profile?.blood || template.blood,
-          medical: user.medical || profile?.medical || template.medical,
+          user: user.name || profile?.name || "Trekker in Distress",
+          city: user.city || profile?.city || "Rajmachi Fort Trail",
+          lat: typeof user.lat === "number" ? user.lat : (template.lat ?? 18.8286),
+          lon: typeof user.lon === "number" ? user.lon : (template.lon ?? 73.3986),
+          blood: user.blood || profile?.blood || template.blood || "B+",
+          medical: user.medical || profile?.medical || template.medical || "None reported",
           status: "active",
-          ec: profile?.ec || template.ec,
-          priority: template.priority || "high",
+          ec: profile?.ec || template.ec || "Emergency Contact",
+          priority: "critical",
+          team: "Team Alpha (Lonavala Mountain SAR)",
+          type: "Manual SOS Beacon",
+          time: "Just now",
         };
       });
 
@@ -3964,26 +4968,27 @@ const PageSOSAdmin = ({ navigate, users=USERS }) => {
       .filter((user) => resolvedUserIds.has(user.id))
       .map((user) => {
         const profile = USERS.find((candidate) => candidate.id === user.id || candidate.name === user.name);
-        const template = SOS_EVENTS.find((incident) => incident.userId === user.id) || SOS_EVENTS.find((incident) => incident.user === user.name) || SOS_EVENTS[0];
+        const template = SOS_EVENTS.find((incident) => incident.userId === user.id) || SOS_EVENTS[0] || {};
 
         return {
-          ...template,
-          id: template.id,
+          id: `resolved-${user.id}`,
           userId: user.id,
-          user: user.name || profile?.name || template.user,
-          city: user.city || profile?.city || template.city,
-          lat: typeof user.lat === "number" ? user.lat : template.lat,
-          lon: typeof user.lon === "number" ? user.lon : template.lon,
-          blood: user.blood || profile?.blood || template.blood,
-          medical: user.medical || profile?.medical || template.medical,
+          user: user.name || profile?.name || "Trekker",
+          city: user.city || profile?.city || "Rajmachi Fort Trail",
+          lat: typeof user.lat === "number" ? user.lat : (template.lat ?? 18.8286),
+          lon: typeof user.lon === "number" ? user.lon : (template.lon ?? 73.3986),
+          blood: user.blood || profile?.blood || template.blood || "B+",
+          medical: user.medical || profile?.medical || template.medical || "None reported",
           status: "resolved",
-          ec: profile?.ec || template.ec,
-          priority: template.priority || "high",
+          ec: profile?.ec || template.ec || "Emergency Contact",
+          priority: "high",
+          team: "Team Alpha (Lonavala Mountain SAR)",
+          type: "Manual SOS Beacon",
+          time: "Acknowledged",
         };
       });
 
-    const fallbackStatic = liveIncidents.length > 0 ? [] : SOS_EVENTS;
-    return [...liveIncidents, ...acknowledged, ...fallbackStatic];
+    return [...liveIncidents, ...acknowledged];
   }, [resolvedUserIds, users]);
 
   const activeCount = useMemo(() => events.filter((event) => event.status === "active").length, [events]);
@@ -4939,6 +5944,7 @@ export default function AdminPanel() {
   });
   const [page, setPage] = useState("dashboard");
   const [firestoreUsers, setFirestoreUsers] = useState(USERS);
+  const [firestoreSosEvents, setFirestoreSosEvents] = useState([]);
   const [pendingAdmins, setPendingAdmins] = useState([]);
   const [refreshingPending, setRefreshingPending] = useState(false);
   const [pendingTrekkers, setPendingTrekkers] = useState([]);
@@ -4946,6 +5952,44 @@ export default function AdminPanel() {
   const { liveUsers, sosEvents, connectionState, error } = useAdminTracking({ serverUrl: "http://localhost:4000" });
   const displayUsers = toDisplayUsers(liveUsers, firestoreUsers);
   const navigate = (p) => setPage(p);
+
+  useEffect(() => {
+    const unsub = subscribeToSOSEvents((events) => {
+      if (Array.isArray(events)) {
+        setFirestoreSosEvents(events);
+      }
+    });
+    return () => {
+      if (unsub) unsub();
+    };
+  }, []);
+
+  const allSosEvents = useMemo(() => {
+    const map = new Map();
+    firestoreSosEvents.forEach((ev) => {
+      if (ev?.id) map.set(ev.id, ev);
+    });
+    if (sosEvents && typeof sosEvents.forEach === "function") {
+      sosEvents.forEach((val, key) => {
+        if (!map.has(key)) map.set(key, val);
+      });
+    }
+    return Array.from(map.values());
+  }, [firestoreSosEvents, sosEvents]);
+
+  const activeSOS = useMemo(() => {
+    const activeFromEvents = allSosEvents.filter((e) => e && e.status === "active").length;
+    const activeFromUsers = displayUsers.filter((u) => u.status === "sos").length;
+    return Math.max(activeFromEvents, activeFromUsers);
+  }, [allSosEvents, displayUsers]);
+
+  const handleResolveSOS = async (eventId, userId, notes) => {
+    return await resolveSOSEvent(eventId, userId, notes, activeAdmin?.name || "Lead Command Admin");
+  };
+
+  const handleTriggerDemoSOS = async (payload) => {
+    return await triggerDemoSOSEvent(payload);
+  };
 
   const loadPendingAdmins = useCallback(async () => {
     setRefreshingPending(true);
@@ -5127,7 +6171,14 @@ export default function AdminPanel() {
     "weather-console":<PageMountainWeather/>,
     "live-tracking":  <PageLiveTracking navigate={navigate} users={displayUsers} connectionState={connectionState} error={error}/>,
     "safety-protocol":<PageSafetyProtocol/>,
-    "sos-navigation": <PageSOSNavigation users={displayUsers} sosEvents={Array.from(sosEvents.values())}/>,
+    "sos-navigation": (
+      <PageSOSNavigation
+        users={displayUsers}
+        sosEvents={allSosEvents}
+        onResolveSOS={handleResolveSOS}
+        onTriggerDemo={handleTriggerDemoSOS}
+      />
+    ),
 
     // Backward-compatible fallbacks
     bluetooth:        <PageWearablesRadar users={displayUsers}/>,
@@ -5135,8 +6186,6 @@ export default function AdminPanel() {
     "weather-maps":   <PageMountainWeather/>,
     "feature-access": <PageWearablesRadar users={displayUsers}/>,
   };
-
-  const activeSOS=displayUsers.filter(u=>u.status==="sos").length;
 
   return (
     <div style={{display:"grid",gridTemplateColumns:"240px 1fr",minHeight:"780px",background:C.bg,fontFamily:"var(--font-sans)",color:C.text}}>

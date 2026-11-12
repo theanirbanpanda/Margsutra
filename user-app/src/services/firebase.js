@@ -181,3 +181,122 @@ export const leaveTripInFirestore = async (tripId, userId) => {
     return { success: false, error: err.message };
   }
 };
+
+export const triggerSOSEvent = async (user, trip, location = {}) => {
+  if (!user?.id) return { success: false };
+  const now = new Date().toISOString();
+  const eventId = `sos_${user.id}_${Date.now()}`;
+  const payload = {
+    id: eventId,
+    userId: user.id,
+    name: user.name || "Trekker",
+    email: user.email || "",
+    phone: user.phone || "",
+    blood: user.blood || "B+",
+    medical: user.medical || "None",
+    ec1Name: user.ec1Name || "",
+    ec1Rel: user.ec1Rel || "Family",
+    ec1Ph: user.ec1Ph || "",
+    lat: Number(location.lat) || user.lat || 18.8286,
+    lon: Number(location.lon) || user.lon || 73.3986,
+    altitude: Number(location.altitude) || user.altitude || 829,
+    tripId: trip?.id || trip?.tripId || "trip-001",
+    tripName: trip?.name || "Rajmachi Fort Expedition",
+    tripCode: trip?.code || "RAJM26",
+    status: "active",
+    type: "Manual SOS Beacon",
+    priority: "critical",
+    message: "Emergency SOS broadcast activated from mobile app",
+    timestamp: now,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  // 1. Write to sos_events in Firestore
+  try {
+    await setDoc(doc(db, "sos_events", eventId), payload);
+  } catch (err) {
+    console.warn("Firestore SOS create error:", err);
+  }
+
+  // 2. Update user document to status: "sos" in Firestore
+  try {
+    await setDoc(doc(db, "users", user.id), {
+      status: "sos",
+      activeSosId: eventId,
+      lastSosAt: now,
+      updatedAt: now,
+    }, { merge: true });
+  } catch (err) {
+    console.warn("Firestore user SOS status error:", err);
+  }
+
+  // 3. Post to backend API
+  try {
+    await fetch("http://localhost:5050/api/sos/trigger", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch {}
+
+  return { success: true, eventId, payload };
+};
+
+export const cancelSOSEvent = async (userId, activeSosId = null, reason = "user_cancelled") => {
+  if (!userId) return { success: false };
+  const now = new Date().toISOString();
+
+  // 1. Mark SOS event as resolved / cancelled in Firestore
+  try {
+    if (activeSosId) {
+      await setDoc(doc(db, "sos_events", activeSosId), {
+        status: "resolved",
+        resolution: reason,
+        resolutionNotes: "Trekker cancelled SOS beacon (Self-Resolved)",
+        resolvedAt: now,
+        updatedAt: now,
+      }, { merge: true });
+    } else {
+      const q = query(
+        collection(db, "sos_events"),
+        where("userId", "==", userId),
+        where("status", "==", "active")
+      );
+      const snap = await getDocs(q);
+      for (const d of snap.docs) {
+        await setDoc(d.ref, {
+          status: "resolved",
+          resolution: reason,
+          resolutionNotes: "Trekker cancelled SOS beacon (Self-Resolved)",
+          resolvedAt: now,
+          updatedAt: now,
+        }, { merge: true });
+      }
+    }
+  } catch (err) {
+    console.warn("Firestore SOS cancel error:", err);
+  }
+
+  // 2. Set user status back to "active" in Firestore
+  try {
+    await setDoc(doc(db, "users", userId), {
+      status: "active",
+      activeSosId: null,
+      updatedAt: now,
+    }, { merge: true });
+  } catch (err) {
+    console.warn("Firestore user active status error:", err);
+  }
+
+  // 3. Post to backend API
+  try {
+    await fetch("http://localhost:5050/api/sos/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, activeSosId, reason }),
+    });
+  } catch {}
+
+  return { success: true };
+};

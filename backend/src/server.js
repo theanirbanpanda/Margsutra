@@ -21,6 +21,8 @@ const {
   listTrips,
   findTripByCode,
   createTrip,
+  deleteTrip,
+  setActiveManagedTrip,
   updateTrip,
   joinTrip,
   leaveTrip,
@@ -29,6 +31,10 @@ const {
   approveTripUser,
   removeTripUser,
   getUserActiveTrip,
+  createSOSEvent,
+  resolveSOSEvent,
+  cancelUserSOS,
+  listSOSEvents,
   listPendingAdmins,
   approveAdminUser,
   rejectAdminUser,
@@ -158,6 +164,28 @@ app.put("/api/trips/:tripId", optionalAuth, async (req, res) => {
   }
 });
 
+app.delete("/api/trips/:tripId", optionalAuth, async (req, res) => {
+  try {
+    const result = await deleteTrip(req.params.tripId);
+    if (result.error) return res.status(404).json({ error: result.error });
+    res.json(result);
+  } catch (error) {
+    console.error("Delete trip error:", error);
+    res.status(500).json({ error: "Failed to delete expedition." });
+  }
+});
+
+app.post("/api/trips/:tripId/manage", optionalAuth, async (req, res) => {
+  try {
+    const result = await setActiveManagedTrip(req.params.tripId);
+    if (result.error) return res.status(404).json({ error: result.error });
+    res.json(result);
+  } catch (error) {
+    console.error("Set active managed trip error:", error);
+    res.status(500).json({ error: "Failed to set in-field active expedition." });
+  }
+});
+
 app.get("/api/trips/:code", async (req, res) => {
   try {
     const trip = await findTripByCode(req.params.code);
@@ -222,6 +250,53 @@ app.get("/api/users/:id/active-trip", async (req, res) => {
   } catch (error) {
     console.error("Get user active trip error:", error);
     res.status(500).json({ error: "Failed to load active expedition." });
+  }
+});
+
+app.post("/api/sos/trigger", optionalAuth, async (req, res) => {
+  try {
+    const userId = req.userId || req.body?.userId;
+    const result = await createSOSEvent({ ...req.body, userId });
+    res.status(201).json(result);
+  } catch (error) {
+    console.error("Trigger SOS error:", error);
+    res.status(500).json({ error: "Failed to broadcast SOS event." });
+  }
+});
+
+app.post("/api/sos/cancel", optionalAuth, async (req, res) => {
+  try {
+    const userId = req.userId || req.body?.userId;
+    const reason = req.body?.reason || "user_cancelled";
+    const result = await cancelUserSOS(userId, reason);
+    res.json(result);
+  } catch (error) {
+    console.error("Cancel SOS error:", error);
+    res.status(500).json({ error: "Failed to cancel SOS event." });
+  }
+});
+
+app.post("/api/sos/:id/resolve", optionalAuth, async (req, res) => {
+  try {
+    const notes = req.body?.notes || "Resolved by SAR Commander";
+    const resolvedBy = req.body?.resolvedBy || "admin@coordage.app";
+    const result = await resolveSOSEvent(req.params.id, notes, resolvedBy);
+    if (result.error) return res.status(404).json({ error: result.error });
+    res.json(result);
+  } catch (error) {
+    console.error("Resolve SOS error:", error);
+    res.status(500).json({ error: "Failed to resolve SOS event." });
+  }
+});
+
+app.get("/api/sos/events", async (req, res) => {
+  try {
+    const limit = Number(req.query.limit) || 50;
+    const events = await listSOSEvents(limit);
+    res.json({ success: true, events });
+  } catch (error) {
+    console.error("List SOS events error:", error);
+    res.status(500).json({ error: "Failed to load SOS events." });
   }
 });
 

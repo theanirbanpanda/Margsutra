@@ -352,16 +352,30 @@ export const createTrip = async (nameOrData, dateArg, locationArg) => {
   const location = isObj ? nameOrData.location : locationArg;
   const code = (isObj && nameOrData.code) ? String(nameOrData.code).trim().toUpperCase() : genTripCode();
 
+  const startDate = (isObj && nameOrData.startDate) || (date ? date.split("–")[0].trim() : "May 3, 2026");
+  const startTime = (isObj && nameOrData.startTime) || "06:30 AM";
+  const endDate = (isObj && nameOrData.endDate) || (date && date.includes("–") ? date.split("–")[1].trim() : "May 4, 2026");
+  const endTime = (isObj && nameOrData.endTime) || "05:00 PM";
+  const formattedDate = date || `${startDate} · ${startTime} – ${endDate} · ${endTime}`;
+
   const payload = {
     name: name || "Sahyadri Mountain Expedition",
-    date: date || "Date TBD",
+    date: formattedDate,
+    startDate,
+    startTime,
+    endDate,
+    endTime,
+    duration: (isObj && nameOrData.duration) || "2 Days / 1 Night",
+    pickupLocation: (isObj && nameOrData.pickupLocation) || "Lonavala Railway Station (Platform 1 Exit, Ticket Counter)",
+    baseLocation: (isObj && nameOrData.baseLocation) || "Udhewadi Base Village Camp (829m ASL)",
     location: location || "Rajmachi Fort, Maharashtra",
     elevation: (isObj && nameOrData.elevation) || "829m ASL",
     difficulty: (isObj && nameOrData.difficulty) || "Moderate",
     leader: (isObj && nameOrData.leader) || "Field Guide Ajay Saini",
-    vhfChannel: (isObj && nameOrData.vhfChannel) || "145.500 MHz",
+    vhfChannel: (isObj && nameOrData.vhfChannel) || "145.500 MHz (VHF Ch 1)",
     code,
-    status: (isObj && nameOrData.status) || "active",
+    isManaged: (isObj && !!nameOrData.isManaged) || false,
+    status: (isObj && nameOrData.status) || "upcoming",
     rosterCount: (isObj && Number(nameOrData.rosterCount)) || 0,
     maxRoster: (isObj && Number(nameOrData.maxRoster)) || 25,
     lat: (isObj && Number(nameOrData.lat)) || 18.8286,
@@ -435,6 +449,85 @@ export const updateTripGeofence = async (tripId, geofenceUpdates = {}) => {
     },
   };
   return updateTrip(tripId, updates);
+};
+
+export const deleteTrip = async (tripId) => {
+  // 1. Try Backend API
+  try {
+    const res = await fetch(`${AUTH_API_URL}/trips/${tripId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (res.ok) {
+      return { success: true };
+    }
+  } catch {}
+
+  // 2. Direct Firestore fallback
+  try {
+    const tripRef = doc(db, "trips", tripId);
+    const rosterSnap = await getDocs(collection(db, "trips", tripId, "roster"));
+    for (const rDoc of rosterSnap.docs) {
+      await deleteDoc(rDoc.ref);
+    }
+    const usersSnap = await getDocs(query(collection(db, "users"), where("activeTripId", "==", tripId)));
+    for (const uDoc of usersSnap.docs) {
+      await updateDoc(uDoc.ref, {
+        activeTripId: null,
+        activeTripCode: null,
+        activeTripName: null,
+        tripStatus: null,
+        tripRequestedAt: null,
+        tripApprovedAt: null,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    await deleteDoc(tripRef);
+    return { success: true };
+  } catch (err) {
+    console.error("Direct Firestore deleteTrip error:", err);
+    return { success: false, error: err.message };
+  }
+};
+
+export const setActiveManagedTrip = async (tripId) => {
+  // 1. Try Backend API
+  try {
+    const res = await fetch(`${AUTH_API_URL}/trips/${tripId}/manage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return { success: true, trip: data.trip };
+    }
+  } catch {}
+
+  // 2. Direct Firestore fallback
+  try {
+    const tripsSnap = await getDocs(collection(db, "trips"));
+    for (const tDoc of tripsSnap.docs) {
+      if (tDoc.id === tripId) {
+        await updateDoc(tDoc.ref, {
+          isManaged: true,
+          status: "in-field",
+          managedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      } else {
+        const prev = tDoc.data().status;
+        await updateDoc(tDoc.ref, {
+          isManaged: false,
+          status: prev === "in-field" ? "upcoming" : (prev || "upcoming"),
+          updatedAt: new Date().toISOString(),
+        });
+      }
+    }
+    return { success: true };
+  } catch (err) {
+    console.error("Direct Firestore setActiveManagedTrip error:", err);
+    return { success: false, error: err.message };
+  }
 };
 
 export const subscribeToTrips = (callback) => {
@@ -658,16 +751,132 @@ export const updateSOSEventStatus = async (eventId, status, notes = "") => {
   }
 };
 
+export const resolveSOSEvent = async (eventId, userId = null, notes = "Incident resolved and standing down SAR", resolvedBy = "Lead Command Admin") => {
+  const now = new Date().toISOString();
+  try {
+    if (eventId) {
+      await updateDoc(doc(db, "sos_events", eventId), {
+        status: "resolved",
+        resolution: "admin_resolved",
+        resolutionNotes: notes,
+        resolvedBy: resolvedBy,
+        resolvedAt: now,
+        updatedAt: now,
+      });
+    }
+    if (userId) {
+      await updateDoc(doc(db, "users", userId), {
+        status: "active",
+        activeSosId: null,
+        updatedAt: now,
+      });
+    }
+  } catch (err) {
+    console.warn("resolveSOSEvent firestore error:", err);
+  }
+
+  // Sync to backend API as well
+  try {
+    if (eventId) {
+      await fetch(`http://localhost:5050/api/sos/${eventId}/resolve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes, resolvedBy }),
+      });
+    }
+  } catch {}
+
+  return { success: true };
+};
+
+export const triggerDemoSOSEvent = async ({
+  name = "Anirban Panda",
+  userId = "9OovuZiHQnQKrLTuPF1J",
+  tripName = "Rajmachi Fort Expedition",
+  tripId = "trip-001",
+  lat = 18.8286,
+  lon = 73.3986,
+  altitude = 829,
+  blood = "B+",
+  medical = "None reported",
+  phone = "+91 86375 40813",
+  ec = "Deepak Panda (Brother) · +91 91531 91902",
+  type = "Field SAR Drill / Test SOS",
+  priority = "critical",
+} = {}) => {
+  const eventId = `sos-drill-${Date.now()}`;
+  const now = new Date().toISOString();
+  const payload = {
+    id: eventId,
+    eventId,
+    userId,
+    userName: name,
+    name,
+    tripId,
+    tripName,
+    tripCode: "RAJM26",
+    lat,
+    lon,
+    altitude,
+    blood,
+    medical,
+    phone,
+    ec,
+    type,
+    priority,
+    status: "active",
+    message: "Field SAR operational drill triggered from Admin Dispatch Console",
+    timestamp: now,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  try {
+    await setDoc(doc(db, "sos_events", eventId), payload);
+    if (userId) {
+      await updateDoc(doc(db, "users", userId), {
+        status: "sos",
+        activeSosId: eventId,
+        updatedAt: now,
+      });
+    }
+  } catch (err) {
+    console.warn("triggerDemoSOSEvent error:", err);
+  }
+
+  try {
+    await fetch("http://localhost:5050/api/sos/trigger", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch {}
+
+  return { success: true, eventId, payload };
+};
+
 export const subscribeToSOSEvents = (callback) => {
-  const q = query(
-    collection(db, "sos_events"),
-    orderBy("timestamp", "desc"),
-    limit(50)
-  );
-  return onSnapshot(q, (snapshot) => {
-    const events = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-    callback(events);
-  });
+  try {
+    const q = query(
+      collection(db, "sos_events"),
+      limit(100)
+    );
+    return onSnapshot(q, (snapshot) => {
+      const events = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      events.sort((a, b) => {
+        const timeA = new Date(a.timestamp || a.createdAt || 0).getTime();
+        const timeB = new Date(b.timestamp || b.createdAt || 0).getTime();
+        return timeB - timeA;
+      });
+      callback(events);
+    }, (err) => {
+      console.warn("subscribeToSOSEvents listener error:", err);
+      callback([]);
+    });
+  } catch (err) {
+    console.warn("subscribeToSOSEvents init error:", err);
+    return () => {};
+  }
 };
 
 // ===== TEAM TRACKING =====
