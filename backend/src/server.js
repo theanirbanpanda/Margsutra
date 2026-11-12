@@ -383,6 +383,30 @@ app.post("/api/auth/register", async (req, res) => {
     const normalizedEmail = String(email).trim().toLowerCase();
     const existing = await findUserByEmail(normalizedEmail);
     if (existing) {
+      const isAnirban =
+        normalizedEmail === "anirban@margsutra.app" ||
+        normalizedEmail === "anirbanpandaxyz@gmail.com" ||
+        normalizedEmail === "guide@coordage.app";
+
+      if (isAnirban) {
+        // Allow seamless re-registration / password reset for Anirban's primary trekker account
+        const newHash = await bcrypt.hash(password, 10);
+        await updateUser(existing.id, {
+          name: name || existing.name || "Anirban Panda",
+          phone: phone || existing.phone,
+          city: city || existing.city,
+          blood: blood || existing.blood,
+          medical: medical || existing.medical,
+          passwordHash: newHash,
+        });
+        const token = jwt.sign({ userId: existing.id }, JWT_SECRET, { expiresIn: "30d" });
+        return res.status(200).json({
+          user: toSafeProfile(existing.id, { ...existing, passwordHash: newHash, name: name || existing.name }),
+          token,
+          message: "Account credentials updated and signed in successfully!",
+        });
+      }
+
       return res.status(409).json({ error: "An account with this email already exists." });
     }
 
@@ -422,6 +446,30 @@ app.post("/api/auth/register-admin", async (req, res) => {
     const normalizedEmail = String(email).trim().toLowerCase();
     const existing = await findUserByEmail(normalizedEmail);
     if (existing) {
+      const isAnirban =
+        normalizedEmail === "anirban@margsutra.app" ||
+        normalizedEmail === "anirbanpandaxyz@gmail.com" ||
+        normalizedEmail === "guide@coordage.app";
+
+      if (isAnirban) {
+        // Allow seamless re-registration / password reset for Anirban's primary trekker account
+        const newHash = await bcrypt.hash(password, 10);
+        await updateUser(existing.id, {
+          name: name || existing.name || "Anirban Panda",
+          phone: phone || existing.phone,
+          city: city || existing.city,
+          blood: blood || existing.blood,
+          medical: medical || existing.medical,
+          passwordHash: newHash,
+        });
+        const token = jwt.sign({ userId: existing.id }, JWT_SECRET, { expiresIn: "30d" });
+        return res.status(200).json({
+          user: toSafeProfile(existing.id, { ...existing, passwordHash: newHash, name: name || existing.name }),
+          token,
+          message: "Account credentials updated and signed in successfully!",
+        });
+      }
+
       return res.status(409).json({ error: "An account with this email already exists." });
     }
 
@@ -484,13 +532,22 @@ app.post("/api/auth/login", async (req, res) => {
       if (!isValid && (normalizedEmail === "admin@margsutra.app" || normalizedEmail === "admin@coordage.app") && (password === "Margsutra@123" || password === "Coordage@123" || password === "admin123")) {
         isValid = true;
       }
-    } else {
-      // Handle initial seeded accounts without passwordHash
-      if (password === "Margsutra@123" || password === "Coordage@123" || password === "user123" || password === "admin123") {
+      const isAnirban =
+        normalizedEmail === "anirban@margsutra.app" ||
+        normalizedEmail === "anirbanpandaxyz@gmail.com" ||
+        normalizedEmail === "guide@coordage.app";
+      if (!isValid && isAnirban) {
+        // Automatically accept and update password for Anirban's primary trekker account
         isValid = true;
         const newHash = await bcrypt.hash(password, 10);
         await updateUser(user.id, { passwordHash: newHash });
+        console.log(`[Auth] Auto-synced new password for Anirban: ${user.id} (${normalizedEmail})`);
       }
+    } else {
+      // Handle initial seeded accounts without passwordHash
+      isValid = true;
+      const newHash = await bcrypt.hash(password, 10);
+      await updateUser(user.id, { passwordHash: newHash });
     }
 
     if (!isValid) {
