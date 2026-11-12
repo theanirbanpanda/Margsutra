@@ -5954,13 +5954,31 @@ export default function AdminPanel() {
   const navigate = (p) => setPage(p);
 
   useEffect(() => {
+    // 1. Firestore real-time listener
     const unsub = subscribeToSOSEvents((events) => {
       if (Array.isArray(events)) {
         setFirestoreSosEvents(events);
       }
     });
+
+    // 2. Direct Backend REST API Polling every 2.5s (bypasses any client rule issues)
+    const pollBackendSOS = async () => {
+      try {
+        const res = await fetch(`${AUTH_API_URL}/sos/events?limit=50`);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.events)) {
+            setFirestoreSosEvents(data.events);
+          }
+        }
+      } catch {}
+    };
+    pollBackendSOS();
+    const interval = setInterval(pollBackendSOS, 2500);
+
     return () => {
       if (unsub) unsub();
+      clearInterval(interval);
     };
   }, []);
 
@@ -6024,6 +6042,13 @@ export default function AdminPanel() {
       }
     };
   }, [activeSOS]);
+
+  // Auto-switch view to Realtime SOS Dispatch whenever an active distress incident is detected
+  useEffect(() => {
+    if (activeSOS > 0 && page === "dashboard") {
+      setPage("sos-navigation");
+    }
+  }, [activeSOS, page]);
 
   const handleResolveSOS = async (eventId, userId, notes) => {
     return await resolveSOSEvent(eventId, userId, notes, activeAdmin?.name || "Lead Command Admin");
@@ -6280,10 +6305,61 @@ export default function AdminPanel() {
         </div>
       </aside>
 
-      {/* Main content */}
-      <main style={{overflow:"auto",padding:24}}>
-        {pages[page]||<div style={{color:C.muted}}>Page not found.</div>}
-      </main>
+      {/* Main content container */}
+      <div style={{display:"flex",flexDirection:"column",minWidth:0,height:"100%"}}>
+        {activeSOS > 0 && (
+          <div
+            onClick={() => setPage("sos-navigation")}
+            style={{
+              background: "linear-gradient(90deg, #7f1d1d 0%, #dc2626 50%, #991b1b 100%)",
+              color: "#ffffff",
+              padding: "12px 24px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              cursor: "pointer",
+              boxShadow: "0 6px 25px rgba(220, 38, 38, 0.6)",
+              zIndex: 99999,
+              animation: "ud-sos-blink 1.2s infinite",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <span style={{ fontSize: 26 }}>🚨</span>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 900, letterSpacing: "0.04em" }}>
+                  EMERGENCY DISTRESS BEACON ACTIVE · {allSosEvents.find(e => e.status === "active")?.name || "Anirban Panda"} IN DISTRESS
+                </div>
+                <div style={{ fontSize: 12, opacity: 0.95 }}>
+                  Telemetry received from field · Realtime SAR Incident Dispatch console activated
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setPage("sos-navigation");
+              }}
+              style={{
+                background: "#ffffff",
+                color: "#b91c1c",
+                border: "none",
+                borderRadius: 8,
+                padding: "8px 18px",
+                fontSize: 13,
+                fontWeight: 900,
+                cursor: "pointer",
+                boxShadow: "0 2px 10px rgba(0,0,0,0.3)",
+              }}
+            >
+              🚨 VIEW RESCUE DISPATCH HUD →
+            </button>
+          </div>
+        )}
+
+        <main style={{flex:1,overflow:"auto",padding:24}}>
+          {pages[page]||<div style={{color:C.muted}}>Page not found.</div>}
+        </main>
+      </div>
     </div>
   );
 }
