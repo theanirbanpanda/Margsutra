@@ -6563,6 +6563,15 @@ export default function AdminPanel() {
   const displayUsers = toDisplayUsers(liveUsers, firestoreUsers);
   const navigate = (p) => setPage(p);
 
+  // Mutable mirror of the active-SOS count so the poll effect below can pick
+  // a sensible cadence without re-subscribing.
+  const activeSosRef = useRef(0);
+  const socketRef = useRef(null);
+
+  useEffect(() => {
+    socketRef.current = connectionState;
+  }, [connectionState]);
+
   useEffect(() => {
     // 1. Firestore real-time listener
     const unsub = subscribeToSOSEvents((events) => {
@@ -6571,24 +6580,58 @@ export default function AdminPanel() {
       }
     });
 
-    // 2. Direct Backend REST API Polling every 2.5s (bypasses any client rule issues)
+    // 2. Direct Backend REST API Polling (bypasses any client rule issues).
+    //    Adaptive cadence:
+    //      - socket offline  → poll fast (this REST feed is then the only
+    //                           live source for the console)
+    //      - SOS active      → poll moderately fast
+    //      - all quiet       → poll rarely (the default 2.5s poll drained
+    //                           the project's Firestore read quota)
+    //    Errors back off exponentially so a throttled project is not hammered.
+    let timer = null;
+    let stopped = false;
+    let failures = 0;
+
     const pollBackendSOS = async () => {
+      if (stopped) return;
+      let nextDelay = 60000;
       try {
-        const res = await fetch(`${AUTH_API_URL}/sos/events?limit=50`);
+        const res = await fetch(`${AUTH_API_URL}/sos/events?limit=20`);
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data.events)) {
             setFirestoreSosEvents(data.events);
           }
+          failures = 0;
+          if (document.hidden) nextDelay = 120000;
+          else if (socketRef.current !== "connected") nextDelay = 10000;
+          else if (activeSosRef.current > 0) nextDelay = 15000;
+          else nextDelay = 60000;
+        } else {
+          failures += 1;
+          nextDelay = Math.min(120000, 15000 * Math.pow(2, failures));
         }
-      } catch { }
+      } catch {
+        failures += 1;
+        nextDelay = Math.min(120000, 15000 * Math.pow(2, failures));
+      }
+      if (!stopped) timer = setTimeout(pollBackendSOS, nextDelay);
     };
+
     pollBackendSOS();
-    const interval = setInterval(pollBackendSOS, 2500);
+
+    // React immediately when the operator comes back to the console.
+    const onVisibility = () => {
+      if (document.hidden) return;
+      if (timer) clearTimeout(timer);
+      pollBackendSOS();
+    };
 
     return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
       if (unsub) unsub();
-      clearInterval(interval);
     };
   }, []);
 
@@ -6610,6 +6653,11 @@ export default function AdminPanel() {
     const activeFromUsers = displayUsers.filter((u) => u.status === "sos").length;
     return Math.max(activeFromEvents, activeFromUsers);
   }, [allSosEvents, displayUsers]);
+
+  // Keep the poll cadence informed by the live SOS count.
+  useEffect(() => {
+    activeSosRef.current = activeSOS;
+  }, [activeSOS]);
 
   // SAR Command Audio Alert Chime (plays sound when emergency beacon is received)
   useEffect(() => {
@@ -6748,10 +6796,12 @@ export default function AdminPanel() {
   useEffect(() => {
     loadPendingAdmins();
     loadPendingTrekkers();
+    // 30s keeps the approval queue fresh without draining the Firestore
+    // read quota (the console can stay open for hours).
     const interval = setInterval(() => {
       loadPendingAdmins();
       loadPendingTrekkers();
-    }, 12000);
+    }, 30000);
     return () => clearInterval(interval);
   }, [loadPendingAdmins, loadPendingTrekkers]);
 
@@ -6791,7 +6841,9 @@ export default function AdminPanel() {
     };
 
     loadUsers();
-    const refresh = setInterval(loadUsers, 15050);
+    // 60s is plenty for an operator roster and keeps the Firestore read
+    // quota from being drained by a background tab.
+    const refresh = setInterval(loadUsers, 60000);
     return () => {
       cancelled = true;
       clearInterval(refresh);

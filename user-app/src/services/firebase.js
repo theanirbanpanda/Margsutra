@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, doc, setDoc, query, where, getDocs, getDoc, deleteDoc, onSnapshot } from "firebase/firestore";
+import { getFirestore, connectFirestoreEmulator, collection, doc, setDoc, query, where, getDocs, getDoc, deleteDoc, onSnapshot } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -12,6 +12,13 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 
 export const db = getFirestore(app);
+if (import.meta.env.VITE_USE_FIRESTORE_EMULATOR === "true") {
+  try {
+    connectFirestoreEmulator(db, "127.0.0.1", 8080);
+  } catch (e) {
+    console.warn("Firestore emulator already connected:", e?.message || e);
+  }
+}
 
 export const updateUserProfileInFirestore = async (userId, updates) => {
   if (!userId) return false;
@@ -80,15 +87,18 @@ export const subscribeToUserActiveTrip = (userId, callback) => {
   }
 
   let isMounted = true;
+  let failures = 0;
 
   const pullActiveTrip = async () => {
     if (!isMounted) return;
     try {
       const activeData = await fetchUserActiveTrip(userId);
       if (isMounted) {
+        if (activeData !== undefined) failures = 0; // undefined === transient failure
         callback(activeData);
       }
     } catch (e) {
+      failures += 1;
       console.warn("Active trip poll error:", e);
     }
   };
@@ -96,8 +106,9 @@ export const subscribeToUserActiveTrip = (userId, callback) => {
   // Immediate pull
   pullActiveTrip();
 
-  // Fast polling every 2 seconds so admin approval/removal reflects in real time!
-  const pollTimer = setInterval(pullActiveTrip, 10000);
+  // Poll every 20s (plus on tab focus) so admin approval/removal reflects
+  // quickly without burning through the Firestore read quota.
+  const pollTimer = setInterval(pullActiveTrip, 20000);
 
   // Also listen for browser tab focus/visibility
   const onFocus = () => pullActiveTrip();

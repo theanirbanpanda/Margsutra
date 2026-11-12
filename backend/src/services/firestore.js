@@ -3,32 +3,48 @@ const fs = require("fs");
 const { initializeApp, cert, getApps } = require("firebase-admin/app");
 const { getFirestore, Timestamp } = require("firebase-admin/firestore");
 
-// Locate service account key
-const possiblePaths = [
-  path.resolve(__dirname, "../../../serviceAccountKey.json"),
-  path.resolve(__dirname, "../../serviceAccountKey.json"),
-  path.resolve(process.cwd(), "serviceAccountKey.json"),
-  path.resolve(process.cwd(), "../serviceAccountKey.json"),
-  process.env.FIREBASE_SERVICE_ACCOUNT_PATH && path.resolve(process.cwd(), process.env.FIREBASE_SERVICE_ACCOUNT_PATH),
-].filter(Boolean);
+// Set FIRESTORE_EMULATOR_HOST to run against the local Firestore emulator
+// (no credentials or production quota needed). Otherwise use the service
+// account key.
+const usingEmulator = !!(process.env.FIRESTORE_EMULATOR_HOST || "").trim();
+const emulatorProjectId = process.env.FIRESTORE_PROJECT_ID || "demo-margsutra";
 
 let serviceAccount = null;
-for (const p of possiblePaths) {
-  if (fs.existsSync(p)) {
-    serviceAccount = require(p);
-    break;
+if (!usingEmulator) {
+  // Locate service account key
+  const possiblePaths = [
+    path.resolve(__dirname, "../../../serviceAccountKey.json"),
+    path.resolve(__dirname, "../../serviceAccountKey.json"),
+    path.resolve(process.cwd(), "serviceAccountKey.json"),
+    path.resolve(process.cwd(), "../serviceAccountKey.json"),
+    process.env.FIREBASE_SERVICE_ACCOUNT_PATH && path.resolve(process.cwd(), process.env.FIREBASE_SERVICE_ACCOUNT_PATH),
+  ].filter(Boolean);
+
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      serviceAccount = require(p);
+      break;
+    }
+  }
+
+  if (!serviceAccount) {
+    throw new Error("Could not find serviceAccountKey.json in any expected path: " + possiblePaths.join(", "));
   }
 }
 
-if (!serviceAccount) {
-  throw new Error("Could not find serviceAccountKey.json in any expected path: " + possiblePaths.join(", "));
-}
-
 const firebaseApp = getApps().length === 0
-  ? initializeApp({ credential: cert(serviceAccount) })
+  ? initializeApp(
+      usingEmulator
+        ? { projectId: emulatorProjectId }
+        : { credential: cert(serviceAccount) }
+    )
   : getApps()[0];
 
 const db = getFirestore(firebaseApp);
+
+if (usingEmulator) {
+  console.log(`🔥 Firestore emulator mode → ${process.env.FIRESTORE_EMULATOR_HOST} (project ${emulatorProjectId})`);
+}
 
 function toSafeProfile(id, data = {}) {
   const lastSeen = data.lastSeenAt || data.lastSeen;
@@ -872,16 +888,135 @@ async function cancelUserSOS(userId, reason = "user_cancelled") {
   return { success: true, userId, resolvedCount: activeSnap.size };
 }
 
-async function listSOSEvents(limitCount = 50) {
+async function listSOSEvents(limitCount = 25) {
+  const limit = Math.max(1, Math.min(Number(limitCount) || 25, 100));
   try {
     const snapshot = await db.collection("sos_events")
       .orderBy("createdAt", "desc")
-      .limit(limitCount)
+      .limit(limit)
       .get();
     return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-  } catch {
-    const snapshot = await db.collection("sos_events").get();
-    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (error) {
+    // Never fall back to an unbounded collection read here — reading the
+    // whole sos_events collection on every poll is what used to drain the
+    // project's daily Firestore read quota.
+    console.warn("listSOSEvents ordered query failed:", error?.message || error);
+    try {
+      const snapshot = await db.collection("sos_events").limit(limit).get();
+      return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+    } catch (fallbackError) {
+      console.warn("listSOSEvents fallback failed:", fallbackError?.message || fallbackError);
+      return [];
+    }
+  }
+}
+
+const EMULATOR_USERS = [
+  {
+    id: "demo-admin-001",
+    email: "admin@margsutra.app",
+    password: "admin123",
+    name: "Super Admin",
+    role: "admin",
+    phone: "+91 98765 00000",
+    blood: "O+",
+    organization: "Margsutra Expedition Command & SAR",
+    roleTitle: "Lead Command Dispatcher",
+  },
+  {
+    id: "demo-guide-001",
+    email: "guide@margsutra.app",
+    password: "guide123",
+    name: "Field Guide Ajay Saini",
+    role: "admin",
+    phone: "+91 98765 11111",
+    blood: "B+",
+    organization: "Sahyadri Field Operations",
+    roleTitle: "Expedition Field Guide",
+  },
+  {
+    id: "demo-user-001",
+    email: "anirban@margsutra.app",
+    password: "user123",
+    name: "Anirban Panda",
+    role: "user",
+    phone: "+91 90000 12345",
+    blood: "B+",
+    medical: "None",
+    ec1Name: "Ipsita Panda",
+    ec1Rel: "Sister",
+    ec1Ph: "+91 90000 12346",
+  },
+];
+
+// Local-only demo data for the Firestore emulator. Safe to run on every boot:
+// it only creates documents that don't exist yet.
+async function seedEmulatorData() {
+  if (!usingEmulator) return { skipped: true };
+  const bcrypt = require("bcryptjs");
+  const now = new Date();
+
+  for (const u of EMULATOR_USERS) {
+    const ref = db.collection("users").doc(u.id);
+    const snap = await ref.get();
+    if (snap.exists) continue;
+    await ref.set({
+      id: u.id,
+      uid: u.id,
+      email: u.email,
+      emailLower: u.email,
+      name: u.name,
+      displayName: u.name,
+      role: u.role,
+      status: "approved",
+      approved: true,
+      passwordHash: await bcrypt.hash(u.password, 10),
+      phone: u.phone || "",
+      blood: u.blood || "B+",
+      medical: u.medical || "None",
+      ec1Name: u.ec1Name || "",
+      ec1Rel: u.ec1Rel || "",
+      ec1Ph: u.ec1Ph || "",
+      organization: u.organization || "",
+      roleTitle: u.roleTitle || "",
+      features: {},
+      createdAt: now,
+      updatedAt: now,
+    }, { merge: true });
+    console.log(`👤 Emulator user ready: ${u.email} / ${u.password}`);
+  }
+
+  // A second expedition so the "enrolled → other trips locked" flow is visible.
+  const harExists = await db.collection("trips").where("code", "==", "HAR26").limit(1).get();
+  if (harExists.empty) {
+    await createTrip({
+      name: "Harishchandragad Peak & Konkan Kada Trek",
+      code: "HAR26",
+      startDate: "Dec 19, 2026",
+      startTime: "05:30 AM",
+      endDate: "Dec 20, 2026",
+      endTime: "06:00 PM",
+      duration: "2 Days / 1 Night",
+      location: "Harishchandragad, Ahmednagar",
+      elevation: "1,424m ASL",
+      difficulty: "Challenging · 22 km trail",
+      pickupLocation: "Kalyan Railway Station, Platform 1",
+      baseLocation: "Pachnai Village Base Camp",
+      instructions:
+        "Report at Kalyan station by 05:00 AM. The Konkan Kada descent is exposed — follow the rope line " +
+        "and the guide at all times. Carry 3L of water; there is no refill after Pachnai.",
+      gearList: ["Trekking shoes with grip", "3L water minimum", "Headlamp", "Windproof layer", "Personal medication + ID"],
+      notes: "Confirmation and payment are handled by the Margsutra team over WhatsApp.",
+      maxRoster: 20,
+      baseRosterCount: 0,
+      createdBy: "demo-guide-001",
+      adminInCharge: "demo-guide-001",
+      status: "upcoming",
+      lat: 19.3888,
+      lon: 73.7761,
+      geofence: { lat: 19.3888, lon: 73.7761, radius: 3000, zoneName: "Harishchandragad Safe Corridor" },
+    });
+    console.log("🌱 Seeded secondary demo expedition HAR26");
   }
 }
 
@@ -995,6 +1130,7 @@ module.exports = {
   findTripByCode,
   createTrip,
   seedDemoTrip,
+  seedEmulatorData,
   deleteTrip,
   setActiveManagedTrip,
   updateTrip,

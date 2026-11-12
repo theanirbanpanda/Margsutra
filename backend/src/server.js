@@ -22,6 +22,7 @@ const {
   findTripByCode,
   createTrip,
   seedDemoTrip,
+  seedEmulatorData,
   HttpError,
   deleteTrip,
   setActiveManagedTrip,
@@ -120,11 +121,34 @@ app.post("/api/config/theme", requireAuth, async (req, res) => {
   }
 });
 
+// Firestore read quota is shared across the whole project. When it runs out
+// the API should say so clearly (and serve the last good data where it can)
+// instead of failing with an opaque 500.
+function isQuotaError(error) {
+  const code = error?.code ?? error?.errorInfo?.code;
+  if (code === 8 || code === "8" || code === "RESOURCE_EXHAUSTED") return true;
+  return /quota exceeded|resource_exhausted/i.test(error?.message || "");
+}
+
+// Last known good trip list, used as a fallback while the quota is exhausted.
+let tripsCache = { at: 0, data: null };
+
 app.get("/api/trips", async (_req, res) => {
   try {
     const trips = await listTrips();
+    tripsCache = { at: Date.now(), data: trips };
     res.json(trips);
   } catch (error) {
+    if (isQuotaError(error)) {
+      console.warn("⚠️  Firestore read quota exhausted while listing trips.");
+      if (tripsCache.data) {
+        return res.json(tripsCache.data); // stale-but-usable
+      }
+      return res.status(503).json({
+        error: "Firestore read quota temporarily exhausted. Try again in a few minutes.",
+        quotaExceeded: true,
+      });
+    }
     console.error("List trips error:", error);
     res.status(500).json({ error: "Failed to load trips." });
   }
@@ -359,10 +383,20 @@ app.post("/api/sos/:id/resolve", optionalAuth, async (req, res) => {
   }
 });
 
+// Short-lived cache so several open consoles don't each burn a Firestore
+// read on the same SOS feed. 5s is short enough for an emergency feed.
+let sosEventsCache = { at: 0, key: "", data: null };
+
 app.get("/api/sos/events", async (req, res) => {
   try {
-    const limit = Number(req.query.limit) || 50;
+    const limit = Math.max(1, Math.min(Number(req.query.limit) || 25, 100));
+    const key = String(limit);
+    const now = Date.now();
+    if (sosEventsCache.key === key && now - sosEventsCache.at < 5000 && sosEventsCache.data) {
+      return res.json({ success: true, events: sosEventsCache.data, cached: true });
+    }
     const events = await listSOSEvents(limit);
+    sosEventsCache = { at: now, key, data: events };
     res.json({ success: true, events });
   } catch (error) {
     console.error("List SOS events error:", error);
@@ -583,6 +617,13 @@ app.post("/api/auth/login", async (req, res) => {
     const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: "30d" });
     return res.json({ user: toSafeProfile(user.id, user), token });
   } catch (error) {
+    if (isQuotaError(error)) {
+      console.warn("⚠️  Firestore read quota exhausted during login.");
+      return res.status(503).json({
+        error: "Sign-in is temporarily unavailable (Firestore read quota exhausted). Try again in a few minutes.",
+        quotaExceeded: true,
+      });
+    }
     console.error("Login error", error);
     return res.status(500).json({ error: "Unable to sign in right now." });
   }
@@ -917,6 +958,12 @@ async function bootstrap() {
     console.log("✅ Firebase Firestore connected successfully");
   } catch (error) {
     console.warn("⚠️  Firestore probe failed:", error?.message || error);
+  }
+
+  try {
+    await seedEmulatorData();
+  } catch (seedError) {
+    console.warn("⚠️  Emulator demo data not seeded:", seedError?.message || seedError);
   }
 
   // Idempotent: creates the demo expedition once, or upgrades the legacy

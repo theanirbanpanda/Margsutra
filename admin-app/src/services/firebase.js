@@ -3,6 +3,7 @@ import { initializeApp } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "firebase/auth";
 import {
   getFirestore,
+  connectFirestoreEmulator,
   collection,
   query,
   where,
@@ -38,6 +39,13 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+if (import.meta.env.VITE_USE_FIRESTORE_EMULATOR === "true") {
+  try {
+    connectFirestoreEmulator(db, "127.0.0.1", 8080);
+  } catch (e) {
+    console.warn("Firestore emulator already connected:", e?.message || e);
+  }
+}
 export const rtdb = getDatabase(app);
 export const storage = getStorage(app);
 
@@ -902,7 +910,7 @@ export const subscribeToSOSEvents = (callback) => {
   try {
     const q = query(
       collection(db, "sos_events"),
-      limit(100)
+      limit(25)
     );
     return onSnapshot(q, (snapshot) => {
       const events = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));

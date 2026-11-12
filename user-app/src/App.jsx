@@ -2508,9 +2508,9 @@ const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) 
         }
       />
 
-      {(localErr || error) && (
+      {(error || localErr) && (
         <div style={{ marginBottom: 14, color: "#fca5a5", fontSize: 12, background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", padding: "9px 14px", borderRadius: 9 }}>
-          ⚠️ {localErr || error}
+          ⚠️ {error || localErr}
         </div>
       )}
 
