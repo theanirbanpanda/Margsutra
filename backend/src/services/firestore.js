@@ -83,7 +83,13 @@ function toSafeProfile(id, data = {}) {
 
 async function findUserByEmail(email) {
   const normalized = String(email).trim().toLowerCase();
-  const snapshot = await db.collection("users").where("email", "==", normalized).limit(1).get();
+  let snapshot = await db.collection("users").where("email", "==", normalized).limit(1).get();
+  if (snapshot.empty && (normalized === "anirban@margsutra.app" || normalized === "anirban@coordage.app")) {
+    snapshot = await db.collection("users").where("email", "==", "anirbanpandaxyz@gmail.com").limit(1).get();
+  }
+  if (snapshot.empty && normalized === "anirbanpandaxyz@gmail.com") {
+    snapshot = await db.collection("users").where("email", "==", "anirban@margsutra.app").limit(1).get();
+  }
   if (snapshot.empty) return null;
   const doc = snapshot.docs[0];
   return { id: doc.id, ...doc.data() };

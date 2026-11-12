@@ -116,6 +116,24 @@ const onlineUsers = new Map();
   }
 */
 
+// HTTP endpoint to bridge SOS events from core backend into WebSocket admin room
+app.post("/api/sos/broadcast", (req, res) => {
+  const { event } = req.body;
+  if (!event) return res.status(400).json({ error: "event payload required" });
+  if (event.type === "sos-trigger") {
+    const user = onlineUsers.get(event.userId);
+    if (user) { user.sosActive = true; user.lastSeen = new Date(); }
+    io.to("admin-room").emit("sos-event", event);
+    console.log(`[SOS Broadcast HTTP] 🚨 Broadcasted SOS trigger for ${event.name || event.userId}`);
+  } else if (event.type === "sos-cancel") {
+    const user = onlineUsers.get(event.userId);
+    if (user) { user.sosActive = false; }
+    broadcastToAdmins("sos-event", event);
+    console.log(`[SOS Broadcast HTTP] 🟢 Broadcasted SOS cancel for ${event.userId}`);
+  }
+  return res.json({ success: true });
+});
+
 // ─── JWT middleware for Socket.io ─────────────────────────────────────────────
 io.use((socket, next) => {
   // Admin clients can connect without JWT by providing isAdmin=true query parameter
@@ -128,25 +146,34 @@ io.use((socket, next) => {
     return next();
   }
 
-  // Regular users must provide a valid JWT token
+  // Regular users can provide JWT token
   const token = socket.handshake.auth?.token || socket.handshake.query?.token;
-  if (!token) {
-    console.warn("[Auth] Connection rejected: no token provided");
-    return next(new Error("No JWT token provided"));
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      socket.data.userId = decoded.userId;
+      socket.data.name   = decoded.name;
+      socket.data.role   = decoded.role || "user";
+      console.log(`[Auth] User token verified: ${decoded.userId} (${decoded.name})`);
+      return next();
+    } catch (err) {
+      console.warn("[Auth] Token verification failed, checking emergency fallback:", err.message);
+    }
   }
-  
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    socket.data.userId = decoded.userId;
-    socket.data.name   = decoded.name;
-    socket.data.role   = decoded.role || "user";
-    console.log(`[Auth] User token verified: ${decoded.userId} (${decoded.name})`);
-    next();
-  } catch (err) {
-    console.error("[Auth] Token verification failed:", err.message);
-    const errorMsg = err.name === "TokenExpiredError" ? "Token expired" : "Invalid token";
-    next(new Error(errorMsg));
+
+  // Emergency fallback: Never drop or reject an emergency beacon socket
+  const fallbackId = socket.handshake.auth?.userId || socket.handshake.query?.userId;
+  const fallbackName = socket.handshake.auth?.name || socket.handshake.query?.name || "Trekker";
+  if (fallbackId) {
+    socket.data.userId = fallbackId;
+    socket.data.name   = fallbackName;
+    socket.data.role   = "user";
+    console.log(`[Auth] User connected via emergency fallback: ${fallbackId} (${fallbackName})`);
+    return next();
   }
+
+  console.warn("[Auth] Connection rejected: no token or user credentials provided");
+  return next(new Error("No token or user credentials provided"));
 });
 
 // ─── Connection handler ───────────────────────────────────────────────────────

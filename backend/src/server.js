@@ -257,6 +257,29 @@ app.post("/api/sos/trigger", optionalAuth, async (req, res) => {
   try {
     const userId = req.userId || req.body?.userId;
     const result = await createSOSEvent({ ...req.body, userId });
+    
+    // Broadcast instantly to Socket.IO tracking server admin room
+    try {
+      await fetch("http://localhost:4000/api/sos/broadcast", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event: {
+            type: "sos-trigger",
+            userId: result.event?.userId || userId,
+            name: result.event?.name || req.body?.name || "Trekker",
+            lat: result.event?.lat,
+            lon: result.event?.lon,
+            blood: result.event?.blood,
+            medical: result.event?.medical,
+            priority: "critical",
+            message: result.event?.message || "Emergency SOS broadcast",
+            timestamp: Date.now(),
+          }
+        }),
+      });
+    } catch {}
+
     res.status(201).json(result);
   } catch (error) {
     console.error("Trigger SOS error:", error);
@@ -269,6 +292,23 @@ app.post("/api/sos/cancel", optionalAuth, async (req, res) => {
     const userId = req.userId || req.body?.userId;
     const reason = req.body?.reason || "user_cancelled";
     const result = await cancelUserSOS(userId, reason);
+
+    // Broadcast cancel instantly to Socket.IO tracking server admin room
+    try {
+      await fetch("http://localhost:4000/api/sos/broadcast", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event: {
+            type: "sos-cancel",
+            userId,
+            reason,
+            timestamp: Date.now(),
+          }
+        }),
+      });
+    } catch {}
+
     res.json(result);
   } catch (error) {
     console.error("Cancel SOS error:", error);
@@ -282,6 +322,23 @@ app.post("/api/sos/:id/resolve", optionalAuth, async (req, res) => {
     const resolvedBy = req.body?.resolvedBy || "admin@margsutra.app";
     const result = await resolveSOSEvent(req.params.id, notes, resolvedBy);
     if (result.error) return res.status(404).json({ error: result.error });
+
+    // Broadcast cancel to Socket.IO tracking server so admin and users stand down
+    try {
+      await fetch("http://localhost:4000/api/sos/broadcast", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event: {
+            type: "sos-cancel",
+            userId: result.userId,
+            reason: "admin_resolved",
+            timestamp: Date.now(),
+          }
+        }),
+      });
+    } catch {}
+
     res.json(result);
   } catch (error) {
     console.error("Resolve SOS error:", error);

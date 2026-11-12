@@ -2,6 +2,13 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import UserTrackingWidget from "./UserTrackingWidget";
 import FitnessGadgetManager from "./FitnessGadgetManager";
 import { useLocationTracking } from "./useLocationTracking";
+import SOSConfirmModal from "./components/SOSConfirmModal";
+import {
+  broadcastSOSBeacon,
+  cancelSOSBeacon,
+  subscribeToSOSResolution,
+  alarmEngine,
+} from "./services/sosService";
 import {
   subscribeToSafetyProtocols,
   getTripByCode,
@@ -1635,10 +1642,11 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
   const statusLabel   = {safe:"Safe to Trek ✓", caution:"Use Caution ⚠️", unsafe:"Unsafe Conditions ✗"};
 
   const handleSOSTrigger = () => {
-    if (!sosConfirm) { setSosConfirm(true); return; }
-    setSosActive(true); setSosConfirm(false); onSOS(true);
+    onSOS(true);
   };
-  const cancelSOS = () => { setSosActive(false); setSosConfirm(false); onSOS(false); };
+  const cancelSOS = () => {
+    onSOS(false);
+  };
 
   if (!joinedTrip) {
     return (
@@ -4341,31 +4349,52 @@ export default function UserDashboard() {
   const [activeSOS, setActiveSOS] = useState(() => user?.status === "sos");
   const [activeSosId, setActiveSosId] = useState(() => user?.activeSosId || null);
   const [joinError, setJoinError] = useState("");
+  const [showSOSConfirmModal, setShowSOSConfirmModal] = useState(false);
+
+  // Subscribe to remote stand-down (e.g. if Admin stands down SOS from command console)
+  useEffect(() => {
+    if (!user?.id) return;
+    const unsub = subscribeToSOSResolution(user.id, () => {
+      setActiveSOS(false);
+      setActiveSosId(null);
+      alarmEngine.stop();
+    });
+    return () => unsub?.();
+  }, [user?.id]);
 
   const handleSOSToggle = async (activate) => {
     if (activate) {
-      setActiveSOS(true);
-      setPage("sos-nav");
-      try {
-        const res = await triggerSOSEvent(user, joinedTrip, {
-          lat: user?.lat || 18.8286,
-          lon: user?.lon || 73.3986,
-          altitude: user?.altitude || 829,
-        });
-        if (res?.eventId) {
-          setActiveSosId(res.eventId);
-        }
-      } catch (e) {
-        console.warn("Failed to trigger SOS in database:", e);
+      if (!activeSOS) {
+        setShowSOSConfirmModal(true);
+        return;
       }
     } else {
       setActiveSOS(false);
+      alarmEngine.stop();
       try {
-        await cancelSOSEvent(user?.id, activeSosId, "user_cancelled");
+        await cancelSOSBeacon(user, activeSosId, "user_cancelled");
       } catch (e) {
         console.warn("Failed to cancel SOS in database:", e);
       }
       setActiveSosId(null);
+    }
+  };
+
+  const handleConfirmedSOSBroadcast = async () => {
+    setShowSOSConfirmModal(false);
+    setActiveSOS(true);
+    setPage("sos-nav");
+    try {
+      const res = await broadcastSOSBeacon(user, joinedTrip, {
+        lat: user?.lat || 18.8286,
+        lon: user?.lon || 73.3986,
+        altitude: user?.altitude || 829,
+      });
+      if (res?.eventId) {
+        setActiveSosId(res.eventId);
+      }
+    } catch (e) {
+      console.warn("Failed to trigger SOS:", e);
     }
   };
 
@@ -4654,6 +4683,11 @@ export default function UserDashboard() {
         {/* Quick SOS in sidebar */}
         <div style={{padding:"12px 16px",borderTop:`1px solid ${C.border}`}}>
           <button onClick={()=>{
+            if (activeSOS) {
+              const ok = window.confirm("Are you safe now? Stand down SAR rescue teams?");
+              if (ok) handleSOSToggle(false);
+              return;
+            }
             if (!joinedTrip) {
               alert("⚠️ No Active Expedition: Please join an expedition first so SAR rescue teams know which zone and trail you are located on.");
               setPage("join-trip");
@@ -4664,15 +4698,20 @@ export default function UserDashboard() {
               setPage("join-trip");
               return;
             }
-            setActiveSOS(true);
-            setPage("sos-nav");
+            setShowSOSConfirmModal(true);
           }}
-            style={{width:"100%",padding:"9px",background:"rgba(239,68,68,0.12)",
-              border:"1px solid rgba(239,68,68,0.35)",borderRadius:10,color:C.red,
-              fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+            style={{
+              width:"100%",padding:"10px",
+              background: activeSOS ? "linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)" : "rgba(239,68,68,0.12)",
+              border: activeSOS ? "1px solid #ef4444" : "1px solid rgba(239,68,68,0.35)",
+              borderRadius:10,
+              color: activeSOS ? "#fff" : C.red,
+              fontSize:12,fontWeight:800,cursor:"pointer",fontFamily:"inherit",
               display:"flex",alignItems:"center",justifyContent:"center",gap:7,
-              animation:activeSOS?"ud-sos-blink 1.2s infinite":undefined}}>
-            🆘 {activeSOS?"SOS ACTIVE":"Quick SOS"}
+              boxShadow: activeSOS ? "0 0 18px rgba(239,68,68,0.6)" : "none",
+              animation:activeSOS?"ud-sos-blink 1.2s infinite":undefined
+            }}>
+            🆘 {activeSOS?"SOS ACTIVE · Cancel":"Quick SOS"}
           </button>
           <div style={{marginTop:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <span style={{fontSize:10,color:C.muted2}}>© 2026 Margsutra</span>
@@ -4681,10 +4720,90 @@ export default function UserDashboard() {
         </div>
       </aside>
 
-      {/* Main */}
-      <main style={{overflow:"auto",padding:24}}>
-        {PAGES[page]||<div style={{color:C.muted}}>Page not found.</div>}
-      </main>
+      {/* Main Container */}
+      <div style={{display:"flex",flexDirection:"column",minWidth:0,height:"100%"}}>
+        {/* Persistent Emergency Beacon Top Alert Bar */}
+        {activeSOS && (
+          <div style={{
+            background: "linear-gradient(90deg, #991b1b 0%, #dc2626 50%, #991b1b 100%)",
+            color: "#ffffff",
+            padding: "10px 20px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            boxShadow: "0 4px 20px rgba(220, 38, 38, 0.4)",
+            zIndex: 9999,
+            animation: "ud-sos-blink 1.4s infinite",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span style={{ fontSize: 20 }}>🚨</span>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: "0.04em" }}>
+                  EMERGENCY DISTRESS BEACON ACTIVE · TRANSMITTING GPS &amp; MEDICAL PROFILE
+                </div>
+                <div style={{ fontSize: 11, opacity: 0.9 }}>
+                  SAR Incident Command &amp; Field Guide Ajay Saini alerted · Mountain Siren Buzzing
+                </div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <button
+                onClick={() => setPage("sos-nav")}
+                style={{
+                  background: "rgba(255, 255, 255, 0.2)",
+                  border: "1px solid rgba(255, 255, 255, 0.4)",
+                  color: "#fff",
+                  borderRadius: 8,
+                  padding: "6px 12px",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                🧭 View Rescue HUD
+              </button>
+              <button
+                onClick={() => {
+                  const ok = window.confirm("Stand down SAR dispatch and notify command that you are safe?");
+                  if (ok) handleSOSToggle(false);
+                }}
+                style={{
+                  background: "#ffffff",
+                  border: "none",
+                  color: "#b91c1c",
+                  borderRadius: 8,
+                  padding: "6px 14px",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  boxShadow: "0 2px 8px rgba(0, 0, 0, 0.3)",
+                }}
+              >
+                🛑 Cancel SOS (I Am Safe / False Alarm)
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Main Content View */}
+        <main style={{flex:1,overflow:"auto",padding:24}}>
+          {PAGES[page]||<div style={{color:C.muted}}>Page not found.</div>}
+        </main>
+      </div>
+
+      {/* Two-Step SOS Confirmation Modal */}
+      <SOSConfirmModal
+        isOpen={showSOSConfirmModal}
+        onClose={() => setShowSOSConfirmModal(false)}
+        onConfirm={handleConfirmedSOSBroadcast}
+        user={user}
+        trip={joinedTrip}
+        location={{
+          lat: user?.lat || 18.8286,
+          lon: user?.lon || 73.3986,
+          altitude: user?.altitude || 829,
+        }}
+      />
     </div>
   );
 }

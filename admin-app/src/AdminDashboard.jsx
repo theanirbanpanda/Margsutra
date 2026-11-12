@@ -5983,6 +5983,48 @@ export default function AdminPanel() {
     return Math.max(activeFromEvents, activeFromUsers);
   }, [allSosEvents, displayUsers]);
 
+  // SAR Command Audio Alert Chime (plays sound when emergency beacon is received)
+  useEffect(() => {
+    if (activeSOS <= 0) return;
+    let isCancelled = false;
+    let audioCtx = null;
+    let intervalId = null;
+
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        audioCtx = new AudioCtx();
+        const playBeep = () => {
+          if (isCancelled || !audioCtx) return;
+          try {
+            if (audioCtx.state === "suspended") audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = "sine";
+            osc.frequency.setValueAtTime(740, audioCtx.currentTime);
+            osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.12);
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.28);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.3);
+          } catch {}
+        };
+        playBeep();
+        intervalId = setInterval(playBeep, 2000);
+      }
+    } catch {}
+
+    return () => {
+      isCancelled = true;
+      if (intervalId) clearInterval(intervalId);
+      if (audioCtx) {
+        try { audioCtx.close(); } catch {}
+      }
+    };
+  }, [activeSOS]);
+
   const handleResolveSOS = async (eventId, userId, notes) => {
     return await resolveSOSEvent(eventId, userId, notes, activeAdmin?.name || "Lead Command Admin");
   };

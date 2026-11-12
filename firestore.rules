@@ -30,6 +30,11 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /sos_events/{eventId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
     match /sos_logs/{logId} {
       allow read: if isAdmin();
       allow create: if isAuthenticated();
