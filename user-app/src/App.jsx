@@ -2416,355 +2416,355 @@ const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) 
     setSubmitting(false);
   };
 
+  const [showLogistics, setShowLogistics] = useState(false);
+
+  const isCurrentTrip = (t) => joinedTrip && (joinedTrip.id === t.id || joinedTrip.code === t.code || joinedTrip.tripId === t.id);
+
+  // Other available trips excluding the active one to prevent ugly repetition
+  const otherTrips = availableTrips.filter((t) => !isCurrentTrip(t));
+
   return (
-    <div>
+    <div style={{ maxWidth: 1100, margin: "0 auto" }}>
       <PageHeader
-        title="Expeditions & Trips"
-        sub="Browse active organizer treks or enter your expedition join code"
+        title="Expeditions & Treks"
+        sub="Field expedition management and upcoming mountain departures"
         right={
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <Pill color={isApproved ? "green" : isPending ? "amber" : "gray"}>
-              {isApproved ? `● Enrolled: ${joinedTrip.code}` : isPending ? `⏳ Pending: ${joinedTrip.code}` : "No Active Trip"}
+              {isApproved ? `● Enrolled: ${joinedTrip.code}` : isPending ? `⏳ Pending: ${joinedTrip.code}` : "Not Enrolled"}
             </Pill>
-            <Pill color="blue">{availableTrips.length} Active Treks</Pill>
+            <Pill color="blue">{availableTrips.length} Active Expeditions</Pill>
           </div>
         }
       />
 
-      {/* Currently Enrolled Active Trip Banner */}
+      {/* ── SECTION 1: ACTIVE ENROLLED EXPEDITION ─────────────────────────── */}
       {joinedTrip && (
-        <Card
-          style={{
-            marginBottom: 20,
-            background: isPending
-              ? "linear-gradient(135deg, rgba(245, 158, 11, 0.14), rgba(11, 20, 34, 0.95))"
-              : "linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(11, 20, 34, 0.95))",
-            borderColor: isPending ? "rgba(245, 158, 11, 0.4)" : "rgba(16, 185, 129, 0.35)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                <Pill color={isPending ? "amber" : "green"}>
-                  {isPending ? "⏳ APPLICATION PENDING APPROVAL" : "● ACTIVE EXPEDITION · APPROVED"}
-                </Pill>
-                <span style={{ fontSize: 12, color: C.muted }}>Joined as {user?.name || "Trekker"}</span>
+        <div style={{ marginBottom: 28 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>
+            Your Active Expedition
+          </div>
+
+          <div
+            style={{
+              background: "linear-gradient(145deg, rgba(16, 185, 129, 0.1) 0%, rgba(11, 20, 34, 0.98) 100%)",
+              border: isPending ? "1px solid rgba(245, 158, 11, 0.45)" : "1px solid rgba(16, 185, 129, 0.35)",
+              borderRadius: 16,
+              padding: "24px 28px",
+              boxShadow: "0 12px 35px rgba(0, 0, 0, 0.45)",
+            }}
+          >
+            {/* Header row */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16, marginBottom: 16 }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                  <Pill color={isPending ? "amber" : "green"}>
+                    {isPending ? "⏳ APPLICATION PENDING APPROVAL" : "● IN-FIELD EXPEDITION ACTIVE"}
+                  </Pill>
+                  <span style={{ fontSize: 11, fontWeight: 800, padding: "3px 9px", borderRadius: 6, background: "rgba(59, 130, 246, 0.2)", border: "1px solid rgba(59, 130, 246, 0.4)", color: "#60a5fa" }}>
+                    {joinedTrip.code}
+                  </span>
+                  <span style={{ fontSize: 12, color: "#34d399", fontWeight: 600 }}>
+                    {joinedTrip.difficulty || "Moderate (14 km Trail Circuit)"}
+                  </span>
+                </div>
+
+                <div style={{ fontSize: 24, fontWeight: 800, color: C.text, letterSpacing: "-0.01em" }}>
+                  {joinedTrip.name}
+                </div>
+                <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>
+                  📍 {joinedTrip.location} · 🏔️ {joinedTrip.elevation || "829m ASL"}
+                </div>
               </div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: C.text }}>{joinedTrip.name}</div>
-              <div style={{ fontSize: 12, color: isPending ? "#fef08a" : C.muted, marginTop: 4 }}>
-                {isPending
-                  ? "Your request has been submitted to expedition organizers. Awaiting clearance before live GPS and telemetry activate."
-                  : "Officially registered. Telemetry, geofence perimeter, and emergency SOS dispatch are active."}
-              </div>
-              <div style={{ fontSize: 12, color: C.muted, marginTop: 8, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 6 }}>
-                <span>📅 <strong>Schedule:</strong> {joinedTrip.startDate || joinedTrip.date} {joinedTrip.startTime ? `at ${joinedTrip.startTime}` : ""} → {joinedTrip.endDate || ""} {joinedTrip.endTime ? `at ${joinedTrip.endTime}` : ""} {joinedTrip.duration ? `(${joinedTrip.duration})` : ""}</span>
-                <span>🚌 <strong>Pickup Point:</strong> {joinedTrip.pickupLocation || "Lonavala Station (Exit Gate 1)"}</span>
-                <span>🏕️ <strong>Base Village:</strong> {joinedTrip.baseLocation || "Udhewadi Base Camp (829m ASL)"}</span>
-                <span>📻 <strong>Walkie-Talkie Channel:</strong> <span style={{ color: "#fbbf24" }}>{joinedTrip.vhfChannel || "145.500 MHz (VHF Ch 1)"}</span></span>
-                <span>🏔️ <strong>Elevation:</strong> {joinedTrip.elevation || "829m ASL"} · 🧭 <strong>Leader:</strong> {joinedTrip.leader || "Field Guide Ajay Saini"}</span>
-                <span>🔒 <strong>Admin Geofence:</strong> {joinedTrip.geofence?.radius ? (joinedTrip.geofence.radius / 1000).toFixed(1) + " km" : "2.5 km"}</span>
+
+              {/* Action Buttons */}
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <Btn variant="primary" onClick={() => onNavigate("dashboard")} style={{ padding: "10px 20px", fontSize: 13 }}>
+                  Go to Live Dashboard →
+                </Btn>
+                <Btn onClick={() => onNavigate("live-tracking")} style={{ padding: "10px 18px", fontSize: 13 }}>
+                  View Trail Map
+                </Btn>
+                {confirmLeave ? (
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", background: "rgba(239, 68, 68, 0.15)", padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(239, 68, 68, 0.4)" }}>
+                    <span style={{ fontSize: 12, color: "#fca5a5" }}>{isPending ? "Cancel request?" : "Leave trek?"}</span>
+                    <button
+                      onClick={() => { setConfirmLeave(false); onLeave?.(); }}
+                      style={{ background: "#ef4444", color: "#fff", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}
+                    >
+                      {isPending ? "Yes, Cancel" : "Yes, Leave"}
+                    </button>
+                    <button
+                      onClick={() => setConfirmLeave(false)}
+                      style={{ background: "transparent", color: C.muted, border: "none", padding: "5px 8px", fontSize: 11.5, cursor: "pointer" }}
+                    >
+                      Back
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmLeave(true)}
+                    style={{
+                      background: "transparent",
+                      border: "1px solid rgba(239, 68, 68, 0.35)",
+                      borderRadius: 8,
+                      color: "#fca5a5",
+                      fontSize: 12.5,
+                      padding: "8px 14px",
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    {isPending ? "✕ Cancel Request" : "✕ Leave Expedition"}
+                  </button>
+                )}
               </div>
             </div>
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <Btn variant={isPending ? "default" : "primary"} onClick={() => onNavigate("dashboard")}>
-                {isPending ? "View Status in Dashboard →" : "Go to Live Dashboard →"}
-              </Btn>
-              {confirmLeave ? (
-                <div style={{ display: "flex", gap: 6, alignItems: "center", background: "rgba(239, 68, 68, 0.15)", padding: "4px 8px", borderRadius: 8 }}>
-                  <span style={{ fontSize: 11, color: "#fca5a5" }}>{isPending ? "Cancel application?" : "Leave trek?"}</span>
-                  <Btn variant="danger" onClick={() => { setConfirmLeave(false); onLeave?.(); }} style={{ padding: "4px 10px", fontSize: 11 }}>
-                    {isPending ? "Yes, Cancel" : "Yes, Leave"}
-                  </Btn>
-                  <Btn onClick={() => setConfirmLeave(false)} style={{ padding: "4px 10px", fontSize: 11 }}>
-                    Back
-                  </Btn>
+
+            {/* Key Telemetry Metrics */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10, marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+              <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "10px 14px", borderRadius: 10, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 10.5, color: C.muted2, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700 }}>SCHEDULE &amp; DURATION</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginTop: 3 }}>
+                  {joinedTrip.startDate || joinedTrip.date} {joinedTrip.duration ? `(${joinedTrip.duration})` : ""}
                 </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setConfirmLeave(true)}
-                  style={{
-                    background: "transparent",
-                    border: "1px solid rgba(239, 68, 68, 0.35)",
-                    borderRadius: 8,
-                    color: "#fca5a5",
-                    fontSize: 12,
-                    padding: "7px 12px",
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                  }}
-                >
-                  {isPending ? "✕ Cancel Application" : "✕ Leave Trip"}
-                </button>
+              </div>
+
+              <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "10px 14px", borderRadius: 10, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 10.5, color: C.muted2, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700 }}>EXPEDITION BASE CAMP</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginTop: 3 }}>
+                  {joinedTrip.baseLocation || "Udhewadi Base Camp (829m ASL)"}
+                </div>
+              </div>
+
+              <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "10px 14px", borderRadius: 10, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 10.5, color: C.muted2, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700 }}>FIELD GUIDE &amp; LEADER</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginTop: 3 }}>
+                  🧭 {joinedTrip.leader || "Field Guide Ajay Saini"}
+                </div>
+              </div>
+
+              <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "10px 14px", borderRadius: 10, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 10.5, color: C.muted2, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700 }}>WALKIE-TALKIE CHANNEL</div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: "#fbbf24", marginTop: 3 }}>
+                  📻 {joinedTrip.vhfChannel || joinedTrip.emergencyFrequency || "145.500 MHz (VHF Ch 1)"}
+                </div>
+              </div>
+            </div>
+
+            {/* Collapsible logistics drawer */}
+            <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
+              <button
+                onClick={() => setShowLogistics((prev) => !prev)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: C.accent,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: 0,
+                  fontFamily: "inherit",
+                }}
+              >
+                <span>{showLogistics ? "▲ Hide Detailed Logistics & SAR Protocol" : "▼ View Assembly Point, Corridor Geofence & SAR Units"}</span>
+              </button>
+
+              {showLogistics && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12, marginTop: 12, padding: "14px 16px", background: "rgba(255, 255, 255, 0.02)", borderRadius: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: C.muted2, fontWeight: 700 }}>ASSEMBLY &amp; PICKUP POINT</div>
+                    <div style={{ fontSize: 12.5, color: C.text, marginTop: 2 }}>{joinedTrip.pickupLocation || "Lonavala Railway Station (Exit Gate 1)"}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: C.muted2, fontWeight: 700 }}>SAFETY CORRIDOR GEOFENCE</div>
+                    <div style={{ fontSize: 12.5, color: "#34d399", fontWeight: 600, marginTop: 2 }}>
+                      🔒 {joinedTrip.geofence?.radius ? (joinedTrip.geofence.radius / 1000).toFixed(1) + " km Safe Corridor (Locked by Admin)" : "2.5 km Locked Corridor"}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: C.muted2, fontWeight: 700 }}>SEARCH &amp; RESCUE UNIT</div>
+                    <div style={{ fontSize: 12.5, color: C.text, marginTop: 2 }}>{joinedTrip.rescueUnit || "Team Alpha (Lonavala Mountain SAR)"}</div>
+                  </div>
+                </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── SECTION 2: JOIN WITH CODE (ONLY PROMINENT IF NOT ENROLLED) ────── */}
+      {!joinedTrip && (
+        <Card style={{ marginBottom: 28, background: "linear-gradient(145deg, rgba(59, 130, 246, 0.12) 0%, rgba(11, 20, 34, 0.95) 100%)", borderColor: "rgba(59, 130, 246, 0.35)", padding: "28px" }}>
+          <div style={{ maxWidth: 560, margin: "0 auto", textAlign: "center" }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>🔑</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: C.text, marginBottom: 6 }}>
+              Have an Expedition Join Code?
+            </div>
+            <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.5, marginBottom: 20 }}>
+              Enter the unique 6-character code provided by your trek organizer (e.g. <strong>RAJM26</strong> or <strong>HAR26</strong>) to register and link live telemetry.
+            </div>
+
+            <form onSubmit={handleCodeSubmit} style={{ display: "flex", gap: 10, justifyContent: "center", maxWidth: 420, margin: "0 auto" }}>
+              <input
+                type="text"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder="e.g. RAJM26"
+                maxLength={8}
+                style={{
+                  flex: 1,
+                  height: 44,
+                  background: "rgba(255, 255, 255, 0.06)",
+                  border: `1px solid ${C.border2}`,
+                  borderRadius: 10,
+                  color: "#fff",
+                  fontSize: 16,
+                  letterSpacing: 2,
+                  textAlign: "center",
+                  padding: "0 14px",
+                  fontFamily: "inherit",
+                  outline: "none",
+                  textTransform: "uppercase",
+                  fontWeight: 700,
+                }}
+              />
+              <button
+                type="submit"
+                disabled={submitting}
+                style={{
+                  padding: "0 22px",
+                  height: 44,
+                  background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
+                  border: "none",
+                  borderRadius: 10,
+                  color: "#ffffff",
+                  fontSize: 13.5,
+                  fontWeight: 700,
+                  cursor: submitting ? "not-allowed" : "pointer",
+                  fontFamily: "inherit",
+                  boxShadow: "0 4px 14px rgba(37, 99, 235, 0.35)",
+                }}
+              >
+                {submitting ? "Verifying..." : "Join Expedition →"}
+              </button>
+            </form>
+
+            {(localErr || error) && (
+              <div style={{ marginTop: 12, color: "#fca5a5", fontSize: 12, background: "rgba(239, 68, 68, 0.15)", padding: "8px 14px", borderRadius: 8, display: "inline-block" }}>
+                ⚠️ {localErr || error}
+              </div>
+            )}
           </div>
         </Card>
       )}
 
-      {/* Fitness Wearables & Telemetry Sync Section */}
-      <div style={{ marginBottom: 20 }}>
-        <FitnessGadgetManager
-          user={user}
-          joinedTrip={joinedTrip}
-          compact={true}
-          onNavigate={onNavigate}
-        />
-      </div>
-
-      {/* Main Grid: Code input on left, Available trips on right */}
-      <div style={{ display: "grid", gridTemplateColumns: "340px 1fr", gap: 18, alignItems: "start" }}>
-        {/* Left Card: Join with Code */}
-        <Card style={{ background: "rgba(11, 20, 34, 0.95)" }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>
-            Join with Expedition Code
-          </div>
-          <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, marginBottom: 14 }}>
-            Your trek leader or organizer shares a unique 6-character code (e.g. <strong>RAJM26</strong> or <strong>HAR26</strong>) before the trek begins.
-          </div>
-
-          <form onSubmit={handleCodeSubmit}>
-            <input
-              type="text"
-              value={joinedTrip ? "" : code}
-              disabled={!!joinedTrip}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder={joinedTrip ? (isPending ? `Pending: ${joinedTrip.code}` : `Enrolled: ${joinedTrip.code}`) : "e.g. RAJM26"}
-              maxLength={8}
-              style={{
-                width: "100%",
-                height: 44,
-                background: joinedTrip ? "rgba(255, 255, 255, 0.02)" : "rgba(255, 255, 255, 0.05)",
-                border: `1px solid ${C.border}`,
-                borderRadius: 10,
-                color: "#fff",
-                fontSize: 16,
-                letterSpacing: 2,
-                textAlign: "center",
-                padding: "0 14px",
-                fontFamily: "inherit",
-                boxSizing: "border-box",
-                outline: "none",
-                marginBottom: 10,
-                textTransform: "uppercase",
-                fontWeight: 600,
-                opacity: joinedTrip ? 0.45 : 1,
-                cursor: joinedTrip ? "not-allowed" : "text",
-              }}
-            />
-
-            {(localErr || error) && (
-              <div
-                style={{
-                  background: "rgba(239, 68, 68, 0.12)",
-                  border: "1px solid rgba(239, 68, 68, 0.3)",
-                  borderRadius: 8,
-                  padding: "8px 12px",
-                  fontSize: 12,
-                  color: "#fca5a5",
-                  marginBottom: 12,
-                }}
-              >
-                ⚠️ {localErr || error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={submitting || !!joinedTrip}
-              style={{
-                width: "100%",
-                height: 42,
-                background: joinedTrip
-                  ? "rgba(255, 255, 255, 0.06)"
-                  : "linear-gradient(135deg, #2563eb, #1d4ed8)",
-                border: "none",
-                borderRadius: 10,
-                color: joinedTrip ? "rgba(180, 210, 245, 0.4)" : "#ffffff",
-                fontSize: 13.5,
-                fontWeight: 600,
-                cursor: joinedTrip || submitting ? "not-allowed" : "pointer",
-                fontFamily: "inherit",
-                boxShadow: joinedTrip ? "none" : "0 4px 14px rgba(37, 99, 235, 0.35)",
-                opacity: joinedTrip ? 0.45 : 1,
-              }}
-            >
+      {/* ── SECTION 3: EXPLORE UPCOMING EXPEDITIONS ───────────────────────── */}
+      <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: C.text }}>
+              {joinedTrip ? "Other Scheduled Expeditions" : "Explore Upcoming Expeditions"}
+            </div>
+            <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>
               {joinedTrip
-                ? (isPending ? "Application Under Review" : "Expedition in Progress")
-                : submitting ? "Verifying code…" : "Join with Code →"}
-            </button>
-          </form>
-
-          {joinedTrip && (
-            <div
-              style={{
-                marginTop: 12,
-                padding: "10px 12px",
-                background: "rgba(245, 158, 11, 0.08)",
-                border: "1px solid rgba(245, 158, 11, 0.25)",
-                borderRadius: 8,
-                fontSize: 11.5,
-                color: "#fef08a",
-                lineHeight: 1.45,
-              }}
-            >
-              🔒 <strong>Single Expedition Policy:</strong> You are currently enrolled in <strong>{joinedTrip.name}</strong>. A trekker can only participate in one active expedition at a time to maintain uninterrupted duty-of-care. To apply to another trek, you must first leave or cancel your active expedition.
+                ? "Browse upcoming departures across the Western Ghats (Single active trek policy applies)"
+                : "Select an expedition to review itinerary and request enrollment"}
             </div>
-          )}
-
-          <div
-            style={{
-              marginTop: 18,
-              paddingTop: 14,
-              borderTop: `1px solid ${C.border}`,
-              fontSize: 11.5,
-              color: C.muted2,
-              lineHeight: 1.5,
-            }}
-          >
-            🔒 <strong>Safety Note:</strong> A trekker can participate in at most one active expedition at a time to ensure uninterrupted location and safety monitoring.
-          </div>
-        </Card>
-
-        {/* Right Section: Available Expeditions from Admins */}
-        <div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>
-              Active Expeditions (Organized by Admins)
-            </div>
-            <span style={{ fontSize: 11, color: C.muted2 }}>
-              {joinedTrip ? "Enrolled in active trek · Other treks locked" : "Select a trek to register directly"}
-            </span>
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {availableTrips.map((t) => {
-              const isCurrent = joinedTrip && (joinedTrip.id === t.id || joinedTrip.code === t.code);
-              const isLocked = joinedTrip && !isCurrent;
-
-              return (
-                <Card
-                  key={t.id || t.code}
-                  style={{
-                    background: isCurrent
-                      ? (isPending ? "rgba(245, 158, 11, 0.08)" : "rgba(16, 185, 129, 0.06)")
-                      : isLocked ? "rgba(11, 20, 34, 0.55)" : "rgba(11, 20, 34, 0.85)",
-                    border: isCurrent
-                      ? (isPending ? "1px solid rgba(245, 158, 11, 0.4)" : "1px solid rgba(16, 185, 129, 0.35)")
-                      : `1px solid ${C.border}`,
-                    opacity: isLocked ? 0.55 : 1,
-                    transition: "border-color 0.2s ease, transform 0.2s ease, opacity 0.2s ease",
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 8 }}>
-                    <div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                        <span style={{ background: "rgba(59, 130, 246, 0.15)", border: "1px solid rgba(59, 130, 246, 0.3)", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700, color: "#60a5fa" }}>
-                          {t.code}
-                        </span>
-                        <Pill color={t.difficulty === "Challenging" ? "red" : "amber"}>
-                          {t.difficulty || "Moderate"}
-                        </Pill>
-                        {isCurrent && (
-                          <Pill color={isPending ? "amber" : "green"}>
-                            {isPending ? "⏳ Pending Approval" : "● Your Active Trek"}
-                          </Pill>
-                        )}
-                        {isLocked && (
-                          <span style={{ fontSize: 10, color: C.muted2, padding: "2px 6px", borderRadius: 4, background: "rgba(255,255,255,0.04)" }}>
-                            🔒 Single Trek Limit
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>
-                        {t.name}
-                      </div>
-                    </div>
-
-                    <div>
-                      {isCurrent ? (
-                        isPending ? (
-                          <button
-                            type="button"
-                            onClick={() => onNavigate("dashboard")}
-                            style={{
-                              padding: "8px 16px",
-                              borderRadius: 8,
-                              background: "rgba(245, 158, 11, 0.18)",
-                              border: "1px solid rgba(245, 158, 11, 0.4)",
-                              color: "#fbbf24",
-                              fontSize: 12,
-                              fontWeight: 700,
-                              cursor: "pointer",
-                              fontFamily: "inherit",
-                            }}
-                          >
-                            ⏳ Pending Approval
-                          </button>
-                        ) : (
-                          <Btn variant="success" onClick={() => onNavigate("dashboard")}>
-                            ✓ Currently Enrolled
-                          </Btn>
-                        )
-                      ) : isLocked ? (
-                        <button
-                          type="button"
-                          disabled={true}
-                          title="You can only participate in one active expedition at a time."
-                          style={{
-                            padding: "8px 16px",
-                            borderRadius: 8,
-                            background: "rgba(255, 255, 255, 0.05)",
-                            border: "1px solid rgba(80, 140, 220, 0.12)",
-                            color: "rgba(180, 210, 245, 0.35)",
-                            fontSize: 12,
-                            fontWeight: 600,
-                            cursor: "not-allowed",
-                            fontFamily: "inherit",
-                            opacity: 0.5,
-                          }}
-                        >
-                          Enrolled elsewhere
-                        </button>
-                      ) : (
-                        <Btn variant="primary" onClick={() => handleCardJoin(t)}>
-                          Join Expedition →
-                        </Btn>
-                      )}
-                    </div>
-                  </div>
-
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8, marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
-                    <div style={{ fontSize: 11.5, color: C.muted }}>
-                      <span style={{ color: C.muted2 }}>📅 Schedule:</span> {t.startDate || t.date} {t.startTime ? `at ${t.startTime}` : ""} → {t.endDate || ""} {t.endTime ? `at ${t.endTime}` : ""} {t.duration ? `(${t.duration})` : ""}
-                    </div>
-                    <div style={{ fontSize: 11.5, color: C.muted }}>
-                      <span style={{ color: C.muted2 }}>🚌 Pickup / Assembly:</span> {t.pickupLocation || "Lonavala Railway Station"}
-                    </div>
-                    <div style={{ fontSize: 11.5, color: C.muted }}>
-                      <span style={{ color: C.muted2 }}>🏕️ Base Village Camp:</span> {t.baseLocation || "Udhewadi Base Camp (829m ASL)"}
-                    </div>
-                    <div style={{ fontSize: 11.5, color: C.muted }}>
-                      <span style={{ color: C.muted2 }}>📻 Walkie-Talkie Channel:</span> <span style={{ color: "#fbbf24" }}>{t.vhfChannel || "145.500 MHz (VHF Ch 1)"}</span>
-                    </div>
-                    <div style={{ fontSize: 11.5, color: C.muted }}>
-                      <span style={{ color: C.muted2 }}>🏔️ Region & Peak:</span> {t.location} ({t.elevation || "829m"})
-                    </div>
-                    <div style={{ fontSize: 11.5, color: C.muted }}>
-                      <span style={{ color: C.muted2 }}>🧭 Leader:</span> {t.leader || "Field Guide Ajay Saini"}
-                    </div>
-                    <div style={{ fontSize: 11.5, color: C.muted }}>
-                      <span style={{ color: C.muted2 }}>👥 Roster:</span> {t.rosterCount || 0} / {t.maxRoster || 25} Trekkers
-                    </div>
-                    <div style={{ fontSize: 11.5, color: C.muted }}>
-                      <span style={{ color: C.muted2 }}>🔒 Admin Geofence:</span> {t.geofence?.radius ? (t.geofence.radius / 1000).toFixed(1) + " km" : "2.5 km"}
-                    </div>
-                  </div>
-                </Card>
-              );
-            })}
           </div>
         </div>
+
+        {joinedTrip && (
+          <div style={{ padding: "10px 16px", borderRadius: 10, background: "rgba(59, 130, 246, 0.06)", border: `1px solid ${C.border}`, fontSize: 12, color: C.muted, marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
+            <span>ℹ️</span>
+            <span>You are currently enrolled in <strong>{joinedTrip.name}</strong>. To register for a different expedition, please leave your active trek first.</span>
+          </div>
+        )}
+
+        {otherTrips.length === 0 ? (
+          <Card style={{ textAlign: "center", padding: "36px", color: C.muted }}>
+            <div>🏔️</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginTop: 8 }}>No Other Expeditions Currently Listed</div>
+            <div style={{ fontSize: 12, marginTop: 4 }}>You are enrolled in the sole active expedition for this weekend batch.</div>
+          </Card>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", gap: 16 }}>
+            {otherTrips.map((t) => (
+              <Card
+                key={t.id || t.code}
+                style={{
+                  background: "rgba(11, 20, 34, 0.95)",
+                  border: `1px solid ${C.border}`,
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                  opacity: joinedTrip ? 0.75 : 1,
+                  transition: "all 0.2s ease",
+                }}
+              >
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ background: "rgba(59, 130, 246, 0.15)", border: "1px solid rgba(59, 130, 246, 0.3)", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700, color: "#60a5fa" }}>
+                        {t.code}
+                      </span>
+                      <Pill color={t.difficulty === "Challenging" ? "red" : "amber"}>
+                        {t.difficulty || "Moderate"}
+                      </Pill>
+                    </div>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: C.muted }}>
+                      🏔️ {t.elevation || "1,424m ASL"}
+                    </span>
+                  </div>
+
+                  <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 6 }}>
+                    {t.name}
+                  </div>
+                  <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>
+                    📍 {t.location}
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "10px 12px", background: "rgba(255, 255, 255, 0.02)", borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 11.5, color: C.muted, marginBottom: 16 }}>
+                    <div>📅 {t.startDate || t.date}</div>
+                    <div>🏕️ {t.baseLocation || "Khireshwar Base"}</div>
+                    <div>🧭 Guide: {t.leader || "Lead Guide"}</div>
+                    <div>👥 Roster: {t.rosterCount || 0} / {t.maxRoster || 20}</div>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  {joinedTrip ? (
+                    <button
+                      type="button"
+                      disabled={true}
+                      style={{
+                        padding: "8px 16px",
+                        borderRadius: 8,
+                        background: "rgba(255, 255, 255, 0.04)",
+                        border: `1px solid ${C.border}`,
+                        color: "rgba(180, 210, 245, 0.4)",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: "not-allowed",
+                        fontFamily: "inherit",
+                      }}
+                    >
+                      Enrolled in active trek
+                    </button>
+                  ) : (
+                    <Btn variant="primary" onClick={() => handleCardJoin(t)} style={{ padding: "8px 18px", fontSize: 12.5 }}>
+                      Apply to Join Expedition →
+                    </Btn>
+                  )}
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
