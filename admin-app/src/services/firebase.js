@@ -86,7 +86,7 @@ export const adminLogin = async (email, password) => {
 
     if (userDoc.exists() && userDoc.data().role === "admin") {
       const data = userDoc.data();
-      const isSuper = normalizedEmail === "admin@margsutra.app" || normalizedEmail === "admin@coordage.app";
+      const isSuper = normalizedEmail === "admin@margsutra.app";
       if (!isSuper && (data.status === "pending_approval" || data.approved === false)) {
         await signOut(auth);
         return {
@@ -105,7 +105,7 @@ export const adminLogin = async (email, password) => {
     }
   } catch (error) {
     // Demo fallback for offline / mock testing
-    if ((normalizedEmail === "admin@margsutra.app" || normalizedEmail === "admin@coordage.app") && (password === "admin123" || password === "Margsutra@123" || password === "Coordage@123")) {
+    if (normalizedEmail === "admin@margsutra.app" && (password === "admin123" || password === "Margsutra@123")) {
       return {
         success: true,
         user: { email: "admin@margsutra.app", uid: "demo-admin-001" },
@@ -191,7 +191,7 @@ export const fetchPendingAdmins = async () => {
       .map((d) => ({ id: d.id, ...d.data() }))
       .filter((u) => {
         const email = (u.email || "").toLowerCase();
-        return email !== "admin@margsutra.app" && email !== "admin@coordage.app" && (u.status === "pending_approval" || u.approved === false);
+        return email !== "admin@margsutra.app" && (u.status === "pending_approval" || u.approved === false);
       });
   } catch {
     return [];

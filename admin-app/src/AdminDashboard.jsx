@@ -1924,6 +1924,45 @@ const PageAdminAuth = ({ onLogin }) => {
               {loginLoading ? "Authorizing..." : "Sign in to Margsutra"}
             </button>
 
+            {/* Demo Admin One-Click Helper */}
+            <div
+              style={{
+                marginTop: 14,
+                padding: "8px 12px",
+                background: "rgba(59, 130, 246, 0.08)",
+                border: "1px solid rgba(59, 130, 246, 0.22)",
+                borderRadius: 10,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                fontSize: 11.5,
+              }}
+            >
+              <div style={{ color: "rgba(180, 210, 245, 0.85)" }}>
+                <span style={{ color: "#60a5fa", fontWeight: 700 }}>Demo Admin:</span> admin@margsutra.app / admin123
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setLoginEmail("admin@margsutra.app");
+                  setLoginPass("admin123");
+                  setLoginErr("");
+                }}
+                style={{
+                  background: "rgba(59, 130, 246, 0.2)",
+                  border: "1px solid rgba(59, 130, 246, 0.4)",
+                  borderRadius: 6,
+                  color: "#93c5fd",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  padding: "3px 8px",
+                  cursor: "pointer",
+                }}
+              >
+                Auto-Fill ⚡
+              </button>
+            </div>
+
             <div style={{ textAlign: "center", marginTop: 18, fontSize: 12, color: "rgba(180, 210, 245, 0.7)" }}>
               Need administrator access?{" "}
               <button
@@ -6659,7 +6698,16 @@ export default function AdminPanel() {
   const [activeAdmin, setActiveAdmin] = useState(() => {
     try {
       const stored = localStorage.getItem("margsutra_admin_session") || localStorage.getItem("coordage_admin_session");
-      return stored ? JSON.parse(stored) : null;
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && (parsed.email === "admin@coordage.app" || (parsed.email && parsed.email.includes("coordage.app")))) {
+          parsed.email = "admin@margsutra.app";
+          localStorage.setItem("margsutra_admin_session", JSON.stringify(parsed));
+          localStorage.removeItem("coordage_admin_session");
+        }
+        return parsed;
+      }
+      return null;
     } catch {
       return null;
     }
@@ -6856,11 +6904,11 @@ export default function AdminPanel() {
       .filter((u) => {
         const email = (u.email || "").toLowerCase();
         const role = (u.role || "").toLowerCase();
-        return role === "admin" || email === "admin@margsutra.app" || email === "admin@coordage.app";
+        return role === "admin" || email === "admin@margsutra.app";
       })
       .filter((u) => u.status !== "pending_approval" && u.status !== "rejected");
 
-    if (!list.some((u) => (u.email || "").toLowerCase() === "admin@margsutra.app" || (u.email || "").toLowerCase() === "admin@coordage.app")) {
+    if (!list.some((u) => (u.email || "").toLowerCase() === "admin@margsutra.app")) {
       list.unshift({
         id: "demo-admin-001",
         name: "Super Admin",

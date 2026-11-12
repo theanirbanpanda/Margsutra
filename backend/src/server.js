@@ -386,7 +386,7 @@ app.post("/api/auth/register", async (req, res) => {
       const isAnirban =
         normalizedEmail === "anirban@margsutra.app" ||
         normalizedEmail === "anirbanpandaxyz@gmail.com" ||
-        normalizedEmail === "guide@coordage.app";
+        normalizedEmail === "guide@margsutra.app";
 
       if (isAnirban) {
         // Allow seamless re-registration / password reset for Anirban's primary trekker account
@@ -449,7 +449,7 @@ app.post("/api/auth/register-admin", async (req, res) => {
       const isAnirban =
         normalizedEmail === "anirban@margsutra.app" ||
         normalizedEmail === "anirbanpandaxyz@gmail.com" ||
-        normalizedEmail === "guide@coordage.app";
+        normalizedEmail === "guide@margsutra.app";
 
       if (isAnirban) {
         // Allow seamless re-registration / password reset for Anirban's primary trekker account
@@ -512,7 +512,7 @@ app.post("/api/auth/login", async (req, res) => {
     }
 
     // Pending admin approval check
-    const isSuperAdmin = normalizedEmail === "admin@margsutra.app" || normalizedEmail === "admin@coordage.app";
+    const isSuperAdmin = normalizedEmail === "admin@margsutra.app";
     if (user.role === "admin" && !isSuperAdmin) {
       if (user.status === "rejected") {
         return res.status(403).json({
@@ -529,13 +529,13 @@ app.post("/api/auth/login", async (req, res) => {
     let isValid = false;
     if (user.passwordHash) {
       isValid = await bcrypt.compare(password, user.passwordHash);
-      if (!isValid && (normalizedEmail === "admin@margsutra.app" || normalizedEmail === "admin@coordage.app") && (password === "Margsutra@123" || password === "Coordage@123" || password === "admin123")) {
+      if (!isValid && normalizedEmail === "admin@margsutra.app" && (password === "Margsutra@123" || password === "admin123")) {
         isValid = true;
       }
       const isAnirban =
         normalizedEmail === "anirban@margsutra.app" ||
         normalizedEmail === "anirbanpandaxyz@gmail.com" ||
-        normalizedEmail === "guide@coordage.app";
+        normalizedEmail === "guide@margsutra.app";
       if (!isValid && isAnirban) {
         // Automatically accept and update password for Anirban's primary trekker account
         isValid = true;

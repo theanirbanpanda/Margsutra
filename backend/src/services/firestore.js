@@ -34,7 +34,7 @@ function toSafeProfile(id, data = {}) {
   const lastSeen = data.lastSeenAt || data.lastSeen;
   const reqAt = data.requestedAt;
   const emailLower = (data.email || "").toLowerCase();
-  const isSuperAdmin = emailLower === "admin@margsutra.app" || emailLower === "admin@coordage.app";
+  const isSuperAdmin = emailLower === "admin@margsutra.app";
   const approved = isSuperAdmin ? true : (data.approved !== undefined ? data.approved : (data.role === "admin" ? false : true));
   const status = isSuperAdmin ? "approved" : (data.status || (data.role === "admin" ? "pending_approval" : "active"));
 
@@ -84,7 +84,7 @@ function toSafeProfile(id, data = {}) {
 async function findUserByEmail(email) {
   const normalized = String(email).trim().toLowerCase();
   let snapshot = await db.collection("users").where("email", "==", normalized).limit(1).get();
-  if (snapshot.empty && (normalized === "anirban@margsutra.app" || normalized === "anirban@coordage.app")) {
+  if (snapshot.empty && normalized === "anirban@margsutra.app") {
     snapshot = await db.collection("users").where("email", "==", "anirbanpandaxyz@gmail.com").limit(1).get();
   }
   if (snapshot.empty && normalized === "anirbanpandaxyz@gmail.com") {
@@ -156,7 +156,7 @@ async function listPendingAdmins() {
     .map((d) => ({ id: d.id, ...d.data() }))
     .filter((u) => {
       const email = (u.email || "").toLowerCase();
-      if (email === "admin@margsutra.app" || email === "admin@coordage.app") return false;
+      if (email === "admin@margsutra.app") return false;
       return u.status === "pending_approval" || u.approved === false;
     });
 }
