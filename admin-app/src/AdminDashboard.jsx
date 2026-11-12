@@ -121,21 +121,21 @@ const genTripCode = () => {
 };
 
 const DEVICES = [
-  {id:"DEV001",name:"iPhone 15 Pro",user:"Anirban Panda",type:"phone",battery:88,signal:"strong",gps:true,sos:true,lat:18.8286,lon:73.3986},
-  {id:"DEV002",name:"Garmin Instinct 2 Solar",user:"Anirban Panda",type:"watch",battery:92,signal:"strong",gps:true,sos:true,lat:18.8286,lon:73.3986},
-  {id:"DEV003",name:"Apple Watch Ultra 2",user:"Rohan Sharma",type:"watch",battery:78,signal:"strong",gps:true,sos:true,lat:18.8271,lon:73.3971},
-  {id:"DEV004",name:"Polar H10 Chest Sensor",user:"Pooja Iyer",type:"sensor",battery:82,signal:"strong",gps:true,sos:true,lat:18.8256,lon:73.3958},
-  {id:"DEV005",name:"Coros Vertix 2",user:"Tanmay Deshmukh",type:"watch",battery:71,signal:"strong",gps:true,sos:true,lat:18.8242,lon:73.3945},
-  {id:"DEV006",name:"Suunto 9 Peak",user:"Kavita Verma",type:"watch",battery:64,signal:"strong",gps:true,sos:true,lat:18.8229,lon:73.3932},
+  { id: "DEV001", name: "iPhone 15 Pro", user: "Anirban Panda", type: "phone", battery: 88, signal: "strong", gps: true, sos: true, lat: 18.8286, lon: 73.3986 },
+  { id: "DEV002", name: "Garmin Instinct 2 Solar", user: "Anirban Panda", type: "watch", battery: 92, signal: "strong", gps: true, sos: true, lat: 18.8286, lon: 73.3986 },
+  { id: "DEV003", name: "Apple Watch Ultra 2", user: "Rohan Sharma", type: "watch", battery: 78, signal: "strong", gps: true, sos: true, lat: 18.8271, lon: 73.3971 },
+  { id: "DEV004", name: "Polar H10 Chest Sensor", user: "Pooja Iyer", type: "sensor", battery: 82, signal: "strong", gps: true, sos: true, lat: 18.8256, lon: 73.3958 },
+  { id: "DEV005", name: "Coros Vertix 2", user: "Tanmay Deshmukh", type: "watch", battery: 71, signal: "strong", gps: true, sos: true, lat: 18.8242, lon: 73.3945 },
+  { id: "DEV006", name: "Suunto 9 Peak", user: "Kavita Verma", type: "watch", battery: 64, signal: "strong", gps: true, sos: true, lat: 18.8229, lon: 73.3932 },
 ];
 
 const BT_DEVICES = [
-  {id:"BT001",name:"Garmin Instinct 2 Solar",mac:"A4:C1:38:1F:22:B5",rssi:-42,type:"watch",paired:true,user:"Anirban Panda"},
-  {id:"BT002",name:"Apple Watch Ultra 2",mac:"98:B6:E9:12:43:A0",rssi:-55,type:"watch",paired:true,user:"Rohan Sharma"},
-  {id:"BT003",name:"Polar H10 Chest Strap",mac:"00:22:D0:AA:3C:88",rssi:-48,type:"sensor",paired:true,user:"Pooja Iyer"},
-  {id:"BT004",name:"Coros Vertix 2",mac:"7C:64:56:D8:3A:F1",rssi:-62,type:"watch",paired:true,user:"Tanmay Deshmukh"},
-  {id:"BT005",name:"Suunto 9 Peak",mac:"B8:27:EB:4F:91:22",rssi:-69,type:"watch",paired:true,user:"Kavita Verma"},
-  {id:"BT006",name:"Garmin InReach Mini 2",mac:"C0:38:96:E1:55:04",rssi:-36,type:"satellite",paired:true,user:"Ajay Saini"},
+  { id: "BT001", name: "Garmin Instinct 2 Solar", mac: "A4:C1:38:1F:22:B5", rssi: -42, type: "watch", paired: true, user: "Anirban Panda" },
+  { id: "BT002", name: "Apple Watch Ultra 2", mac: "98:B6:E9:12:43:A0", rssi: -55, type: "watch", paired: true, user: "Rohan Sharma" },
+  { id: "BT003", name: "Polar H10 Chest Strap", mac: "00:22:D0:AA:3C:88", rssi: -48, type: "sensor", paired: true, user: "Pooja Iyer" },
+  { id: "BT004", name: "Coros Vertix 2", mac: "7C:64:56:D8:3A:F1", rssi: -62, type: "watch", paired: true, user: "Tanmay Deshmukh" },
+  { id: "BT005", name: "Suunto 9 Peak", mac: "B8:27:EB:4F:91:22", rssi: -69, type: "watch", paired: true, user: "Kavita Verma" },
+  { id: "BT006", name: "Garmin InReach Mini 2", mac: "C0:38:96:E1:55:04", rssi: -36, type: "satellite", paired: true, user: "Ajay Saini" },
 ];
 
 const SOS_EVENTS = [
@@ -201,43 +201,43 @@ const SOS_TEAMS = [
 ];
 
 const PROTOCOLS = [
-  {id:"P001",title:"Arrival & check-in protocol",body:"Upon arriving at the trek base, register at the check-in kiosk. Confirm your emergency contacts and ensure your device GPS is active.",status:"published",updated:"Apr 10, 2026",author:"Admin"},
-  {id:"P002",title:"Daily check-in rules",body:"Send a live-status ping every 4 hours during active trekking. If no ping is received within 6 hours, the system triggers an automatic welfare check.",status:"published",updated:"Apr 8, 2026",author:"Admin"},
-  {id:"P003",title:"Offline & no-signal zones",body:"Carry a LoRa-enabled satellite communicator when entering zones marked orange on your map. Pre-download offline maps before departure.",status:"draft",updated:"Apr 11, 2026",author:"Admin"},
-  {id:"P004",title:"SOS trigger procedure",body:"Press and hold the SOS button for 3 seconds to prevent accidental triggers. The system broadcasts your GPS coordinates and medical profile to the nearest rescue team.",status:"published",updated:"Mar 28, 2026",author:"Admin"},
-  {id:"P005",title:"Medical emergency guidelines",body:"Your blood group and medical conditions are auto-shared with any dispatched rescue team. Use the medical alert shortcut on your dashboard before triggering SOS.",status:"draft",updated:"Apr 9, 2026",author:"Admin"},
+  { id: "P001", title: "Arrival & check-in protocol", body: "Upon arriving at the trek base, register at the check-in kiosk. Confirm your emergency contacts and ensure your device GPS is active.", status: "published", updated: "Apr 10, 2026", author: "Admin" },
+  { id: "P002", title: "Daily check-in rules", body: "Send a live-status ping every 4 hours during active trekking. If no ping is received within 6 hours, the system triggers an automatic welfare check.", status: "published", updated: "Apr 8, 2026", author: "Admin" },
+  { id: "P003", title: "Offline & no-signal zones", body: "Carry a LoRa-enabled satellite communicator when entering zones marked orange on your map. Pre-download offline maps before departure.", status: "draft", updated: "Apr 11, 2026", author: "Admin" },
+  { id: "P004", title: "SOS trigger procedure", body: "Press and hold the SOS button for 3 seconds to prevent accidental triggers. The system broadcasts your GPS coordinates and medical profile to the nearest rescue team.", status: "published", updated: "Mar 28, 2026", author: "Admin" },
+  { id: "P005", title: "Medical emergency guidelines", body: "Your blood group and medical conditions are auto-shared with any dispatched rescue team. Use the medical alert shortcut on your dashboard before triggering SOS.", status: "draft", updated: "Apr 9, 2026", author: "Admin" },
 ];
 
-const FEATURES = ["Weather","Weather Maps","Join Trip","Safety Protocol","Device Connect","Emergency SOS","Live Navigation","Bluetooth Devices"];
+const FEATURES = ["Weather", "Weather Maps", "Join Trip", "Safety Protocol", "Device Connect", "Emergency SOS", "Live Navigation", "Bluetooth Devices"];
 
 const Pill = ({ color, children }) => {
-  const map = { green:{bg:"rgba(34,197,94,0.12)",text:"#86efac"},red:{bg:"rgba(239,68,68,0.12)",text:"#fca5a5"},amber:{bg:"rgba(245,158,11,0.12)",text:"#fcd34d"},blue:{bg:"rgba(59,130,246,0.14)",text:"#93c5fd"},purple:{bg:"rgba(167,139,250,0.12)",text:"#c4b5fd"},teal:{bg:"rgba(20,184,166,0.12)",text:"#5eead4"},gray:{bg:"rgba(255,255,255,0.07)",text:"rgba(180,210,245,0.6)"} };
+  const map = { green: { bg: "rgba(34,197,94,0.12)", text: "#86efac" }, red: { bg: "rgba(239,68,68,0.12)", text: "#fca5a5" }, amber: { bg: "rgba(245,158,11,0.12)", text: "#fcd34d" }, blue: { bg: "rgba(59,130,246,0.14)", text: "#93c5fd" }, purple: { bg: "rgba(167,139,250,0.12)", text: "#c4b5fd" }, teal: { bg: "rgba(20,184,166,0.12)", text: "#5eead4" }, gray: { bg: "rgba(255,255,255,0.07)", text: "rgba(180,210,245,0.6)" } };
   const s = map[color] || map.gray;
-  return <span style={{fontSize:11,padding:"2px 9px",borderRadius:20,fontWeight:500,background:s.bg,color:s.text}}>{children}</span>;
+  return <span style={{ fontSize: 11, padding: "2px 9px", borderRadius: 20, fontWeight: 500, background: s.bg, color: s.text }}>{children}</span>;
 };
-const Card = ({ children, style }) => <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px 18px",...style}}>{children}</div>;
-const StatCard = ({ label, value, sub, color=C.accent, icon }) => (
-  <Card style={{marginBottom:0}}>
-    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:8}}>
-      <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em"}}>{label}</div>
-      {icon && <span style={{fontSize:18}}>{icon}</span>}
+const Card = ({ children, style }) => <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "16px 18px", ...style }}>{children}</div>;
+const StatCard = ({ label, value, sub, color = C.accent, icon }) => (
+  <Card style={{ marginBottom: 0 }}>
+    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 }}>
+      <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>{label}</div>
+      {icon && <span style={{ fontSize: 18 }}>{icon}</span>}
     </div>
-    <div style={{fontSize:26,fontWeight:700,color,marginBottom:2}}>{value}</div>
-    {sub && <div style={{fontSize:11,color:C.muted2}}>{sub}</div>}
+    <div style={{ fontSize: 26, fontWeight: 700, color, marginBottom: 2 }}>{value}</div>
+    {sub && <div style={{ fontSize: 11, color: C.muted2 }}>{sub}</div>}
   </Card>
 );
-const TH = ({ children, style }) => <th style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",padding:"10px 12px",textAlign:"left",fontWeight:500,borderBottom:`1px solid ${C.border}`,...style}}>{children}</th>;
-const TD = ({ children, style }) => <td style={{fontSize:13,padding:"11px 12px",color:C.text,borderBottom:`1px solid ${C.border}`,verticalAlign:"middle",...style}}>{children}</td>;
-const Avatar = ({ initials, bg, text, size=32 }) => <div style={{width:size,height:size,borderRadius:"50%",background:bg||"rgba(59,130,246,0.18)",color:text||C.accent,fontSize:size*0.35,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{initials}</div>;
-const Toggle = ({ on, onChange }) => <div onClick={onChange} style={{width:36,height:20,borderRadius:10,background:on?C.accent:"rgba(255,255,255,0.12)",position:"relative",cursor:"pointer",transition:"background 0.25s",flexShrink:0}}><div style={{position:"absolute",top:3,left:on?19:3,width:14,height:14,borderRadius:"50%",background:"#fff",transition:"left 0.25s"}}/></div>;
-const Input = ({ value, onChange, placeholder, type="text", style:sx }) => <input type={type} value={value} onChange={onChange} placeholder={placeholder} style={{height:36,width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:13,padding:"0 12px",fontFamily:"inherit",boxSizing:"border-box",outline:"none",...sx}}/>;
-const Btn = ({ children, onClick, variant="default", style:sx }) => {
-  const v = { primary:{background:C.accent,color:"#fff",border:"none"}, danger:{background:C.red,color:"#fff",border:"none"}, success:{background:"rgba(34,197,94,0.15)",color:C.green,border:`1px solid rgba(34,197,94,0.3)`}, default:{background:"rgba(255,255,255,0.05)",color:C.text,border:`1px solid ${C.border}`}, ghost:{background:"transparent",color:C.muted,border:"none"} };
-  return <button onClick={onClick} style={{padding:"7px 16px",borderRadius:8,fontSize:12,fontWeight:500,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:6,...v[variant],...sx}}>{children}</button>;
+const TH = ({ children, style }) => <th style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em", padding: "10px 12px", textAlign: "left", fontWeight: 500, borderBottom: `1px solid ${C.border}`, ...style }}>{children}</th>;
+const TD = ({ children, style }) => <td style={{ fontSize: 13, padding: "11px 12px", color: C.text, borderBottom: `1px solid ${C.border}`, verticalAlign: "middle", ...style }}>{children}</td>;
+const Avatar = ({ initials, bg, text, size = 32 }) => <div style={{ width: size, height: size, borderRadius: "50%", background: bg || "rgba(59,130,246,0.18)", color: text || C.accent, fontSize: size * 0.35, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{initials}</div>;
+const Toggle = ({ on, onChange }) => <div onClick={onChange} style={{ width: 36, height: 20, borderRadius: 10, background: on ? C.accent : "rgba(255,255,255,0.12)", position: "relative", cursor: "pointer", transition: "background 0.25s", flexShrink: 0 }}><div style={{ position: "absolute", top: 3, left: on ? 19 : 3, width: 14, height: 14, borderRadius: "50%", background: "#fff", transition: "left 0.25s" }} /></div>;
+const Input = ({ value, onChange, placeholder, type = "text", style: sx }) => <input type={type} value={value} onChange={onChange} placeholder={placeholder} style={{ height: 36, width: "100%", background: "rgba(255,255,255,0.04)", border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 13, padding: "0 12px", fontFamily: "inherit", boxSizing: "border-box", outline: "none", ...sx }} />;
+const Btn = ({ children, onClick, variant = "default", style: sx }) => {
+  const v = { primary: { background: C.accent, color: "#fff", border: "none" }, danger: { background: C.red, color: "#fff", border: "none" }, success: { background: "rgba(34,197,94,0.15)", color: C.green, border: `1px solid rgba(34,197,94,0.3)` }, default: { background: "rgba(255,255,255,0.05)", color: C.text, border: `1px solid ${C.border}` }, ghost: { background: "transparent", color: C.muted, border: "none" } };
+  return <button onClick={onClick} style={{ padding: "7px 16px", borderRadius: 8, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 6, ...v[variant], ...sx }}>{children}</button>;
 };
 const PageHeader = ({ title, sub, right }) => (
-  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:22}}>
-    <div><h1 style={{fontSize:20,fontWeight:600,color:C.text,margin:0}}>{title}</h1>{sub && <div style={{fontSize:12,color:C.muted,marginTop:3}}>{sub}</div>}</div>
+  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22 }}>
+    <div><h1 style={{ fontSize: 20, fontWeight: 600, color: C.text, margin: 0 }}>{title}</h1>{sub && <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>{sub}</div>}</div>
     {right}
   </div>
 );
@@ -281,15 +281,15 @@ const injectLeafletStyles = (() => {
   };
 })();
 
-const makeDotIcon = (L, color, size=12, pulse=false, ringColor=null) => L.divIcon({
+const makeDotIcon = (L, color, size = 12, pulse = false, ringColor = null) => L.divIcon({
   className: "",
-  html: `<div style="position:relative;width:${size+16}px;height:${size+16}px;">
-    ${pulse ? `<div style="position:absolute;top:50%;left:50%;width:${size+10}px;height:${size+10}px;border-radius:50%;border:2.5px solid ${ringColor||color};animation:llm-pulse 1.6s ease-out infinite;"></div>` : ""}
+  html: `<div style="position:relative;width:${size + 16}px;height:${size + 16}px;">
+    ${pulse ? `<div style="position:absolute;top:50%;left:50%;width:${size + 10}px;height:${size + 10}px;border-radius:50%;border:2.5px solid ${ringColor || color};animation:llm-pulse 1.6s ease-out infinite;"></div>` : ""}
     <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2.5px solid #fff;box-shadow:0 0 0 4px ${color}44,0 2px 8px rgba(0,0,0,.5);z-index:1;"></div>
   </div>`,
-  iconSize: [size+16, size+16],
-  iconAnchor: [(size+16)/2, (size+16)/2],
-  popupAnchor: [0, -(size/2+10)],
+  iconSize: [size + 16, size + 16],
+  iconAnchor: [(size + 16) / 2, (size + 16) / 2],
+  popupAnchor: [0, -(size / 2 + 10)],
 });
 
 const makeTeamIcon = (L, name, deployed) => {
@@ -317,7 +317,7 @@ const buildFallbackRoute = (selectedSOS) => {
   ];
 };
 
-const LiveMap = ({ points=[], teams=[], height=380, showPulse=true, routeFrom=null, routeTo=null, routePath=null, zoom:_zoom, onZoom }) => {
+const LiveMap = ({ points = [], teams = [], height = 380, showPulse = true, routeFrom = null, routeTo = null, routePath = null, zoom: _zoom, onZoom }) => {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef([]);
@@ -329,14 +329,14 @@ const LiveMap = ({ points=[], teams=[], height=380, showPulse=true, routeFrom=nu
   useEffect(() => {
     if (!ready || !containerRef.current || mapRef.current) return;
     const L = window.L;
-    const map = L.map(containerRef.current, { center:[20.5937,78.9629], zoom:5, zoomControl:true, attributionControl:true, preferCanvas:true });
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution:"© <a href='https://www.openstreetmap.org/copyright' style='color:#64748b'>OpenStreetMap</a>", maxZoom:19 }).addTo(map);
+    const map = L.map(containerRef.current, { center: [20.5937, 78.9629], zoom: 5, zoomControl: true, attributionControl: true, preferCanvas: true });
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© <a href='https://www.openstreetmap.org/copyright' style='color:#64748b'>OpenStreetMap</a>", maxZoom: 19 }).addTo(map);
     mapRef.current = map;
     return () => { if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; } };
   }, [ready]);
 
-  const pointsKey = JSON.stringify(points.map(p=>({id:p.id,lat:p.lat,lon:p.lon,status:p.status})));
-  const teamsKey = JSON.stringify(teams.map(t=>({id:t.id,lat:t.lat,lon:t.lon,status:t.status})));
+  const pointsKey = JSON.stringify(points.map(p => ({ id: p.id, lat: p.lat, lon: p.lon, status: p.status })));
+  const teamsKey = JSON.stringify(teams.map(t => ({ id: t.id, lat: t.lat, lon: t.lon, status: t.status })));
 
   useEffect(() => {
     if (!ready || !mapRef.current) return;
@@ -421,7 +421,7 @@ const LiveMap = ({ points=[], teams=[], height=380, showPulse=true, routeFrom=nu
     });
   }, [ready, pointsKey, teamsKey, showPulse]);
 
-  const routeKey = JSON.stringify({ rf: routeFrom ? {lat:routeFrom.lat,lon:routeFrom.lon} : null, rt: routeTo ? {lat:routeTo.lat,lon:routeTo.lon} : null, rp: Array.isArray(routePath) ? routePath.slice(0, 8) : null });
+  const routeKey = JSON.stringify({ rf: routeFrom ? { lat: routeFrom.lat, lon: routeFrom.lon } : null, rt: routeTo ? { lat: routeTo.lat, lon: routeTo.lon } : null, rp: Array.isArray(routePath) ? routePath.slice(0, 8) : null });
 
   useEffect(() => {
     if (!ready || !mapRef.current) return;
@@ -432,34 +432,34 @@ const LiveMap = ({ points=[], teams=[], height=380, showPulse=true, routeFrom=nu
       const from = routeFrom && [routeFrom.lat, routeFrom.lon];
       const to = routeTo && [routeTo.lat, routeTo.lon];
       const path = Array.isArray(routePath) && routePath.length > 1 ? routePath.map(([lon, lat]) => [lat, lon]) : [from, to].filter(Boolean);
-      const shadow = L.polyline(path, { color:"#f59e0b", weight:6, opacity:0.18 }).addTo(map);
-      const line = L.polyline(path, { color:"#f59e0b", weight:3, opacity:0.9, dashArray:"14 10", dashOffset:"0", className:"llm-route-line" }).addTo(map);
-      const pulse = to ? L.circleMarker(to, { radius:14, color:"#ef4444", weight:2, opacity:0.5, fill:false, className:"llm-sos-ring" }).addTo(map) : null;
+      const shadow = L.polyline(path, { color: "#f59e0b", weight: 6, opacity: 0.18 }).addTo(map);
+      const line = L.polyline(path, { color: "#f59e0b", weight: 3, opacity: 0.9, dashArray: "14 10", dashOffset: "0", className: "llm-route-line" }).addTo(map);
+      const pulse = to ? L.circleMarker(to, { radius: 14, color: "#ef4444", weight: 2, opacity: 0.5, fill: false, className: "llm-sos-ring" }).addTo(map) : null;
       const group = pulse ? L.layerGroup([shadow, line, pulse]).addTo(map) : L.layerGroup([shadow, line]).addTo(map);
       routeRef.current = group;
-      map.fitBounds(path, { padding:[50,50], maxZoom:14 });
+      map.fitBounds(path, { padding: [50, 50], maxZoom: 14 });
     }
   }, [ready, routeKey]);
 
   return (
-    <div style={{ background:"#080f1a", borderRadius:12, overflow:"hidden", border:`1px solid ${C.border}`, position:"relative" }}>
-      <div style={{ position:"absolute", top:10, left:10, zIndex:900, background:"rgba(8,15,26,0.92)", border:"1px solid rgba(80,140,220,0.22)", borderRadius:9, padding:"9px 13px", pointerEvents:"none" }}>
+    <div style={{ background: "#080f1a", borderRadius: 12, overflow: "hidden", border: `1px solid ${C.border}`, position: "relative" }}>
+      <div style={{ position: "absolute", top: 10, left: 10, zIndex: 900, background: "rgba(8,15,26,0.92)", border: "1px solid rgba(80,140,220,0.22)", borderRadius: 9, padding: "9px 13px", pointerEvents: "none" }}>
         {[[C.accent, "Active user", "dot"], [C.red, "SOS alert", "dot"], [C.amber, "SOS team", "rect"], [C.amber, "Route", "dash"]].map(([col, label, type]) => (
-          <div key={label} style={{ display:"flex", alignItems:"center", gap:7, marginBottom:5, fontSize:10, color:C.muted }}>
-            {type==="dot" && <div style={{ width:9, height:9, borderRadius:"50%", background:col, border:"1.5px solid #fff", flexShrink:0 }}/>} 
-            {type==="rect" && <div style={{ width:13, height:9, borderRadius:3, background:col, flexShrink:0 }}/>} 
-            {type==="dash" && <div style={{ width:14, borderTop:`2.5px dashed ${col}`, flexShrink:0 }}/>} 
+          <div key={label} style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5, fontSize: 10, color: C.muted }}>
+            {type === "dot" && <div style={{ width: 9, height: 9, borderRadius: "50%", background: col, border: "1.5px solid #fff", flexShrink: 0 }} />}
+            {type === "rect" && <div style={{ width: 13, height: 9, borderRadius: 3, background: col, flexShrink: 0 }} />}
+            {type === "dash" && <div style={{ width: 14, borderTop: `2.5px dashed ${col}`, flexShrink: 0 }} />}
             {label}
           </div>
         ))}
       </div>
       {onZoom && (
-        <div style={{ position:"absolute", top:10, right:10, zIndex:900, display:"flex", flexDirection:"column", gap:4 }}>
-          <button onClick={()=>{ mapRef.current?.zoomIn(); onZoom(1); }} style={{ width:30, height:30, background:"rgba(11,20,34,0.92)", border:`1px solid ${C.border}`, borderRadius:7, color:C.text, fontSize:17, cursor:"pointer", lineHeight:1 }}>+</button>
-          <button onClick={()=>{ mapRef.current?.zoomOut(); onZoom(-1); }} style={{ width:30, height:30, background:"rgba(11,20,34,0.92)", border:`1px solid ${C.border}`, borderRadius:7, color:C.text, fontSize:17, cursor:"pointer", lineHeight:1 }}>−</button>
+        <div style={{ position: "absolute", top: 10, right: 10, zIndex: 900, display: "flex", flexDirection: "column", gap: 4 }}>
+          <button onClick={() => { mapRef.current?.zoomIn(); onZoom(1); }} style={{ width: 30, height: 30, background: "rgba(11,20,34,0.92)", border: `1px solid ${C.border}`, borderRadius: 7, color: C.text, fontSize: 17, cursor: "pointer", lineHeight: 1 }}>+</button>
+          <button onClick={() => { mapRef.current?.zoomOut(); onZoom(-1); }} style={{ width: 30, height: 30, background: "rgba(11,20,34,0.92)", border: `1px solid ${C.border}`, borderRadius: 7, color: C.text, fontSize: 17, cursor: "pointer", lineHeight: 1 }}>−</button>
         </div>
       )}
-      {!ready ? <div style={{ height, background:"#08101e", display:"flex", alignItems:"center", justifyContent:"center", color:C.muted, fontSize:13, gap:8 }}><span style={{ animation:"spin 1s linear infinite", display:"inline-block" }}>⏳</span> Loading map engine…</div> : <div ref={containerRef} style={{ height }} />}
+      {!ready ? <div style={{ height, background: "#08101e", display: "flex", alignItems: "center", justifyContent: "center", color: C.muted, fontSize: 13, gap: 8 }}><span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span> Loading map engine…</div> : <div ref={containerRef} style={{ height }} />}
     </div>
   );
 };
@@ -1465,7 +1465,7 @@ const PageAdminAuth = ({ onLogin }) => {
       .then((data) => {
         if (active && data) setThemeConfig(data);
       })
-      .catch(() => {});
+      .catch(() => { });
     return () => {
       active = false;
     };
@@ -3507,842 +3507,842 @@ const PageTripRosters = ({
         <>
           {/* SECTION 1: PENDING TREKKER APPLICATIONS QUEUE */}
           <div style={{ marginBottom: 28 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 16 }}>⏳</span>
-            <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>
-              Pending Trekker Applications
-            </span>
-            <span
-              style={{
-                fontSize: 11,
-                padding: "2px 8px",
-                borderRadius: 12,
-                background: pendingTrekkers.length > 0 ? "rgba(245,158,11,0.2)" : "rgba(255,255,255,0.08)",
-                color: pendingTrekkers.length > 0 ? "#fbbf24" : C.muted,
-                fontWeight: 600,
-              }}
-            >
-              {pendingTrekkers.length}
-            </span>
-          </div>
-        </div>
-
-        {pendingTrekkers.length === 0 ? (
-          <Card style={{ padding: "28px 20px", textAlign: "center", background: "rgba(255,255,255,0.02)" }}>
-            <div style={{ fontSize: 28, marginBottom: 8 }}>🧭</div>
-            <div style={{ fontSize: 13.5, fontWeight: 600, color: C.text, marginBottom: 4 }}>
-              No Pending Trekker Applications
-            </div>
-            <div style={{ fontSize: 12, color: C.muted, maxWidth: 500, margin: "0 auto", lineHeight: 1.5 }}>
-              All trekker expedition join requests have been processed. When a user enters a trip code or clicks Join from the user portal, their medical notes and emergency contact details will appear here for your review and clearance.
-            </div>
-          </Card>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {pendingTrekkers.map((applicant) => {
-              const applicantId = applicant.userId || applicant.id;
-              const key = `${applicant.tripId}-${applicantId}`;
-              const isActing = !!actionLoading[key];
-              const initials = (applicant.name || "Trekker")
-                .split(/\s+/)
-                .slice(0, 2)
-                .map((p) => p[0])
-                .join("")
-                .toUpperCase() || "TR";
-
-              return (
-                <Card
-                  key={key}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 16 }}>⏳</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>
+                  Pending Trekker Applications
+                </span>
+                <span
                   style={{
-                    border: "1px solid rgba(245, 158, 11, 0.35)",
-                    background: "linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(11, 20, 34, 0.95))",
-                    boxShadow: "0 4px 18px rgba(0, 0, 0, 0.35)",
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 14 }}>
-                    <div style={{ display: "flex", gap: 14 }}>
-                      <div
-                        style={{
-                          width: 44,
-                          height: 44,
-                          borderRadius: 12,
-                          background: "rgba(245, 158, 11, 0.18)",
-                          border: "1px solid rgba(245, 158, 11, 0.4)",
-                          color: "#fbbf24",
-                          fontSize: 15,
-                          fontWeight: 700,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          flexShrink: 0,
-                        }}
-                      >
-                        {initials}
-                      </div>
-
-                      <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
-                          <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>
-                            {applicant.name || "Trekker Applicant"}
-                          </span>
-                          <span
-                            style={{
-                              fontSize: 10,
-                              fontWeight: 700,
-                              padding: "2px 8px",
-                              borderRadius: 10,
-                              background: "rgba(245, 158, 11, 0.2)",
-                              border: "1px solid rgba(245, 158, 11, 0.35)",
-                              color: "#fbbf24",
-                            }}
-                          >
-                            ⏳ AWAITING APPROVAL
-                          </span>
-                          <span
-                            style={{
-                              fontSize: 11,
-                              fontWeight: 600,
-                              padding: "2px 8px",
-                              borderRadius: 6,
-                              background: "rgba(59, 130, 246, 0.15)",
-                              border: "1px solid rgba(59, 130, 246, 0.3)",
-                              color: "#60a5fa",
-                            }}
-                          >
-                            Expedition: {applicant.tripName} ({applicant.tripCode})
-                          </span>
-                        </div>
-
-                        <div style={{ fontSize: 12, color: C.muted, display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 8 }}>
-                          <span>✉️ {applicant.email || "No email"}</span>
-                          <span>📞 {applicant.phone || "No phone"}</span>
-                          <span>🩸 Blood: <strong>{applicant.blood || "Not specified"}</strong></span>
-                          <span>🩺 Medical: <strong>{applicant.medical || "None reported"}</strong></span>
-                        </div>
-
-                        <div style={{ fontSize: 11.5, color: "rgba(180, 210, 245, 0.85)", background: "rgba(255,255,255,0.03)", padding: "6px 12px", borderRadius: 8, display: "inline-block" }}>
-                          🆘 <strong>Emergency Contact:</strong> {applicant.ec1Name || "Family"} ({applicant.ec1Rel || "Next of Kin"}) — 📞 {applicant.ec1Ph || "—"}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                      <button
-                        type="button"
-                        onClick={() => handleRemove(applicant.tripId, applicantId)}
-                        disabled={isActing}
-                        style={{
-                          background: "transparent",
-                          border: "1px solid rgba(239, 68, 68, 0.35)",
-                          borderRadius: 8,
-                          color: "#fca5a5",
-                          padding: "8px 14px",
-                          fontSize: 12,
-                          fontWeight: 600,
-                          cursor: isActing ? "not-allowed" : "pointer",
-                          opacity: isActing ? 0.6 : 1,
-                          fontFamily: "inherit",
-                        }}
-                      >
-                        ✕ Decline Request
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleApprove(applicant.tripId, applicantId)}
-                        disabled={isActing}
-                        style={{
-                          background: "linear-gradient(135deg, #10b981, #059669)",
-                          border: "none",
-                          borderRadius: 8,
-                          color: "#ffffff",
-                          padding: "8px 16px",
-                          fontSize: 12,
-                          fontWeight: 700,
-                          cursor: isActing ? "not-allowed" : "pointer",
-                          boxShadow: "0 4px 14px rgba(16, 185, 129, 0.35)",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 6,
-                          opacity: isActing ? 0.6 : 1,
-                          fontFamily: "inherit",
-                        }}
-                      >
-                        {isActing ? "Authorizing..." : "✓ Approve Trekker"}
-                      </button>
-                    </div>
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* SECTION 2: ACTIVE EXPEDITIONS & ROSTER MANAGEMENT */}
-      <div>
-        {/* In-Field Single Active Command Banner */}
-        {(() => {
-          const inFieldTrip = trips.find((t) => t.isManaged || t.status === "in-field") || trips[0];
-          return (
-            <div
-              style={{
-                marginBottom: 20,
-                padding: "16px 20px",
-                borderRadius: 14,
-                background: "linear-gradient(135deg, rgba(34, 197, 94, 0.12), rgba(11, 20, 34, 0.95))",
-                border: "1px solid rgba(34, 197, 94, 0.35)",
-                boxShadow: "0 8px 24px rgba(0, 0, 0, 0.3)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                flexWrap: "wrap",
-                gap: 14,
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                <div
-                  style={{
-                    width: 48,
-                    height: 48,
+                    fontSize: 11,
+                    padding: "2px 8px",
                     borderRadius: 12,
-                    background: "rgba(34, 197, 94, 0.2)",
-                    border: "1px solid rgba(34, 197, 94, 0.4)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 22,
+                    background: pendingTrekkers.length > 0 ? "rgba(245,158,11,0.2)" : "rgba(255,255,255,0.08)",
+                    color: pendingTrekkers.length > 0 ? "#fbbf24" : C.muted,
+                    fontWeight: 600,
                   }}
                 >
-                  🛰️
+                  {pendingTrekkers.length}
+                </span>
+              </div>
+            </div>
+
+            {pendingTrekkers.length === 0 ? (
+              <Card style={{ padding: "28px 20px", textAlign: "center", background: "rgba(255,255,255,0.02)" }}>
+                <div style={{ fontSize: 28, marginBottom: 8 }}>🧭</div>
+                <div style={{ fontSize: 13.5, fontWeight: 600, color: C.text, marginBottom: 4 }}>
+                  No Pending Trekker Applications
                 </div>
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                    <span
+                <div style={{ fontSize: 12, color: C.muted, maxWidth: 500, margin: "0 auto", lineHeight: 1.5 }}>
+                  All trekker expedition join requests have been processed. When a user enters a trip code or clicks Join from the user portal, their medical notes and emergency contact details will appear here for your review and clearance.
+                </div>
+              </Card>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {pendingTrekkers.map((applicant) => {
+                  const applicantId = applicant.userId || applicant.id;
+                  const key = `${applicant.tripId}-${applicantId}`;
+                  const isActing = !!actionLoading[key];
+                  const initials = (applicant.name || "Trekker")
+                    .split(/\s+/)
+                    .slice(0, 2)
+                    .map((p) => p[0])
+                    .join("")
+                    .toUpperCase() || "TR";
+
+                  return (
+                    <Card
+                      key={key}
                       style={{
-                        fontSize: 10,
-                        fontWeight: 800,
-                        letterSpacing: "0.08em",
-                        textTransform: "uppercase",
-                        padding: "2px 8px",
-                        borderRadius: 6,
-                        background: "rgba(34, 197, 94, 0.25)",
-                        border: "1px solid rgba(34, 197, 94, 0.5)",
-                        color: "#86efac",
+                        border: "1px solid rgba(245, 158, 11, 0.35)",
+                        background: "linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(11, 20, 34, 0.95))",
+                        boxShadow: "0 4px 18px rgba(0, 0, 0, 0.35)",
                       }}
                     >
-                      ● Active In-Field Command
-                    </span>
-                    <span style={{ fontSize: 11, color: C.muted2 }}>
-                      (Admin manages 1 live expedition in the field at a time)
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>
-                    {inFieldTrip?.name || "No Active In-Field Expedition"}
-                  </div>
-                  <div style={{ fontSize: 12, color: C.muted, marginTop: 4, display: "flex", gap: 16, flexWrap: "wrap" }}>
-                    <span>🔑 Join Code: <strong style={{ color: "#60a5fa" }}>{inFieldTrip?.code || "—"}</strong></span>
-                    <span>🧭 Field Guide: <strong style={{ color: C.text }}>{inFieldTrip?.leader || "Field Guide Ajay Saini"}</strong></span>
-                    <span>📻 Walkie-Talkie: <strong style={{ color: "#fbbf24" }}>{inFieldTrip?.vhfChannel || "145.500 MHz (VHF Ch 1)"}</strong></span>
-                    <span>👥 Enrolled: <strong style={{ color: "#34d399" }}>{inFieldTrip?.rosterCount || 0} / {inFieldTrip?.maxRoster || 25} Trekkers</strong></span>
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 11, color: C.muted2 }}>Field Safety Duty-of-Care</div>
-                  <div style={{ fontSize: 12.5, fontWeight: 700, color: "#86efac" }}>🟢 Live Telemetry Linked</div>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
-        <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
-          <span>🏔️</span>
-          <span>Expedition Batches & Management ({trips.length})</span>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {trips.map((trip) => {
-            const tripId = trip.id || trip.tripId;
-            const isExpanded = expandedTrip === tripId;
-            const tripRoster = rosters[tripId] || [];
-            const approvedMembers = tripRoster.filter((m) => m.status === "approved" || !m.status);
-            const isInField = !!(trip.isManaged || trip.status === "in-field");
-
-            return (
-              <Card
-                key={tripId}
-                style={{
-                  background: isInField
-                    ? "linear-gradient(135deg, rgba(34, 197, 94, 0.06), rgba(11, 20, 34, 0.98))"
-                    : "rgba(11, 20, 34, 0.95)",
-                  border: isInField ? "1px solid rgba(34, 197, 94, 0.4)" : `1px solid ${C.border}`,
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 12 }}>
-                  <div style={{ flex: "1 1 500px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-                      <span style={{ background: "rgba(59, 130, 246, 0.15)", border: "1px solid rgba(59, 130, 246, 0.3)", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700, color: "#60a5fa" }}>
-                        {trip.code}
-                      </span>
-                      {isInField ? (
-                        <span
-                          style={{
-                            fontSize: 10.5,
-                            fontWeight: 800,
-                            letterSpacing: "0.06em",
-                            padding: "3px 9px",
-                            borderRadius: 8,
-                            background: "rgba(34, 197, 94, 0.2)",
-                            border: "1px solid rgba(34, 197, 94, 0.45)",
-                            color: "#86efac",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 5,
-                          }}
-                        >
-                          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px #22c55e" }} />
-                          IN-FIELD COMMAND (ACTIVE)
-                        </span>
-                      ) : (
-                        <span
-                          style={{
-                            fontSize: 10.5,
-                            fontWeight: 700,
-                            padding: "3px 8px",
-                            borderRadius: 8,
-                            background: "rgba(148, 163, 184, 0.12)",
-                            border: "1px solid rgba(148, 163, 184, 0.25)",
-                            color: "#cbd5e1",
-                          }}
-                        >
-                          ⏳ UPCOMING SCHEDULED
-                        </span>
-                      )}
-                      <span style={{ fontSize: 12, color: C.muted }}>📍 {trip.location}</span>
-                    </div>
-
-                    <div style={{ fontSize: 16.5, fontWeight: 700, color: C.text }}>{trip.name}</div>
-
-                    <div style={{ fontSize: 12, color: C.muted, marginTop: 6, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 6 }}>
-                      <div>
-                        📅 <strong>Schedule:</strong> {trip.startDate || trip.date} {trip.startTime ? `at ${trip.startTime}` : ""} → {trip.endDate || ""} {trip.endTime ? `at ${trip.endTime}` : ""}
-                        {trip.duration ? ` (${trip.duration})` : ""}
-                      </div>
-                      <div>
-                        🚌 <strong>Assembly / Pickup:</strong> {trip.pickupLocation || "Lonavala Station (Exit Gate 1)"}
-                      </div>
-                      <div>
-                        🏕️ <strong>Base Camp:</strong> {trip.baseLocation || "Udhewadi Base Camp (829m ASL)"}
-                      </div>
-                      <div>
-                        📻 <strong>Walkie-Talkie Channel:</strong> <span style={{ color: "#fbbf24" }}>{trip.vhfChannel || "145.500 MHz (VHF Ch 1)"}</span>
-                      </div>
-                      <div>
-                        🏔️ <strong>Elevation:</strong> {trip.elevation || "829m ASL"} · <strong>Trail:</strong> {trip.difficulty || "Moderate"}
-                      </div>
-                      <div>
-                        🧭 <strong>Leader:</strong> {trip.leader || "Field Guide Ajay Saini"} · 🔒 <strong>Geofence:</strong> {((geofenceRadiusMap[tripId] ?? (trip.geofence?.radius || 2500)) / 1000).toFixed(1)} km
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10 }}>
-                    <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: 11, color: C.muted2 }}>Roster Strength</div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: "#60a5fa" }}>
-                        {trip.rosterCount || approvedMembers.length || 0} / {trip.maxRoster || 25} Trekkers
-                      </div>
-                    </div>
-
-                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                      {!isInField && (
-                        <button
-                          type="button"
-                          onClick={() => handleSetInFieldCommand(trip)}
-                          disabled={managingTripId === tripId}
-                          style={{
-                            padding: "6px 12px",
-                            borderRadius: 8,
-                            background: "linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(16, 185, 129, 0.25))",
-                            border: "1px solid rgba(34, 197, 94, 0.4)",
-                            color: "#86efac",
-                            fontSize: 11.5,
-                            fontWeight: 700,
-                            cursor: managingTripId === tripId ? "not-allowed" : "pointer",
-                            fontFamily: "inherit",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 5,
-                            boxShadow: "0 2px 10px rgba(34, 197, 94, 0.15)",
-                          }}
-                        >
-                          {managingTripId === tripId ? "Transferring..." : "🧭 Take Field Command"}
-                        </button>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={() => setDeleteModalTrip(trip)}
-                        title="Cancel and delete this expedition from system"
-                        style={{
-                          padding: "6px 12px",
-                          borderRadius: 8,
-                          background: "transparent",
-                          border: "1px solid rgba(239, 68, 68, 0.35)",
-                          color: "#fca5a5",
-                          fontSize: 11.5,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                          fontFamily: "inherit",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 5,
-                        }}
-                      >
-                        🗑️ Delete Expedition
-                      </button>
-
-                      <Btn
-                        variant={isExpanded ? "default" : "primary"}
-                        onClick={() => {
-                          if (isExpanded) {
-                            setExpandedTrip(null);
-                          } else {
-                            setExpandedTrip(tripId);
-                            loadRosterForTrip(tripId);
-                          }
-                        }}
-                      >
-                        {isExpanded ? "Hide Controls ▴" : "Manage Expedition ▾"}
-                      </Btn>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Expanded Controls Drawer */}
-                {isExpanded && (
-                  <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
-                    {/* Sub-tab navigation */}
-                    <div style={{ display: "flex", gap: 8, marginBottom: 14, borderBottom: `1px solid ${C.border}`, paddingBottom: 8 }}>
-                      <button
-                        type="button"
-                        onClick={() => setActiveTabMap((p) => ({ ...p, [tripId]: "roster" }))}
-                        style={{
-                          background: (activeTabMap[tripId] || "roster") === "roster" ? "rgba(59, 130, 246, 0.15)" : "transparent",
-                          border: `1px solid ${(activeTabMap[tripId] || "roster") === "roster" ? C.accent : "transparent"}`,
-                          borderRadius: 8,
-                          padding: "6px 14px",
-                          color: (activeTabMap[tripId] || "roster") === "roster" ? "#93c5fd" : C.muted,
-                          fontSize: 12,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                          fontFamily: "inherit",
-                        }}
-                      >
-                        👥 Enrolled Trekkers ({approvedMembers.length})
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setActiveTabMap((p) => ({ ...p, [tripId]: "geofence" }))}
-                        style={{
-                          background: activeTabMap[tripId] === "geofence" ? "rgba(245, 158, 11, 0.15)" : "transparent",
-                          border: `1px solid ${activeTabMap[tripId] === "geofence" ? "#f59e0b" : "transparent"}`,
-                          borderRadius: 8,
-                          padding: "6px 14px",
-                          color: activeTabMap[tripId] === "geofence" ? "#fbbf24" : C.muted,
-                          fontSize: 12,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                          fontFamily: "inherit",
-                        }}
-                      >
-                        🔒 Geofence & Safety Perimeter
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setActiveTabMap((p) => ({ ...p, [tripId]: "protocols" }))}
-                        style={{
-                          background: activeTabMap[tripId] === "protocols" ? "rgba(34, 197, 94, 0.15)" : "transparent",
-                          border: `1px solid ${activeTabMap[tripId] === "protocols" ? "#22c55e" : "transparent"}`,
-                          borderRadius: 8,
-                          padding: "6px 14px",
-                          color: activeTabMap[tripId] === "protocols" ? "#86efac" : C.muted,
-                          fontSize: 12,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                          fontFamily: "inherit",
-                        }}
-                      >
-                        🛡️ Safety Directives & SOPs ({protocols.filter((p) => p.status === "published").length})
-                      </button>
-                    </div>
-
-                    {/* SUB-VIEW 1: ENROLLED TREKKERS ROSTER */}
-                    {(activeTabMap[tripId] || "roster") === "roster" && (
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <span>Enrolled Trekkers Roster</span>
-                          <button
-                            type="button"
-                            onClick={() => loadRosterForTrip(tripId)}
-                            style={{ background: "transparent", border: "none", color: "#60a5fa", fontSize: 11, cursor: "pointer" }}
-                          >
-                            ↻ Refresh Roster
-                          </button>
-                        </div>
-
-                        {loadingRoster[tripId] ? (
-                          <div style={{ padding: "16px", textAlign: "center", color: C.muted, fontSize: 12 }}>
-                            Loading expedition roster from database...
-                          </div>
-                        ) : approvedMembers.length === 0 ? (
-                          <div style={{ padding: "16px", textAlign: "center", color: C.muted2, fontSize: 12, background: "rgba(255,255,255,0.02)", borderRadius: 8 }}>
-                            No trekkers currently enrolled in this expedition. Trekkers who apply with code <strong>{trip.code}</strong> and get approved will appear here.
-                          </div>
-                        ) : (
-                          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                            <thead>
-                              <tr>
-                                <TH>Trekker</TH>
-                                <TH>Contact & Blood</TH>
-                                <TH>Emergency Contact</TH>
-                                <TH>Status</TH>
-                                <TH>Roster Actions</TH>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {approvedMembers.map((member) => {
-                                const memberKey = `${tripId}-${member.id || member.userId}`;
-                                const isActing = !!actionLoading[memberKey];
-
-                                return (
-                                  <tr key={memberKey}>
-                                    <TD>
-                                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                        <div
-                                          style={{
-                                            width: 30,
-                                            height: 30,
-                                            borderRadius: "50%",
-                                            background: "rgba(59, 130, 246, 0.15)",
-                                            border: "1px solid rgba(59, 130, 246, 0.3)",
-                                            color: "#60a5fa",
-                                            fontSize: 11,
-                                            fontWeight: 700,
-                                            display: "flex",
-                                            alignItems: "center",
-                                            justifyContent: "center",
-                                          }}
-                                        >
-                                          {(member.name || "TR").slice(0, 2).toUpperCase()}
-                                        </div>
-                                        <div>
-                                          <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>
-                                            {member.name || "Trekker"}
-                                          </div>
-                                          <div style={{ fontSize: 11, color: C.muted }}>{member.email || "No email"}</div>
-                                        </div>
-                                      </div>
-                                    </TD>
-                                    <TD>
-                                      <div style={{ fontSize: 11.5, color: C.text }}>{member.phone || "—"}</div>
-                                      <div style={{ fontSize: 11, color: C.muted2 }}>Blood: {member.blood || "B+"} · Medical: {member.medical || "None"}</div>
-                                    </TD>
-                                    <TD>
-                                      <div style={{ fontSize: 11.5, color: C.text }}>{member.ec1Name || "Family"} ({member.ec1Rel || "Next of Kin"})</div>
-                                      <div style={{ fontSize: 11, color: C.muted2 }}>📞 {member.ec1Ph || "—"}</div>
-                                    </TD>
-                                    <TD>
-                                      <span
-                                        style={{
-                                          fontSize: 10,
-                                          fontWeight: 700,
-                                          padding: "2px 7px",
-                                          borderRadius: 10,
-                                          background: "rgba(34, 197, 94, 0.15)",
-                                          border: "1px solid rgba(34, 197, 94, 0.3)",
-                                          color: "#86efac",
-                                        }}
-                                      >
-                                        ● ENROLLED
-                                      </span>
-                                    </TD>
-                                    <TD>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleRemove(tripId, member.id || member.userId)}
-                                        disabled={isActing}
-                                        style={{
-                                          background: "transparent",
-                                          border: "1px solid rgba(239, 68, 68, 0.3)",
-                                          borderRadius: 6,
-                                          color: "#fca5a5",
-                                          padding: "4px 10px",
-                                          fontSize: 11,
-                                          fontWeight: 600,
-                                          cursor: isActing ? "not-allowed" : "pointer",
-                                          opacity: isActing ? 0.6 : 1,
-                                          fontFamily: "inherit",
-                                        }}
-                                      >
-                                        {isActing ? "Removing..." : "Remove from Expedition"}
-                                      </button>
-                                    </TD>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        )}
-                      </div>
-                    )}
-
-                    {/* SUB-VIEW 2: GEOFENCE SAFETY PERIMETER MANAGEMENT */}
-                    {activeTabMap[tripId] === "geofence" && (
-                      <div
-                        style={{
-                          background: "rgba(245, 158, 11, 0.04)",
-                          border: "1px solid rgba(245, 158, 11, 0.25)",
-                          borderRadius: 12,
-                          padding: "16px 20px",
-                        }}
-                      >
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
-                          <div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                              <span style={{ fontSize: 18 }}>🔒</span>
-                              <span style={{ fontSize: 14, fontWeight: 700, color: "#fbbf24" }}>
-                                Geofence Safety Perimeter Editor
-                              </span>
-                              <Pill color="amber">Admin Authority Only</Pill>
-                            </div>
-                            <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
-                              Adjust the maximum allowable distance trekkers can venture from the trail center. Trekkers breaching this perimeter trigger automatic telemetry alerts on their mobile app and this admin radar.
-                            </div>
-                          </div>
-
-                          <Btn
-                            variant="primary"
-                            onClick={() => handleSaveGeofence(trip)}
-                            disabled={!!savingGeofence[tripId]}
-                            style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)", border: "none" }}
-                          >
-                            {savingGeofence[tripId] ? "Broadcasting..." : "Save & Broadcast Perimeter"}
-                          </Btn>
-                        </div>
-
-                        {geofenceToast[tripId] && (
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 14 }}>
+                        <div style={{ display: "flex", gap: 14 }}>
                           <div
                             style={{
-                              marginBottom: 14,
-                              padding: "10px 14px",
-                              borderRadius: 8,
-                              background: "rgba(34, 197, 94, 0.15)",
-                              border: "1px solid rgba(34, 197, 94, 0.35)",
-                              color: "#86efac",
-                              fontSize: 12,
-                              fontWeight: 600,
-                            }}
-                          >
-                            {geofenceToast[tripId]}
-                          </div>
-                        )}
-
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                          <div>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                              <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                                Safety Perimeter Radius
-                              </label>
-                              <span style={{ fontSize: 14, fontWeight: 800, color: "#fbbf24" }}>
-                                {((geofenceRadiusMap[tripId] ?? (trip.geofence?.radius || 2500)) / 1000).toFixed(1)} km ({(geofenceRadiusMap[tripId] ?? (trip.geofence?.radius || 2500))} m)
-                              </span>
-                            </div>
-
-                            <input
-                              type="range"
-                              min="500"
-                              max="5000"
-                              step="100"
-                              value={geofenceRadiusMap[tripId] ?? (trip.geofence?.radius || 2500)}
-                              onChange={(e) =>
-                                setGeofenceRadiusMap((p) => ({ ...p, [tripId]: Number(e.target.value) }))
-                              }
-                              style={{ width: "100%", accentColor: "#f59e0b", marginBottom: 10 }}
-                            />
-
-                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
-                              {[
-                                { label: "⚠️ 1.0 km (Dense Fog / Storm)", val: 1000 },
-                                { label: "🧭 2.5 km (Standard Corridor)", val: 2500 },
-                                { label: "🏔️ 4.0 km (Plateau Range)", val: 4000 },
-                              ].map((preset) => (
-                                <button
-                                  key={preset.val}
-                                  type="button"
-                                  onClick={() =>
-                                    setGeofenceRadiusMap((p) => ({ ...p, [tripId]: preset.val }))
-                                  }
-                                  style={{
-                                    fontSize: 10.5,
-                                    padding: "4px 9px",
-                                    borderRadius: 6,
-                                    border: `1px solid ${(geofenceRadiusMap[tripId] ?? (trip.geofence?.radius || 2500)) === preset.val ? "#f59e0b" : C.border}`,
-                                    background: (geofenceRadiusMap[tripId] ?? (trip.geofence?.radius || 2500)) === preset.val ? "rgba(245, 158, 11, 0.2)" : "rgba(255, 255, 255, 0.04)",
-                                    color: (geofenceRadiusMap[tripId] ?? (trip.geofence?.radius || 2500)) === preset.val ? "#fbbf24" : C.muted,
-                                    cursor: "pointer",
-                                    fontFamily: "inherit",
-                                  }}
-                                >
-                                  {preset.label}
-                                </button>
-                              ))}
-                            </div>
-
-                            <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
-                              Designated Safety Zone Name
-                            </label>
-                            <Input
-                              value={geofenceZoneMap[tripId] ?? (trip.geofence?.zoneName || `${trip.name} Safe Corridor`)}
-                              onChange={(e) =>
-                                setGeofenceZoneMap((p) => ({ ...p, [tripId]: e.target.value }))
-                              }
-                              placeholder="e.g. Rajmachi Safe Trek Corridor"
-                            />
-                          </div>
-
-                          <div
-                            style={{
-                              background: "rgba(0, 0, 0, 0.3)",
-                              border: `1px solid ${C.border}`,
-                              borderRadius: 10,
-                              padding: "14px 16px",
+                              width: 44,
+                              height: 44,
+                              borderRadius: 12,
+                              background: "rgba(245, 158, 11, 0.18)",
+                              border: "1px solid rgba(245, 158, 11, 0.4)",
+                              color: "#fbbf24",
+                              fontSize: 15,
+                              fontWeight: 700,
                               display: "flex",
-                              flexDirection: "column",
-                              justifyContent: "space-between",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              flexShrink: 0,
                             }}
                           >
-                            <div>
-                              <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
-                                Active Enforced Coordinates
-                              </div>
-                              <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
-                                📍 Trail Center: {trip.lat || 18.8286}°N, {trip.lon || 73.3986}°E
-                              </div>
-                              <div style={{ fontSize: 11, color: C.muted2, marginTop: 2 }}>
-                                Reference: Rajmachi Fort / Manoranjan Ridge (829m ASL)
-                              </div>
+                            {initials}
+                          </div>
+
+                          <div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+                              <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>
+                                {applicant.name || "Trekker Applicant"}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  fontWeight: 700,
+                                  padding: "2px 8px",
+                                  borderRadius: 10,
+                                  background: "rgba(245, 158, 11, 0.2)",
+                                  border: "1px solid rgba(245, 158, 11, 0.35)",
+                                  color: "#fbbf24",
+                                }}
+                              >
+                                ⏳ AWAITING APPROVAL
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: 11,
+                                  fontWeight: 600,
+                                  padding: "2px 8px",
+                                  borderRadius: 6,
+                                  background: "rgba(59, 130, 246, 0.15)",
+                                  border: "1px solid rgba(59, 130, 246, 0.3)",
+                                  color: "#60a5fa",
+                                }}
+                              >
+                                Expedition: {applicant.tripName} ({applicant.tripCode})
+                              </span>
                             </div>
 
-                            <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.border}`, fontSize: 11.5, color: C.muted }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                                <span>Leader in Command:</span>
-                                <span style={{ color: "#fbbf24", fontWeight: 600 }}>{trip.leader || "Field Guide Ajay Saini"}</span>
-                              </div>
-                              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                                <span>User App Enforced Status:</span>
-                                <span style={{ color: "#86efac", fontWeight: 600 }}>Active (Locked to Admin)</span>
-                              </div>
-                              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                <span>Walkie-Talkie Channel (VHF Radio):</span>
-                                <span style={{ color: "#60a5fa" }}>{trip.vhfChannel || "145.500 MHz (VHF Ch 1)"}</span>
-                              </div>
+                            <div style={{ fontSize: 12, color: C.muted, display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 8 }}>
+                              <span>✉️ {applicant.email || "No email"}</span>
+                              <span>📞 {applicant.phone || "No phone"}</span>
+                              <span>🩸 Blood: <strong>{applicant.blood || "Not specified"}</strong></span>
+                              <span>🩺 Medical: <strong>{applicant.medical || "None reported"}</strong></span>
+                            </div>
+
+                            <div style={{ fontSize: 11.5, color: "rgba(180, 210, 245, 0.85)", background: "rgba(255,255,255,0.03)", padding: "6px 12px", borderRadius: 8, display: "inline-block" }}>
+                              🆘 <strong>Emergency Contact:</strong> {applicant.ec1Name || "Family"} ({applicant.ec1Rel || "Next of Kin"}) — 📞 {applicant.ec1Ph || "—"}
                             </div>
                           </div>
                         </div>
-                      </div>
-                    )}
 
-                    {/* SUB-VIEW 3: EXPEDITION SAFETY PROTOCOLS */}
-                    {activeTabMap[tripId] === "protocols" && (
-                      <div>
-                        <div
-                          style={{
-                            fontSize: 13,
-                            fontWeight: 600,
-                            color: C.text,
-                            marginBottom: 10,
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                          }}
-                        >
-                          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span>🛡️</span>
-                            <span>Enforced Safety Directives for {trip.name}</span>
-                          </span>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                           <button
                             type="button"
-                            onClick={() => setActiveMainTab("protocols")}
+                            onClick={() => handleRemove(applicant.tripId, applicantId)}
+                            disabled={isActing}
                             style={{
                               background: "transparent",
-                              border: "none",
-                              color: "#60a5fa",
-                              fontSize: 11,
-                              cursor: "pointer",
+                              border: "1px solid rgba(239, 68, 68, 0.35)",
+                              borderRadius: 8,
+                              color: "#fca5a5",
+                              padding: "8px 14px",
+                              fontSize: 12,
                               fontWeight: 600,
-                              textDecoration: "underline",
+                              cursor: isActing ? "not-allowed" : "pointer",
+                              opacity: isActing ? 0.6 : 1,
+                              fontFamily: "inherit",
                             }}
                           >
-                            Edit &amp; Manage All Directives →
+                            ✕ Decline Request
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleApprove(applicant.tripId, applicantId)}
+                            disabled={isActing}
+                            style={{
+                              background: "linear-gradient(135deg, #10b981, #059669)",
+                              border: "none",
+                              borderRadius: 8,
+                              color: "#ffffff",
+                              padding: "8px 16px",
+                              fontSize: 12,
+                              fontWeight: 700,
+                              cursor: isActing ? "not-allowed" : "pointer",
+                              boxShadow: "0 4px 14px rgba(16, 185, 129, 0.35)",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                              opacity: isActing ? 0.6 : 1,
+                              fontFamily: "inherit",
+                            }}
+                          >
+                            {isActing ? "Authorizing..." : "✓ Approve Trekker"}
                           </button>
                         </div>
-                        <div
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* SECTION 2: ACTIVE EXPEDITIONS & ROSTER MANAGEMENT */}
+          <div>
+            {/* In-Field Single Active Command Banner */}
+            {(() => {
+              const inFieldTrip = trips.find((t) => t.isManaged || t.status === "in-field") || trips[0];
+              return (
+                <div
+                  style={{
+                    marginBottom: 20,
+                    padding: "16px 20px",
+                    borderRadius: 14,
+                    background: "linear-gradient(135deg, rgba(34, 197, 94, 0.12), rgba(11, 20, 34, 0.95))",
+                    border: "1px solid rgba(34, 197, 94, 0.35)",
+                    boxShadow: "0 8px 24px rgba(0, 0, 0, 0.3)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    flexWrap: "wrap",
+                    gap: 14,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                    <div
+                      style={{
+                        width: 48,
+                        height: 48,
+                        borderRadius: 12,
+                        background: "rgba(34, 197, 94, 0.2)",
+                        border: "1px solid rgba(34, 197, 94, 0.4)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 22,
+                      }}
+                    >
+                      🛰️
+                    </div>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                        <span
                           style={{
-                            display: "grid",
-                            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-                            gap: 10,
+                            fontSize: 10,
+                            fontWeight: 800,
+                            letterSpacing: "0.08em",
+                            textTransform: "uppercase",
+                            padding: "2px 8px",
+                            borderRadius: 6,
+                            background: "rgba(34, 197, 94, 0.25)",
+                            border: "1px solid rgba(34, 197, 94, 0.5)",
+                            color: "#86efac",
                           }}
                         >
-                          {protocols.map((p) => (
-                            <div
-                              key={p.id}
+                          ● Active In-Field Command
+                        </span>
+                        <span style={{ fontSize: 11, color: C.muted2 }}>
+                          (Admin manages 1 live expedition in the field at a time)
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>
+                        {inFieldTrip?.name || "No Active In-Field Expedition"}
+                      </div>
+                      <div style={{ fontSize: 12, color: C.muted, marginTop: 4, display: "flex", gap: 16, flexWrap: "wrap" }}>
+                        <span>🔑 Join Code: <strong style={{ color: "#60a5fa" }}>{inFieldTrip?.code || "—"}</strong></span>
+                        <span>🧭 Field Guide: <strong style={{ color: C.text }}>{inFieldTrip?.leader || "Field Guide Ajay Saini"}</strong></span>
+                        <span>📻 Walkie-Talkie: <strong style={{ color: "#fbbf24" }}>{inFieldTrip?.vhfChannel || "145.500 MHz (VHF Ch 1)"}</strong></span>
+                        <span>👥 Enrolled: <strong style={{ color: "#34d399" }}>{inFieldTrip?.rosterCount || 0} / {inFieldTrip?.maxRoster || 25} Trekkers</strong></span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 11, color: C.muted2 }}>Field Safety Duty-of-Care</div>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: "#86efac" }}>🟢 Live Telemetry Linked</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+              <span>🏔️</span>
+              <span>Expedition Batches & Management ({trips.length})</span>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {trips.map((trip) => {
+                const tripId = trip.id || trip.tripId;
+                const isExpanded = expandedTrip === tripId;
+                const tripRoster = rosters[tripId] || [];
+                const approvedMembers = tripRoster.filter((m) => m.status === "approved" || !m.status);
+                const isInField = !!(trip.isManaged || trip.status === "in-field");
+
+                return (
+                  <Card
+                    key={tripId}
+                    style={{
+                      background: isInField
+                        ? "linear-gradient(135deg, rgba(34, 197, 94, 0.06), rgba(11, 20, 34, 0.98))"
+                        : "rgba(11, 20, 34, 0.95)",
+                      border: isInField ? "1px solid rgba(34, 197, 94, 0.4)" : `1px solid ${C.border}`,
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 12 }}>
+                      <div style={{ flex: "1 1 500px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                          <span style={{ background: "rgba(59, 130, 246, 0.15)", border: "1px solid rgba(59, 130, 246, 0.3)", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700, color: "#60a5fa" }}>
+                            {trip.code}
+                          </span>
+                          {isInField ? (
+                            <span
                               style={{
-                                padding: "12px 14px",
-                                background: "rgba(255,255,255,0.02)",
-                                border: `1px solid ${p.status === "published" ? "rgba(34,197,94,0.25)" : C.border}`,
-                                borderRadius: 10,
+                                fontSize: 10.5,
+                                fontWeight: 800,
+                                letterSpacing: "0.06em",
+                                padding: "3px 9px",
+                                borderRadius: 8,
+                                background: "rgba(34, 197, 94, 0.2)",
+                                border: "1px solid rgba(34, 197, 94, 0.45)",
+                                color: "#86efac",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 5,
                               }}
                             >
-                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                                <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>{p.title}</div>
-                                <Pill color={p.status === "published" ? "green" : "amber"}>{p.status}</Pill>
-                              </div>
-                              <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.5, marginBottom: 8 }}>
-                                {p.body}
-                              </div>
-                              <div style={{ fontSize: 10, color: C.muted2 }}>
-                                Author: {p.author || "Command Admin"} · Updated: {p.updated || "Recently"}
-                              </div>
-                            </div>
-                          ))}
+                              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px #22c55e" }} />
+                              IN-FIELD COMMAND (ACTIVE)
+                            </span>
+                          ) : (
+                            <span
+                              style={{
+                                fontSize: 10.5,
+                                fontWeight: 700,
+                                padding: "3px 8px",
+                                borderRadius: 8,
+                                background: "rgba(148, 163, 184, 0.12)",
+                                border: "1px solid rgba(148, 163, 184, 0.25)",
+                                color: "#cbd5e1",
+                              }}
+                            >
+                              ⏳ UPCOMING SCHEDULED
+                            </span>
+                          )}
+                          <span style={{ fontSize: 12, color: C.muted }}>📍 {trip.location}</span>
+                        </div>
+
+                        <div style={{ fontSize: 16.5, fontWeight: 700, color: C.text }}>{trip.name}</div>
+
+                        <div style={{ fontSize: 12, color: C.muted, marginTop: 6, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 6 }}>
+                          <div>
+                            📅 <strong>Schedule:</strong> {trip.startDate || trip.date} {trip.startTime ? `at ${trip.startTime}` : ""} → {trip.endDate || ""} {trip.endTime ? `at ${trip.endTime}` : ""}
+                            {trip.duration ? ` (${trip.duration})` : ""}
+                          </div>
+                          <div>
+                            🚌 <strong>Assembly / Pickup:</strong> {trip.pickupLocation || "Lonavala Station (Exit Gate 1)"}
+                          </div>
+                          <div>
+                            🏕️ <strong>Base Camp:</strong> {trip.baseLocation || "Udhewadi Base Camp (829m ASL)"}
+                          </div>
+                          <div>
+                            📻 <strong>Walkie-Talkie Channel:</strong> <span style={{ color: "#fbbf24" }}>{trip.vhfChannel || "145.500 MHz (VHF Ch 1)"}</span>
+                          </div>
+                          <div>
+                            🏔️ <strong>Elevation:</strong> {trip.elevation || "829m ASL"} · <strong>Trail:</strong> {trip.difficulty || "Moderate"}
+                          </div>
+                          <div>
+                            🧭 <strong>Leader:</strong> {trip.leader || "Field Guide Ajay Saini"} · 🔒 <strong>Geofence:</strong> {((geofenceRadiusMap[tripId] ?? (trip.geofence?.radius || 2500)) / 1000).toFixed(1)} km
+                          </div>
                         </div>
                       </div>
+
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10 }}>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontSize: 11, color: C.muted2 }}>Roster Strength</div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: "#60a5fa" }}>
+                            {trip.rosterCount || approvedMembers.length || 0} / {trip.maxRoster || 25} Trekkers
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                          {!isInField && (
+                            <button
+                              type="button"
+                              onClick={() => handleSetInFieldCommand(trip)}
+                              disabled={managingTripId === tripId}
+                              style={{
+                                padding: "6px 12px",
+                                borderRadius: 8,
+                                background: "linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(16, 185, 129, 0.25))",
+                                border: "1px solid rgba(34, 197, 94, 0.4)",
+                                color: "#86efac",
+                                fontSize: 11.5,
+                                fontWeight: 700,
+                                cursor: managingTripId === tripId ? "not-allowed" : "pointer",
+                                fontFamily: "inherit",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 5,
+                                boxShadow: "0 2px 10px rgba(34, 197, 94, 0.15)",
+                              }}
+                            >
+                              {managingTripId === tripId ? "Transferring..." : "🧭 Take Field Command"}
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => setDeleteModalTrip(trip)}
+                            title="Cancel and delete this expedition from system"
+                            style={{
+                              padding: "6px 12px",
+                              borderRadius: 8,
+                              background: "transparent",
+                              border: "1px solid rgba(239, 68, 68, 0.35)",
+                              color: "#fca5a5",
+                              fontSize: 11.5,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                              fontFamily: "inherit",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 5,
+                            }}
+                          >
+                            🗑️ Delete Expedition
+                          </button>
+
+                          <Btn
+                            variant={isExpanded ? "default" : "primary"}
+                            onClick={() => {
+                              if (isExpanded) {
+                                setExpandedTrip(null);
+                              } else {
+                                setExpandedTrip(tripId);
+                                loadRosterForTrip(tripId);
+                              }
+                            }}
+                          >
+                            {isExpanded ? "Hide Controls ▴" : "Manage Expedition ▾"}
+                          </Btn>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Expanded Controls Drawer */}
+                    {isExpanded && (
+                      <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
+                        {/* Sub-tab navigation */}
+                        <div style={{ display: "flex", gap: 8, marginBottom: 14, borderBottom: `1px solid ${C.border}`, paddingBottom: 8 }}>
+                          <button
+                            type="button"
+                            onClick={() => setActiveTabMap((p) => ({ ...p, [tripId]: "roster" }))}
+                            style={{
+                              background: (activeTabMap[tripId] || "roster") === "roster" ? "rgba(59, 130, 246, 0.15)" : "transparent",
+                              border: `1px solid ${(activeTabMap[tripId] || "roster") === "roster" ? C.accent : "transparent"}`,
+                              borderRadius: 8,
+                              padding: "6px 14px",
+                              color: (activeTabMap[tripId] || "roster") === "roster" ? "#93c5fd" : C.muted,
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                              fontFamily: "inherit",
+                            }}
+                          >
+                            👥 Enrolled Trekkers ({approvedMembers.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setActiveTabMap((p) => ({ ...p, [tripId]: "geofence" }))}
+                            style={{
+                              background: activeTabMap[tripId] === "geofence" ? "rgba(245, 158, 11, 0.15)" : "transparent",
+                              border: `1px solid ${activeTabMap[tripId] === "geofence" ? "#f59e0b" : "transparent"}`,
+                              borderRadius: 8,
+                              padding: "6px 14px",
+                              color: activeTabMap[tripId] === "geofence" ? "#fbbf24" : C.muted,
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                              fontFamily: "inherit",
+                            }}
+                          >
+                            🔒 Geofence & Safety Perimeter
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setActiveTabMap((p) => ({ ...p, [tripId]: "protocols" }))}
+                            style={{
+                              background: activeTabMap[tripId] === "protocols" ? "rgba(34, 197, 94, 0.15)" : "transparent",
+                              border: `1px solid ${activeTabMap[tripId] === "protocols" ? "#22c55e" : "transparent"}`,
+                              borderRadius: 8,
+                              padding: "6px 14px",
+                              color: activeTabMap[tripId] === "protocols" ? "#86efac" : C.muted,
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                              fontFamily: "inherit",
+                            }}
+                          >
+                            🛡️ Safety Directives & SOPs ({protocols.filter((p) => p.status === "published").length})
+                          </button>
+                        </div>
+
+                        {/* SUB-VIEW 1: ENROLLED TREKKERS ROSTER */}
+                        {(activeTabMap[tripId] || "roster") === "roster" && (
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <span>Enrolled Trekkers Roster</span>
+                              <button
+                                type="button"
+                                onClick={() => loadRosterForTrip(tripId)}
+                                style={{ background: "transparent", border: "none", color: "#60a5fa", fontSize: 11, cursor: "pointer" }}
+                              >
+                                ↻ Refresh Roster
+                              </button>
+                            </div>
+
+                            {loadingRoster[tripId] ? (
+                              <div style={{ padding: "16px", textAlign: "center", color: C.muted, fontSize: 12 }}>
+                                Loading expedition roster from database...
+                              </div>
+                            ) : approvedMembers.length === 0 ? (
+                              <div style={{ padding: "16px", textAlign: "center", color: C.muted2, fontSize: 12, background: "rgba(255,255,255,0.02)", borderRadius: 8 }}>
+                                No trekkers currently enrolled in this expedition. Trekkers who apply with code <strong>{trip.code}</strong> and get approved will appear here.
+                              </div>
+                            ) : (
+                              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                                <thead>
+                                  <tr>
+                                    <TH>Trekker</TH>
+                                    <TH>Contact & Blood</TH>
+                                    <TH>Emergency Contact</TH>
+                                    <TH>Status</TH>
+                                    <TH>Roster Actions</TH>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {approvedMembers.map((member) => {
+                                    const memberKey = `${tripId}-${member.id || member.userId}`;
+                                    const isActing = !!actionLoading[memberKey];
+
+                                    return (
+                                      <tr key={memberKey}>
+                                        <TD>
+                                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                            <div
+                                              style={{
+                                                width: 30,
+                                                height: 30,
+                                                borderRadius: "50%",
+                                                background: "rgba(59, 130, 246, 0.15)",
+                                                border: "1px solid rgba(59, 130, 246, 0.3)",
+                                                color: "#60a5fa",
+                                                fontSize: 11,
+                                                fontWeight: 700,
+                                                display: "flex",
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                              }}
+                                            >
+                                              {(member.name || "TR").slice(0, 2).toUpperCase()}
+                                            </div>
+                                            <div>
+                                              <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>
+                                                {member.name || "Trekker"}
+                                              </div>
+                                              <div style={{ fontSize: 11, color: C.muted }}>{member.email || "No email"}</div>
+                                            </div>
+                                          </div>
+                                        </TD>
+                                        <TD>
+                                          <div style={{ fontSize: 11.5, color: C.text }}>{member.phone || "—"}</div>
+                                          <div style={{ fontSize: 11, color: C.muted2 }}>Blood: {member.blood || "B+"} · Medical: {member.medical || "None"}</div>
+                                        </TD>
+                                        <TD>
+                                          <div style={{ fontSize: 11.5, color: C.text }}>{member.ec1Name || "Family"} ({member.ec1Rel || "Next of Kin"})</div>
+                                          <div style={{ fontSize: 11, color: C.muted2 }}>📞 {member.ec1Ph || "—"}</div>
+                                        </TD>
+                                        <TD>
+                                          <span
+                                            style={{
+                                              fontSize: 10,
+                                              fontWeight: 700,
+                                              padding: "2px 7px",
+                                              borderRadius: 10,
+                                              background: "rgba(34, 197, 94, 0.15)",
+                                              border: "1px solid rgba(34, 197, 94, 0.3)",
+                                              color: "#86efac",
+                                            }}
+                                          >
+                                            ● ENROLLED
+                                          </span>
+                                        </TD>
+                                        <TD>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleRemove(tripId, member.id || member.userId)}
+                                            disabled={isActing}
+                                            style={{
+                                              background: "transparent",
+                                              border: "1px solid rgba(239, 68, 68, 0.3)",
+                                              borderRadius: 6,
+                                              color: "#fca5a5",
+                                              padding: "4px 10px",
+                                              fontSize: 11,
+                                              fontWeight: 600,
+                                              cursor: isActing ? "not-allowed" : "pointer",
+                                              opacity: isActing ? 0.6 : 1,
+                                              fontFamily: "inherit",
+                                            }}
+                                          >
+                                            {isActing ? "Removing..." : "Remove from Expedition"}
+                                          </button>
+                                        </TD>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            )}
+                          </div>
+                        )}
+
+                        {/* SUB-VIEW 2: GEOFENCE SAFETY PERIMETER MANAGEMENT */}
+                        {activeTabMap[tripId] === "geofence" && (
+                          <div
+                            style={{
+                              background: "rgba(245, 158, 11, 0.04)",
+                              border: "1px solid rgba(245, 158, 11, 0.25)",
+                              borderRadius: 12,
+                              padding: "16px 20px",
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
+                              <div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                  <span style={{ fontSize: 18 }}>🔒</span>
+                                  <span style={{ fontSize: 14, fontWeight: 700, color: "#fbbf24" }}>
+                                    Geofence Safety Perimeter Editor
+                                  </span>
+                                  <Pill color="amber">Admin Authority Only</Pill>
+                                </div>
+                                <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
+                                  Adjust the maximum allowable distance trekkers can venture from the trail center. Trekkers breaching this perimeter trigger automatic telemetry alerts on their mobile app and this admin radar.
+                                </div>
+                              </div>
+
+                              <Btn
+                                variant="primary"
+                                onClick={() => handleSaveGeofence(trip)}
+                                disabled={!!savingGeofence[tripId]}
+                                style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)", border: "none" }}
+                              >
+                                {savingGeofence[tripId] ? "Broadcasting..." : "Save & Broadcast Perimeter"}
+                              </Btn>
+                            </div>
+
+                            {geofenceToast[tripId] && (
+                              <div
+                                style={{
+                                  marginBottom: 14,
+                                  padding: "10px 14px",
+                                  borderRadius: 8,
+                                  background: "rgba(34, 197, 94, 0.15)",
+                                  border: "1px solid rgba(34, 197, 94, 0.35)",
+                                  color: "#86efac",
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {geofenceToast[tripId]}
+                              </div>
+                            )}
+
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                              <div>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                                  <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                                    Safety Perimeter Radius
+                                  </label>
+                                  <span style={{ fontSize: 14, fontWeight: 800, color: "#fbbf24" }}>
+                                    {((geofenceRadiusMap[tripId] ?? (trip.geofence?.radius || 2500)) / 1000).toFixed(1)} km ({(geofenceRadiusMap[tripId] ?? (trip.geofence?.radius || 2500))} m)
+                                  </span>
+                                </div>
+
+                                <input
+                                  type="range"
+                                  min="500"
+                                  max="5000"
+                                  step="100"
+                                  value={geofenceRadiusMap[tripId] ?? (trip.geofence?.radius || 2500)}
+                                  onChange={(e) =>
+                                    setGeofenceRadiusMap((p) => ({ ...p, [tripId]: Number(e.target.value) }))
+                                  }
+                                  style={{ width: "100%", accentColor: "#f59e0b", marginBottom: 10 }}
+                                />
+
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+                                  {[
+                                    { label: "⚠️ 1.0 km (Dense Fog / Storm)", val: 1000 },
+                                    { label: "🧭 2.5 km (Standard Corridor)", val: 2500 },
+                                    { label: "🏔️ 4.0 km (Plateau Range)", val: 4000 },
+                                  ].map((preset) => (
+                                    <button
+                                      key={preset.val}
+                                      type="button"
+                                      onClick={() =>
+                                        setGeofenceRadiusMap((p) => ({ ...p, [tripId]: preset.val }))
+                                      }
+                                      style={{
+                                        fontSize: 10.5,
+                                        padding: "4px 9px",
+                                        borderRadius: 6,
+                                        border: `1px solid ${(geofenceRadiusMap[tripId] ?? (trip.geofence?.radius || 2500)) === preset.val ? "#f59e0b" : C.border}`,
+                                        background: (geofenceRadiusMap[tripId] ?? (trip.geofence?.radius || 2500)) === preset.val ? "rgba(245, 158, 11, 0.2)" : "rgba(255, 255, 255, 0.04)",
+                                        color: (geofenceRadiusMap[tripId] ?? (trip.geofence?.radius || 2500)) === preset.val ? "#fbbf24" : C.muted,
+                                        cursor: "pointer",
+                                        fontFamily: "inherit",
+                                      }}
+                                    >
+                                      {preset.label}
+                                    </button>
+                                  ))}
+                                </div>
+
+                                <label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
+                                  Designated Safety Zone Name
+                                </label>
+                                <Input
+                                  value={geofenceZoneMap[tripId] ?? (trip.geofence?.zoneName || `${trip.name} Safe Corridor`)}
+                                  onChange={(e) =>
+                                    setGeofenceZoneMap((p) => ({ ...p, [tripId]: e.target.value }))
+                                  }
+                                  placeholder="e.g. Rajmachi Safe Trek Corridor"
+                                />
+                              </div>
+
+                              <div
+                                style={{
+                                  background: "rgba(0, 0, 0, 0.3)",
+                                  border: `1px solid ${C.border}`,
+                                  borderRadius: 10,
+                                  padding: "14px 16px",
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  justifyContent: "space-between",
+                                }}
+                              >
+                                <div>
+                                  <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                                    Active Enforced Coordinates
+                                  </div>
+                                  <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
+                                    📍 Trail Center: {trip.lat || 18.8286}°N, {trip.lon || 73.3986}°E
+                                  </div>
+                                  <div style={{ fontSize: 11, color: C.muted2, marginTop: 2 }}>
+                                    Reference: Rajmachi Fort / Manoranjan Ridge (829m ASL)
+                                  </div>
+                                </div>
+
+                                <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.border}`, fontSize: 11.5, color: C.muted }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                                    <span>Leader in Command:</span>
+                                    <span style={{ color: "#fbbf24", fontWeight: 600 }}>{trip.leader || "Field Guide Ajay Saini"}</span>
+                                  </div>
+                                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                                    <span>User App Enforced Status:</span>
+                                    <span style={{ color: "#86efac", fontWeight: 600 }}>Active (Locked to Admin)</span>
+                                  </div>
+                                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                    <span>Walkie-Talkie Channel (VHF Radio):</span>
+                                    <span style={{ color: "#60a5fa" }}>{trip.vhfChannel || "145.500 MHz (VHF Ch 1)"}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* SUB-VIEW 3: EXPEDITION SAFETY PROTOCOLS */}
+                        {activeTabMap[tripId] === "protocols" && (
+                          <div>
+                            <div
+                              style={{
+                                fontSize: 13,
+                                fontWeight: 600,
+                                color: C.text,
+                                marginBottom: 10,
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                              }}
+                            >
+                              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <span>🛡️</span>
+                                <span>Enforced Safety Directives for {trip.name}</span>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setActiveMainTab("protocols")}
+                                style={{
+                                  background: "transparent",
+                                  border: "none",
+                                  color: "#60a5fa",
+                                  fontSize: 11,
+                                  cursor: "pointer",
+                                  fontWeight: 600,
+                                  textDecoration: "underline",
+                                }}
+                              >
+                                Edit &amp; Manage All Directives →
+                              </button>
+                            </div>
+                            <div
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                                gap: 10,
+                              }}
+                            >
+                              {protocols.map((p) => (
+                                <div
+                                  key={p.id}
+                                  style={{
+                                    padding: "12px 14px",
+                                    background: "rgba(255,255,255,0.02)",
+                                    border: `1px solid ${p.status === "published" ? "rgba(34,197,94,0.25)" : C.border}`,
+                                    borderRadius: 10,
+                                  }}
+                                >
+                                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                                    <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>{p.title}</div>
+                                    <Pill color={p.status === "published" ? "green" : "amber"}>{p.status}</Pill>
+                                  </div>
+                                  <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.5, marginBottom: 8 }}>
+                                    {p.body}
+                                  </div>
+                                  <div style={{ fontSize: 10, color: C.muted2 }}>
+                                    Author: {p.author || "Command Admin"} · Updated: {p.updated || "Recently"}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     )}
-                  </div>
-                )}
-              </Card>
-            );
-          })}
-        </div>
-      </div>
-    </>
-  )}
-</div>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
   );
 };
 
 /* ════════════════════════════════════════════════
    PAGE: DASHBOARD
 ════════════════════════════════════════════════ */
-const PageDashboard = ({ navigate, users=USERS, pendingAdmins=[], pendingTrekkers=[] }) => {
-  const active=users.filter(u=>u.status==="active").length;
-  const sos=users.filter(u=>u.status==="sos").length;
+const PageDashboard = ({ navigate, users = USERS, pendingAdmins = [], pendingTrekkers = [] }) => {
+  const active = users.filter(u => u.status === "active").length;
+  const sos = users.filter(u => u.status === "sos").length;
   const [trips, setTrips] = useState(TRIPS);
   const [tripsAreLive, setTripsAreLive] = useState(false);
   const [showNewTrip, setShowNewTrip] = useState(false);
@@ -4365,8 +4365,10 @@ const PageDashboard = ({ navigate, users=USERS, pendingAdmins=[], pendingTrekker
     const result = await createTripRemote(newName.trim(), newDate.trim() || "Date TBD");
     if (!result.success) {
       // Firestore write failed — fall back to local-only so the demo still works
-      setTrips(t => [{ id: `TRIP${Date.now()}`, name: newName.trim(),
-        date: newDate.trim() || "Date TBD", roster: 1, status: "active", code: genTripCode() }, ...t]);
+      setTrips(t => [{
+        id: `TRIP${Date.now()}`, name: newName.trim(),
+        date: newDate.trim() || "Date TBD", roster: 1, status: "active", code: genTripCode()
+      }, ...t]);
     }
     setCreatingTrip(false);
     setNewName(""); setNewDate(""); setShowNewTrip(false);
@@ -4374,7 +4376,7 @@ const PageDashboard = ({ navigate, users=USERS, pendingAdmins=[], pendingTrekker
   return (
     <div>
       <PageHeader title="Operations Dashboard" sub="Live visibility for every trip, even where signal can't reach"
-        right={<div style={{display:"flex",gap:8}}>{sos>0&&<Pill color="red">🚨 {sos} SOS Active</Pill>}<Pill color="green">● Live</Pill></div>}/>
+        right={<div style={{ display: "flex", gap: 8 }}>{sos > 0 && <Pill color="red">🚨 {sos} SOS Active</Pill>}<Pill color="green">● Live</Pill></div>} />
 
       {pendingAdmins && pendingAdmins.length > 0 && (
         <div
@@ -4464,38 +4466,38 @@ const PageDashboard = ({ navigate, users=USERS, pendingAdmins=[], pendingTrekker
         </div>
       )}
 
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
-        <StatCard label="Registered Trekkers" value={users.length} sub="Duty-of-care profiles" color={C.accent} icon="👥"/>
-        <StatCard label="In-Field Active" value={active} sub="Live telemetry streaming" color={C.green} icon="📍"/>
-        <StatCard label="Active SOS Alerts" value={sos} sub={sos > 0 ? "Requires SAR dispatch" : "All sectors clear"} color={sos > 0 ? C.red : C.teal} icon="🚨"/>
-        <StatCard label="Active Expeditions" value={trips.length} sub="Managed batches" color={C.purple} icon="🧭"/>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 16 }}>
+        <StatCard label="Registered Trekkers" value={users.length} sub="Duty-of-care profiles" color={C.accent} icon="👥" />
+        <StatCard label="In-Field Active" value={active} sub="Live telemetry streaming" color={C.green} icon="📍" />
+        <StatCard label="Active SOS Alerts" value={sos} sub={sos > 0 ? "Requires SAR dispatch" : "All sectors clear"} color={sos > 0 ? C.red : C.teal} icon="🚨" />
+        <StatCard label="Active Expeditions" value={trips.length} sub="Managed batches" color={C.purple} icon="🧭" />
       </div>
 
-      <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:14,marginBottom:14}}>
+      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 14, marginBottom: 14 }}>
         <div>
-          <LiveMap points={users} teams={[]} height={380}/>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginTop:12}}>
-            <StatCard label="GPS System Accuracy" value="±6m" sub="Field GNSS / NEO-6M" color={C.green} icon="🛰️"/>
-            <StatCard label="Trail Corridor" value="829m ASL" sub="Rajmachi Fort Sector" color={C.teal} icon="🏔️"/>
-            <StatCard label="LoRa Gateway Mesh" value="865 MHz" sub="IN865 License-Exempt" color={C.purple} icon="📡"/>
+          <LiveMap points={users} teams={[]} height={380} />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginTop: 12 }}>
+            <StatCard label="GPS System Accuracy" value="±6m" sub="Field GNSS / NEO-6M" color={C.green} icon="🛰️" />
+            <StatCard label="Trail Corridor" value="829m ASL" sub="Rajmachi Fort Sector" color={C.teal} icon="🏔️" />
+            <StatCard label="LoRa Gateway Mesh" value="865 MHz" sub="IN865 License-Exempt" color={C.purple} icon="📡" />
           </div>
         </div>
 
-        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {sos > 0 && (
-            <Card style={{borderColor:"rgba(239,68,68,0.4)",background:"rgba(239,68,68,0.08)",boxShadow:"0 4px 18px rgba(239,68,68,0.2)"}}>
-              <div style={{fontSize:13,fontWeight:800,color:C.red,marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
+            <Card style={{ borderColor: "rgba(239,68,68,0.4)", background: "rgba(239,68,68,0.08)", boxShadow: "0 4px 18px rgba(239,68,68,0.2)" }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: C.red, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
                 <span>🚨</span>
                 <span>ACTIVE DISTRESS BEACON</span>
               </div>
-              {users.filter(u=>u.status==="sos").map(u=>(
-                <div key={u.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
-                  <Avatar initials={u.avatar} bg={u.color[0]} text={u.color[1]}/>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:12.5,fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div>
-                    <div style={{fontSize:10.5,color:C.muted}}>📍 {u.city} · Blood: <strong style={{color:C.red}}>{u.blood || "B+"}</strong></div>
+              {users.filter(u => u.status === "sos").map(u => (
+                <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
+                  <Avatar initials={u.avatar} bg={u.color[0]} text={u.color[1]} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name}</div>
+                    <div style={{ fontSize: 10.5, color: C.muted }}>📍 {u.city} · Blood: <strong style={{ color: C.red }}>{u.blood || "B+"}</strong></div>
                   </div>
-                  <Btn variant="danger" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>navigate("sos-navigation")}>
+                  <Btn variant="danger" style={{ fontSize: 11, padding: "5px 10px" }} onClick={() => navigate("sos-navigation")}>
                     Dispatch →
                   </Btn>
                 </div>
@@ -4504,53 +4506,53 @@ const PageDashboard = ({ navigate, users=USERS, pendingAdmins=[], pendingTrekker
           )}
 
           <Card>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-              <div style={{fontSize:12.5,fontWeight:700,color:C.text,display:"flex",alignItems:"center",gap:6}}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text, display: "flex", alignItems: "center", gap: 6 }}>
                 <span>Expedition Batches</span>
-                <span style={{fontSize:9,fontWeight:600,padding:"1px 6px",borderRadius:4,background:tripsAreLive?"rgba(34,197,94,0.15)":"rgba(255,255,255,0.08)",color:tripsAreLive?"#4ade80":C.muted2}}>
+                <span style={{ fontSize: 9, fontWeight: 600, padding: "1px 6px", borderRadius: 4, background: tripsAreLive ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.08)", color: tripsAreLive ? "#4ade80" : C.muted2 }}>
                   {tripsAreLive ? "LIVE SYNC" : "STORED"}
                 </span>
               </div>
-              <button onClick={()=>navigate("trip-rosters")} style={{fontSize:11,color:C.accent,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>
+              <button onClick={() => navigate("trip-rosters")} style={{ fontSize: 11, color: C.accent, background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>
                 Manage All →
               </button>
             </div>
 
-            {trips.slice(0,3).map(t=>(
-              <div key={t.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,fontSize:12}}>
-                <div style={{flex:1,minWidth:0,marginRight:8}}>
-                  <div style={{color:C.text,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.name}</div>
-                  <div style={{fontSize:10.5,color:C.muted,marginTop:2}}>
-                    Code: <span style={{fontWeight:700,color:C.accent}}>{t.code}</span> · {t.rosterCount || 5} Trekkers
+            {trips.slice(0, 3).map(t => (
+              <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${C.border}`, fontSize: 12 }}>
+                <div style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
+                  <div style={{ color: C.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
+                  <div style={{ fontSize: 10.5, color: C.muted, marginTop: 2 }}>
+                    Code: <span style={{ fontWeight: 700, color: C.accent }}>{t.code}</span> · {t.rosterCount || 5} Trekkers
                   </div>
                 </div>
-                <Pill color={t.status==="in-field"||t.isManaged?"green":t.status==="completed"?"amber":"gray"}>
-                  {t.isManaged || t.status==="in-field" ? "In-Field" : (t.status || "Upcoming")}
+                <Pill color={t.status === "in-field" || t.isManaged ? "green" : t.status === "completed" ? "amber" : "gray"}>
+                  {t.isManaged || t.status === "in-field" ? "In-Field" : (t.status || "Upcoming")}
                 </Pill>
               </div>
             ))}
           </Card>
 
-          <Card style={{background:"rgba(59,130,246,0.04)",borderColor:"rgba(59,130,246,0.2)"}}>
-            <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:700,marginBottom:8}}>
+          <Card style={{ background: "rgba(59,130,246,0.04)", borderColor: "rgba(59,130,246,0.2)" }}>
+            <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 8 }}>
               Field Command &amp; Radio Clearance
             </div>
-            <div style={{display:"flex",flexDirection:"column",gap:6,fontSize:11.5,color:C.muted}}>
-              <div style={{display:"flex",justifyContent:"space-between"}}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 11.5, color: C.muted }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>Lead Field Guide:</span>
-                <span style={{color:C.text,fontWeight:600}}>Ajay Saini (WFR Certified)</span>
+                <span style={{ color: C.text, fontWeight: 600 }}>Ajay Saini (WFR Certified)</span>
               </div>
-              <div style={{display:"flex",justifyContent:"space-between"}}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>Walkie-Talkie VHF:</span>
-                <span style={{color:"#fbbf24",fontWeight:700}}>145.500 MHz (Ch 1)</span>
+                <span style={{ color: "#fbbf24", fontWeight: 700 }}>145.500 MHz (Ch 1)</span>
               </div>
-              <div style={{display:"flex",justifyContent:"space-between"}}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>Local SAR Base:</span>
-                <span style={{color:C.text}}>Shivdurga Rescue (Lonavala)</span>
+                <span style={{ color: C.text }}>Shivdurga Rescue (Lonavala)</span>
               </div>
-              <div style={{display:"flex",justifyContent:"space-between"}}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>Sector Geofence:</span>
-                <span style={{color:"#34d399",fontWeight:600}}>2.5 km Locked Corridor</span>
+                <span style={{ color: "#34d399", fontWeight: 600 }}>2.5 km Locked Corridor</span>
               </div>
             </div>
           </Card>
@@ -4572,8 +4574,8 @@ const PageAllUsers = ({ users = [], navigate }) => {
   const filtered = allUsers.filter(u =>
     (filter === "all" || u.status === filter) &&
     ((u.name || "").toLowerCase().includes(search.toLowerCase()) ||
-     (u.email || "").toLowerCase().includes(search.toLowerCase()) ||
-     (u.city || "").toLowerCase().includes(search.toLowerCase()))
+      (u.email || "").toLowerCase().includes(search.toLowerCase()) ||
+      (u.city || "").toLowerCase().includes(search.toLowerCase()))
   );
   const statusColor = { active: "green", inactive: "gray", sos: "red", pending_approval: "amber" };
 
@@ -5026,7 +5028,7 @@ const PageDeviceTracking = ({ users = USERS, connectionState = "disconnected" })
         osc.start();
         osc.stop(ctx.currentTime + 0.8);
       }
-    } catch {}
+    } catch { }
     setToast("🔊 I2S Mountain Siren test pulse triggered (3W MAX98357A chime)");
   };
 
@@ -5047,7 +5049,7 @@ const PageDeviceTracking = ({ users = USERS, connectionState = "disconnected" })
         osc.start();
         osc.stop(ctx.currentTime + 0.3);
       }
-    } catch {}
+    } catch { }
     setToast(`🔊 High-frequency audio locator chirp dispatched to ${nodeName} (Audio guidance in mist)`);
   };
 
@@ -5785,11 +5787,11 @@ const PageFeatureAccess = ({ users = [] }) => {
     });
     return init;
   };
-  
+
   const [access, setAccess] = useState(computeInit);
   const [saved, setSaved] = useState(false);
   const allUsers = users && users.length > 0 ? users : USERS;
-  
+
   const toggle = (uid, feat) => setAccess(a => ({ ...a, [uid]: { ...a[uid], [feat]: !a[uid][feat] } }));
   const grantAll = uid => setAccess(a => ({ ...a, [uid]: Object.fromEntries(FEATURES.map(f => [f, true])) }));
   const revokeAll = uid => setAccess(a => ({ ...a, [uid]: Object.fromEntries(FEATURES.map(f => [f, false])) }));
@@ -5801,16 +5803,16 @@ const PageFeatureAccess = ({ users = [] }) => {
   };
   return (
     <div>
-      <PageHeader title="Feature Access Control" sub="Grant or revoke access per user" right={<Btn variant="primary" onClick={save}>{saved?"✓ Saved":"Save changes"}</Btn>}/>
-      {saved&&<div style={{background:"rgba(34,197,94,0.1)",border:"1px solid rgba(34,197,94,0.25)",borderRadius:10,padding:"10px 16px",fontSize:13,color:"#86efac",marginBottom:16}}>Access settings saved successfully.</div>}
-      <Card style={{padding:0,overflowX:"auto"}}>
-        <table style={{width:"100%",borderCollapse:"collapse"}}>
-          <thead><tr><TH style={{minWidth:180}}>User</TH>{FEATURES.map(f=><TH key={f} style={{textAlign:"center",minWidth:90,fontSize:10}}>{f}</TH>)}<TH style={{textAlign:"center"}}>Actions</TH></tr></thead>
+      <PageHeader title="Feature Access Control" sub="Grant or revoke access per user" right={<Btn variant="primary" onClick={save}>{saved ? "✓ Saved" : "Save changes"}</Btn>} />
+      {saved && <div style={{ background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.25)", borderRadius: 10, padding: "10px 16px", fontSize: 13, color: "#86efac", marginBottom: 16 }}>Access settings saved successfully.</div>}
+      <Card style={{ padding: 0, overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead><tr><TH style={{ minWidth: 180 }}>User</TH>{FEATURES.map(f => <TH key={f} style={{ textAlign: "center", minWidth: 90, fontSize: 10 }}>{f}</TH>)}<TH style={{ textAlign: "center" }}>Actions</TH></tr></thead>
           <tbody>{allUsers.map((u, i) => (
-            <tr key={u.id} style={{background:i%2===0?"transparent":"rgba(255,255,255,0.012)"}}>
-              <TD><div style={{display:"flex",alignItems:"center",gap:8}}><Avatar initials={u.avatar} bg={u.color[0]} text={u.color[1]}/><div><div style={{fontSize:12,fontWeight:500}}>{u.name}</div><Pill color="blue">{u.role}</Pill></div></div></TD>
-              {FEATURES.map(f=><TD key={f} style={{textAlign:"center"}}><Toggle on={access[u.id]?.[f]} onChange={()=>toggle(u.id,f)}/></TD>)}
-              <TD style={{textAlign:"center"}}><div style={{display:"flex",gap:6,justifyContent:"center"}}><Btn onClick={()=>grantAll(u.id)}>All</Btn><Btn onClick={()=>revokeAll(u.id)}>None</Btn></div></TD>
+            <tr key={u.id} style={{ background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.012)" }}>
+              <TD><div style={{ display: "flex", alignItems: "center", gap: 8 }}><Avatar initials={u.avatar} bg={u.color[0]} text={u.color[1]} /><div><div style={{ fontSize: 12, fontWeight: 500 }}>{u.name}</div><Pill color="blue">{u.role}</Pill></div></div></TD>
+              {FEATURES.map(f => <TD key={f} style={{ textAlign: "center" }}><Toggle on={access[u.id]?.[f]} onChange={() => toggle(u.id, f)} /></TD>)}
+              <TD style={{ textAlign: "center" }}><div style={{ display: "flex", gap: 6, justifyContent: "center" }}><Btn onClick={() => grantAll(u.id)}>All</Btn><Btn onClick={() => revokeAll(u.id)}>None</Btn></div></TD>
             </tr>
           ))}</tbody>
         </table>
@@ -5865,12 +5867,12 @@ const PageWearablesRadar = ({ users = USERS }) => {
         const deviceName = isAnirban
           ? "Garmin Instinct 2 Solar"
           : idx === 1
-          ? "Apple Watch Ultra 2"
-          : idx === 2
-          ? "Polar H10 Chest Strap"
-          : idx === 3
-          ? "Coros Vertix 2"
-          : "Suunto 9 Peak";
+            ? "Apple Watch Ultra 2"
+            : idx === 2
+              ? "Polar H10 Chest Strap"
+              : idx === 3
+                ? "Coros Vertix 2"
+                : "Suunto 9 Peak";
 
         const deviceType = idx === 2 ? "Optical Chest Sensor" : "GPS Multisport Watch";
 
@@ -6101,9 +6103,9 @@ const PageSOSTracking = PageSOSNavigation;
 /* ════════════════════════════════════════════════
    PAGE: LIVE TRACKING
 ════════════════════════════════════════════════ */
-const PageLiveTracking = ({ navigate, users=USERS, connectionState="disconnected", error=null }) => {
-  const [filter,setFilter]=useState("all");
-  const [sel,setSel]=useState(null);
+const PageLiveTracking = ({ navigate, users = USERS, connectionState = "disconnected", error = null }) => {
+  const [filter, setFilter] = useState("all");
+  const [sel, setSel] = useState(null);
   const displayUsers = users && users.length > 0 ? users : USERS;
   const filtered = filter === "all" ? displayUsers : displayUsers.filter(u => u.status === filter);
   const activeSOSUser = displayUsers.find((user) => user.status === "sos") || null;
@@ -6112,27 +6114,27 @@ const PageLiveTracking = ({ navigate, users=USERS, connectionState="disconnected
   // Calculate distance from Admin (Ajay Saini) for each member
   const memberDistances = displayUsers.map(u => calculateDistanceMeters(RAJMACHI_ADMIN.lat, RAJMACHI_ADMIN.lon, u.lat, u.lon));
   const maxSpread = memberDistances.length > 0 ? Math.max(...memberDistances) : 0;
-  
+
   return (
     <div>
-      <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:12}}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
         <div style={{
-          width:8, height:8, borderRadius:"50%", 
+          width: 8, height: 8, borderRadius: "50%",
           background: connectionState === "connected" ? C.green : connectionState === "connecting" ? C.amber : C.red,
           animation: connectionState === "connecting" ? "pulse 1s infinite" : "none"
-        }}/>
-        <span style={{fontSize:11, color:C.muted}}>
-          Server: <span style={{color: connectionState === "connected" ? C.green : C.red}}>
+        }} />
+        <span style={{ fontSize: 11, color: C.muted }}>
+          Server: <span style={{ color: connectionState === "connected" ? C.green : C.red }}>
             {connectionState === "connected" ? "✅ Connected" : connectionState === "connecting" ? "⏳ Connecting..." : "❌ Disconnected"}
           </span>
-          {error && <span style={{color:C.red, marginLeft:8}}>Error: {error}</span>}
+          {error && <span style={{ color: C.red, marginLeft: 8 }}>Error: {error}</span>}
         </span>
       </div>
 
       <PageHeader title="Live Navigation & User Tracking" sub="Real-time positions, member proximity and trail formation"
-        right={<div style={{display:"flex",gap:6}}>
-          {["all","active","sos"].map(f=><button key={f} onClick={()=>setFilter(f)} style={{padding:"5px 12px",borderRadius:7,border:`1px solid ${filter===f?C.accent:C.border}`,background:filter===f?"rgba(59,130,246,0.12)":"transparent",color:filter===f?C.accent:C.muted,fontSize:11,cursor:"pointer",fontFamily:"inherit",textTransform:"capitalize"}}>{f}</button>)}
-        </div>}/>
+        right={<div style={{ display: "flex", gap: 6 }}>
+          {["all", "active", "sos"].map(f => <button key={f} onClick={() => setFilter(f)} style={{ padding: "5px 12px", borderRadius: 7, border: `1px solid ${filter === f ? C.accent : C.border}`, background: filter === f ? "rgba(59,130,246,0.12)" : "transparent", color: filter === f ? C.accent : C.muted, fontSize: 11, cursor: "pointer", fontFamily: "inherit", textTransform: "capitalize" }}>{f}</button>)}
+        </div>} />
 
       {/* Admin Location & Proximity Header Banner */}
       <div
@@ -6190,31 +6192,31 @@ const PageLiveTracking = ({ navigate, users=USERS, connectionState="disconnected
         </div>
       </div>
 
-      <div style={{display:"grid",gridTemplateColumns:"1fr 310px",gap:14}}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 310px", gap: 14 }}>
         <div>
           <LiveMap
             points={filtered}
-            teams={SOS_TEAMS.filter(t=>t.status==="deployed")}
+            teams={SOS_TEAMS.filter(t => t.status === "deployed")}
             routeFrom={activeTeam}
             routeTo={activeSOSUser}
             height={420}
           />
           {activeSOSUser && (
-            <div style={{marginTop:10,background:"rgba(239,68,68,0.08)",border:`1px solid rgba(239,68,68,0.25)`,borderRadius:10,padding:"10px 12px",fontSize:12,color:C.text}}>
-              <strong style={{color:C.red}}>Nearest SOS route:</strong> {activeTeam.name} is routed to {activeSOSUser.name} at {activeSOSUser.city}.
+            <div style={{ marginTop: 10, background: "rgba(239,68,68,0.08)", border: `1px solid rgba(239,68,68,0.25)`, borderRadius: 10, padding: "10px 12px", fontSize: 12, color: C.text }}>
+              <strong style={{ color: C.red }}>Nearest SOS route:</strong> {activeTeam.name} is routed to {activeSOSUser.name} at {activeSOSUser.city}.
             </div>
           )}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginTop:12}}>
-            <StatCard label="Users tracked" value={displayUsers.filter(u=>u.status==="active").length} sub="Online" color={C.accent} icon="📍"/>
-            <StatCard label="SOS active" value={displayUsers.filter(u=>u.status==="sos").length} sub="Alert" color={C.red} icon="🚨"/>
-            <StatCard label="Teams deployed" value={SOS_TEAMS.filter(t=>t.status==="deployed").length} sub="Moving" color={C.amber} icon="🚑"/>
-            <StatCard label="GPS accuracy" value="±6m" sub="Avg" color={C.green} icon="🛰️"/>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginTop: 12 }}>
+            <StatCard label="Users tracked" value={displayUsers.filter(u => u.status === "active").length} sub="Online" color={C.accent} icon="📍" />
+            <StatCard label="SOS active" value={displayUsers.filter(u => u.status === "sos").length} sub="Alert" color={C.red} icon="🚨" />
+            <StatCard label="Teams deployed" value={SOS_TEAMS.filter(t => t.status === "deployed").length} sub="Moving" color={C.amber} icon="🚑" />
+            <StatCard label="GPS accuracy" value="±6m" sub="Avg" color={C.green} icon="🛰️" />
           </div>
         </div>
-        <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:580,overflowY:"auto"}}>
-          <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4,display:"flex",justifyContent:"space-between"}}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 580, overflowY: "auto" }}>
+          <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 4, display: "flex", justifyContent: "space-between" }}>
             <span>Trekker Group ({filtered.length})</span>
-            <span style={{color:"#60a5fa"}}>Distances from You</span>
+            <span style={{ color: "#60a5fa" }}>Distances from You</span>
           </div>
           {filtered.map(u => {
             const distFromAdmin = calculateDistanceMeters(RAJMACHI_ADMIN.lat, RAJMACHI_ADMIN.lon, u.lat, u.lon);
@@ -6307,13 +6309,13 @@ const PageLiveTracking = ({ navigate, users=USERS, connectionState="disconnected
               </Card>
             );
           })}
-          <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",margin:"12px 0 4px"}}>SOS Teams</div>
-          {SOS_TEAMS.map(t=>(
-            <Card key={t.id} style={{marginBottom:0,borderColor:t.status==="deployed"?"rgba(245,158,11,0.3)":C.border}}>
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <div style={{width:32,height:32,borderRadius:"50%",background:"rgba(245,158,11,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>🚑</div>
-                <div style={{flex:1}}><div style={{fontSize:12,fontWeight:500,color:C.text}}>{t.name}</div><div style={{fontSize:10,color:C.muted}}>{t.vehicle} · {t.speed} · ETA {t.eta}</div></div>
-                <Pill color={t.status==="deployed"?"amber":"gray"}>{t.status}</Pill>
+          <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em", margin: "12px 0 4px" }}>SOS Teams</div>
+          {SOS_TEAMS.map(t => (
+            <Card key={t.id} style={{ marginBottom: 0, borderColor: t.status === "deployed" ? "rgba(245,158,11,0.3)" : C.border }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 32, height: 32, borderRadius: "50%", background: "rgba(245,158,11,0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>🚑</div>
+                <div style={{ flex: 1 }}><div style={{ fontSize: 12, fontWeight: 500, color: C.text }}>{t.name}</div><div style={{ fontSize: 10, color: C.muted }}>{t.vehicle} · {t.speed} · ETA {t.eta}</div></div>
+                <Pill color={t.status === "deployed" ? "amber" : "gray"}>{t.status}</Pill>
               </div>
             </Card>
           ))}
@@ -6327,14 +6329,14 @@ const PageLiveTracking = ({ navigate, users=USERS, connectionState="disconnected
    LEAFLET MAP — no API key, free tiles, CDN loaded
 ════════════════════════════════════════════════ */
 const TILE_LAYERS = {
-  road:      { url:"https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",      attr:"© OpenStreetMap contributors" },
-  satellite: { url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", attr:"© Esri World Imagery" },
-  terrain:   { url:"https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",        attr:"© OpenTopoMap contributors" },
+  road: { url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", attr: "© OpenStreetMap contributors" },
+  satellite: { url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", attr: "© Esri World Imagery" },
+  terrain: { url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", attr: "© OpenTopoMap contributors" },
 };
 
-const LeafletMap = ({ height=480, tileType="road", perspective=false, markers=[], center=[18.8286, 73.3986], zoom=13 }) => {
+const LeafletMap = ({ height = 480, tileType = "road", perspective = false, markers = [], center = [18.8286, 73.3986], zoom = 13 }) => {
   const containerRef = useRef(null);
-  const mapRef       = useRef(null);
+  const mapRef = useRef(null);
   const [leafletReady, setLeafletReady] = useState(!!window.L);
 
   /* Use shared loader so no duplicate script tags */
@@ -6344,18 +6346,18 @@ const LeafletMap = ({ height=480, tileType="road", perspective=false, markers=[]
     if (!leafletReady || !containerRef.current) return;
     const L = window.L;
     if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
-    const map = L.map(containerRef.current, { center, zoom, zoomControl:true });
+    const map = L.map(containerRef.current, { center, zoom, zoomControl: true });
     const { url, attr } = TILE_LAYERS[tileType] || TILE_LAYERS.road;
-    L.tileLayer(url, { attribution:attr, maxZoom:19 }).addTo(map);
-    const mkIcon = (color="#3b82f6") => L.divIcon({
-      className:"",
-      html:`<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 0 0 5px ${color}44;"></div>`,
-      iconSize:[14,14], iconAnchor:[7,7], popupAnchor:[0,-10]
+    L.tileLayer(url, { attribution: attr, maxZoom: 19 }).addTo(map);
+    const mkIcon = (color = "#3b82f6") => L.divIcon({
+      className: "",
+      html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 0 0 5px ${color}44;"></div>`,
+      iconSize: [14, 14], iconAnchor: [7, 7], popupAnchor: [0, -10]
     });
-    const station = L.marker(center, { icon:mkIcon("#f59e0b") }).addTo(map);
+    const station = L.marker(center, { icon: mkIcon("#f59e0b") }).addTo(map);
     station.bindPopup(`<b>🏔️ Rajmachi Weather Station</b><br><small>Manoranjan Ridge Observation Post<br>18.8286°N · 73.3986°E · 829m ASL</small>`);
     markers.forEach(m => {
-      const mk = L.marker([m.lat,m.lon], { icon:mkIcon(m.color||"#ef4444") }).addTo(map);
+      const mk = L.marker([m.lat, m.lon], { icon: mkIcon(m.color || "#ef4444") }).addTo(map);
       if (m.popup) mk.bindPopup(m.popup);
     });
     mapRef.current = map;
@@ -6363,14 +6365,16 @@ const LeafletMap = ({ height=480, tileType="road", perspective=false, markers=[]
   }, [leafletReady, tileType]);
 
   return (
-    <div style={{ borderRadius:12, overflow:"hidden", border:`1px solid ${C.border}`, boxShadow:"0 4px 24px rgba(0,0,0,0.4)",
-      ...(perspective ? { transform:"perspective(900px) rotateX(28deg)", transformOrigin:"top center" } : {}) }}>
+    <div style={{
+      borderRadius: 12, overflow: "hidden", border: `1px solid ${C.border}`, boxShadow: "0 4px 24px rgba(0,0,0,0.4)",
+      ...(perspective ? { transform: "perspective(900px) rotateX(28deg)", transformOrigin: "top center" } : {})
+    }}>
       {!leafletReady && (
-        <div style={{height, background:"#080f1a", display:"flex", alignItems:"center", justifyContent:"center", color:C.muted, fontSize:13}}>
+        <div style={{ height, background: "#080f1a", display: "flex", alignItems: "center", justifyContent: "center", color: C.muted, fontSize: 13 }}>
           ⏳ Loading mountain topographical map…
         </div>
       )}
-      <div ref={containerRef} style={{ height, display: leafletReady ? "block" : "none" }}/>
+      <div ref={containerRef} style={{ height, display: leafletReady ? "block" : "none" }} />
     </div>
   );
 };
@@ -6380,27 +6384,27 @@ const LeafletMap = ({ height=480, tileType="road", perspective=false, markers=[]
    (Unified live meteorological telemetry for Rajmachi Fort & Sahyadris)
 ════════════════════════════════════════════════ */
 const WX_CODES = {
-  0:["☀️","Clear sky"],1:["🌤️","Mainly clear"],2:["⛅","Partly cloudy"],3:["☁️","Overcast"],
-  45:["🌫️","Dense mountain fog"],48:["🌫️","Rime fog"],51:["🌦️","Light drizzle"],53:["🌦️","Drizzle"],
-  55:["🌧️","Heavy drizzle"],61:["🌧️","Light rain"],63:["🌧️","Moderate mountain rain"],65:["⛈️","Heavy monsoon downpour"],
-  71:["🌨️","Light snow"],73:["❄️","Snow"],75:["🌨️","Heavy snow"],80:["🌦️","Rain showers"],
-  81:["🌧️","Heavy showers"],82:["⛈️","Violent monsoon storm"],95:["⛈️","Severe thunderstorm & lightning"],99:["⛈️","Thunderstorm + hail"]
+  0: ["☀️", "Clear sky"], 1: ["🌤️", "Mainly clear"], 2: ["⛅", "Partly cloudy"], 3: ["☁️", "Overcast"],
+  45: ["🌫️", "Dense mountain fog"], 48: ["🌫️", "Rime fog"], 51: ["🌦️", "Light drizzle"], 53: ["🌦️", "Drizzle"],
+  55: ["🌧️", "Heavy drizzle"], 61: ["🌧️", "Light rain"], 63: ["🌧️", "Moderate mountain rain"], 65: ["⛈️", "Heavy monsoon downpour"],
+  71: ["🌨️", "Light snow"], 73: ["❄️", "Snow"], 75: ["🌨️", "Heavy snow"], 80: ["🌦️", "Rain showers"],
+  81: ["🌧️", "Heavy showers"], 82: ["⛈️", "Violent monsoon storm"], 95: ["⛈️", "Severe thunderstorm & lightning"], 99: ["⛈️", "Thunderstorm + hail"]
 };
-const windDir = (deg) => ["N","NE","E","SE","S","SW","W","NW"][Math.round(deg/45)%8];
-const feelsLike = (t, h) => +(t - 0.55*(1-h/100)*(t-14.5)).toFixed(1);
+const windDir = (deg) => ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(deg / 45) % 8];
+const feelsLike = (t, h) => +(t - 0.55 * (1 - h / 100) * (t - 14.5)).toFixed(1);
 
 const PageMountainWeather = () => {
-  const [tab, setTab]               = useState("live");
-  const [mapType, setMapType]       = useState("terrain");
+  const [tab, setTab] = useState("live");
+  const [mapType, setMapType] = useState("terrain");
   const [mapPerspective, setMapPerspective] = useState(false);
-  const [wx, setWx]                 = useState(null);
-  const [loading, setLoading]       = useState(true);
+  const [wx, setWx] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [sensorOnline, setSensorOnline] = useState(true);
   const [advisorySent, setAdvisorySent] = useState(false);
   const [advisoryText, setAdvisoryText] = useState("");
   const [sensor, setSensor] = useState({
-    temp:24.2, humidity:82, pressure:928.4, windSpeed:18.5, windDir:240,
-    uvIndex:4.8, rainfall:2.4, altitude:829, co2:408, aqi:34,
+    temp: 24.2, humidity: 82, pressure: 928.4, windSpeed: 18.5, windDir: 240,
+    uvIndex: 4.8, rainfall: 2.4, altitude: 829, co2: 408, aqi: 34,
     lastSync: new Date().toLocaleTimeString("en-IN")
   });
 
@@ -6421,14 +6425,14 @@ const PageMountainWeather = () => {
         if (d.current) {
           setSensor(prev => ({
             ...prev,
-            temp:       d.current.temperature_2m,
-            humidity:   d.current.relative_humidity_2m,
-            pressure:   d.current.pressure_msl,
-            windSpeed:  d.current.wind_speed_10m,
-            windDir:    d.current.wind_direction_10m,
-            uvIndex:    d.current.uv_index ?? prev.uvIndex,
-            rainfall:   d.current.precipitation,
-            lastSync:   new Date().toLocaleTimeString("en-IN"),
+            temp: d.current.temperature_2m,
+            humidity: d.current.relative_humidity_2m,
+            pressure: d.current.pressure_msl,
+            windSpeed: d.current.wind_speed_10m,
+            windDir: d.current.wind_direction_10m,
+            uvIndex: d.current.uv_index ?? prev.uvIndex,
+            rainfall: d.current.precipitation,
+            lastSync: new Date().toLocaleTimeString("en-IN"),
           }));
         }
         setLoading(false);
@@ -6445,12 +6449,12 @@ const PageMountainWeather = () => {
       if (!sensorOnline) return;
       setSensor(p => ({
         ...p,
-        temp:      +(p.temp      + (Math.random()-0.5)*0.2).toFixed(1),
-        humidity:  +Math.min(100,Math.max(0, p.humidity  + (Math.random()-0.5))).toFixed(1),
-        windSpeed: +Math.max(0, (p.windSpeed + (Math.random()-0.5)*1.5)).toFixed(1),
-        co2:       Math.round(p.co2 + (Math.random()-0.5)*4),
-        aqi:       Math.min(200,Math.max(10, Math.round(p.aqi + (Math.random()-0.5)*2))),
-        lastSync:  new Date().toLocaleTimeString("en-IN"),
+        temp: +(p.temp + (Math.random() - 0.5) * 0.2).toFixed(1),
+        humidity: +Math.min(100, Math.max(0, p.humidity + (Math.random() - 0.5))).toFixed(1),
+        windSpeed: +Math.max(0, (p.windSpeed + (Math.random() - 0.5) * 1.5)).toFixed(1),
+        co2: Math.round(p.co2 + (Math.random() - 0.5) * 4),
+        aqi: Math.min(200, Math.max(10, Math.round(p.aqi + (Math.random() - 0.5) * 2))),
+        lastSync: new Date().toLocaleTimeString("en-IN"),
       }));
     }, 2000);
     return () => clearInterval(t);
@@ -6473,16 +6477,16 @@ const PageMountainWeather = () => {
     }
   };
 
-  const cur    = wx?.current;
+  const cur = wx?.current;
   const wxCode = cur?.weather_code ?? 0;
-  const [wxIcon, wxDesc] = WX_CODES[wxCode] ?? ["⛅","Mountain haze"];
+  const [wxIcon, wxDesc] = WX_CODES[wxCode] ?? ["⛅", "Mountain haze"];
 
   const TABS = [
-    {id:"live",       icon:"🌡️", label:"Live Trail Conditions & Hazards"},
-    {id:"map",        icon:"🗺️", label:"Topographic & Satellite Map"},
-    {id:"hardware",   icon:"📡", label:"Ridge Meteorological Sensors"},
-    {id:"forecast",   icon:"📅", label:"7-Day Elevation Forecast"},
-    {id:"navigation", icon:"🧭", label:"3D Terrain View"},
+    { id: "live", icon: "🌡️", label: "Live Trail Conditions & Hazards" },
+    { id: "map", icon: "🗺️", label: "Topographic & Satellite Map" },
+    { id: "hardware", icon: "📡", label: "Ridge Meteorological Sensors" },
+    { id: "forecast", icon: "📅", label: "7-Day Elevation Forecast" },
+    { id: "navigation", icon: "🧭", label: "3D Terrain View" },
   ];
 
   return (
@@ -6491,54 +6495,54 @@ const PageMountainWeather = () => {
         title="Mountain Weather & Trail Hazards Console"
         sub={`Live Meteorological Telemetry · Rajmachi Fort (829m ASL) · Manoranjan Ridge · ${sensorOnline ? "🟢 Ridge Sensors Online" : "🔴 Sensors Offline"}`}
         right={
-          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             {loading && <Pill color="blue">Fetching Live Open-Meteo…</Pill>}
-            <Pill color={sensorOnline?"green":"red"}>{sensorOnline?"● 829m Station Online":"○ Offline"}</Pill>
-            <Btn onClick={()=>setSensorOnline(s=>!s)}>{sensorOnline?"Disconnect Sensors":"Reconnect Sensors"}</Btn>
+            <Pill color={sensorOnline ? "green" : "red"}>{sensorOnline ? "● 829m Station Online" : "○ Offline"}</Pill>
+            <Btn onClick={() => setSensorOnline(s => !s)}>{sensorOnline ? "Disconnect Sensors" : "Reconnect Sensors"}</Btn>
           </div>
         }
       />
 
       {/* Tab bar */}
-      <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
-        {TABS.map(t=>(
-          <button key={t.id} onClick={()=>setTab(t.id)} style={{
-            padding:"7px 14px",borderRadius:9,border:`1px solid ${tab===t.id?C.accent:C.border}`,
-            background:tab===t.id?"rgba(59,130,246,0.12)":"transparent",
-            color:tab===t.id?C.accent:C.muted,fontSize:12,cursor:"pointer",
-            fontFamily:"inherit",display:"flex",alignItems:"center",gap:6,
+      <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
+            padding: "7px 14px", borderRadius: 9, border: `1px solid ${tab === t.id ? C.accent : C.border}`,
+            background: tab === t.id ? "rgba(59,130,246,0.12)" : "transparent",
+            color: tab === t.id ? C.accent : C.muted, fontSize: 12, cursor: "pointer",
+            fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6,
           }}>{t.icon} {t.label}</button>
         ))}
       </div>
 
       {/* ══ LIVE WEATHER & HAZARDS ══ */}
-      {tab==="live" && (
+      {tab === "live" && (
         <div>
-          <Card style={{marginBottom:14,background:"linear-gradient(135deg,rgba(16,40,90,0.65),rgba(11,20,34,0.95))",border:`1px solid rgba(80,140,220,0.3)`}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:16}}>
+          <Card style={{ marginBottom: 14, background: "linear-gradient(135deg,rgba(16,40,90,0.65),rgba(11,20,34,0.95))", border: `1px solid rgba(80,140,220,0.3)` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
               <div>
-                <div style={{fontSize:11,color:"#60a5fa",fontWeight:600,marginBottom:6}}>📍 Rajmachi Fort · Manoranjan Bastion (18.8286°N, 73.3986°E · 829m ASL)</div>
-                <div style={{display:"flex",alignItems:"center",gap:14}}>
-                  <div style={{fontSize:68}}>{wxIcon}</div>
+                <div style={{ fontSize: 11, color: "#60a5fa", fontWeight: 600, marginBottom: 6 }}>📍 Rajmachi Fort · Manoranjan Bastion (18.8286°N, 73.3986°E · 829m ASL)</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                  <div style={{ fontSize: 68 }}>{wxIcon}</div>
                   <div>
-                    <div style={{fontSize:54,fontWeight:700,color:C.text,lineHeight:1}}>
-                      {sensor.temp}<span style={{fontSize:28,color:C.muted}}>°C</span>
+                    <div style={{ fontSize: 54, fontWeight: 700, color: C.text, lineHeight: 1 }}>
+                      {sensor.temp}<span style={{ fontSize: 28, color: C.muted }}>°C</span>
                     </div>
-                    <div style={{fontSize:15,color:C.muted,marginTop:2}}>{wxDesc}</div>
-                    <div style={{fontSize:11,color:C.muted2,marginTop:2}}>Mountain Wind Chill: {feelsLike(sensor.temp,sensor.humidity)}°C</div>
+                    <div style={{ fontSize: 15, color: C.muted, marginTop: 2 }}>{wxDesc}</div>
+                    <div style={{ fontSize: 11, color: C.muted2, marginTop: 2 }}>Mountain Wind Chill: {feelsLike(sensor.temp, sensor.humidity)}°C</div>
                   </div>
                 </div>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                 {[
                   ["💧 Relative Humidity", `${sensor.humidity}%`],
                   ["🌬️ Wind Speed", `${sensor.windSpeed} km/h (${windDir(sensor.windDir)})`],
                   ["🌧️ Rain Rate", `${sensor.rainfall} mm/h`],
                   ["🌀 Atmospheric Pressure", `${sensor.pressure?.toFixed(1)} hPa`],
                 ].map(([label, val]) => (
-                  <div key={label} style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 12px"}}>
-                    <div style={{fontSize:10,color:C.muted}}>{label}</div>
-                    <div style={{fontSize:13,fontWeight:700,color:C.text}}>{val}</div>
+                  <div key={label} style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px" }}>
+                    <div style={{ fontSize: 10, color: C.muted }}>{label}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{val}</div>
                   </div>
                 ))}
               </div>
@@ -6546,35 +6550,35 @@ const PageMountainWeather = () => {
           </Card>
 
           {/* ACTIVE HAZARDS & QUICK DISPATCH ADVISORY */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
             <Card>
-              <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
                 <span>⚠️</span>
                 <span>Active Trail Hazard Directives (Sahyadri Western Ghats)</span>
               </div>
               {[
-                ["Ulhas River Valley — Flash Flood Risk","Heavy monsoon runoff into river crossings between Kondhane and base. River crossings restricted after 17:00.","red"],
-                ["Manoranjan Ridge Bastion — Lightning & High Wind","Afternoon convective thunderstorms above 800m. Keep clear of exposed metal railings and lone trees.","amber"],
-                ["Forest Department Monsoon Notice","Night trekking strictly permitted only with licensed Field Guide (Ajay Saini) and VHF radio link.","blue"],
-              ].map(([title,desc,col])=>(
-                <div key={title} style={{background:"rgba(255,255,255,0.025)",border:`1px solid ${col==="red"?"rgba(239,68,68,0.3)":col==="amber"?"rgba(245,158,11,0.3)":"rgba(59,130,246,0.25)"}`,borderRadius:10,padding:"10px 14px",marginBottom:8}}>
-                  <div style={{fontSize:12,fontWeight:600,color:col==="red"?"#fca5a5":col==="amber"?"#fcd34d":"#93c5fd",marginBottom:2}}>{title}</div>
-                  <div style={{fontSize:11,color:C.muted,lineHeight:1.4}}>{desc}</div>
+                ["Ulhas River Valley — Flash Flood Risk", "Heavy monsoon runoff into river crossings between Kondhane and base. River crossings restricted after 17:00.", "red"],
+                ["Manoranjan Ridge Bastion — Lightning & High Wind", "Afternoon convective thunderstorms above 800m. Keep clear of exposed metal railings and lone trees.", "amber"],
+                ["Forest Department Monsoon Notice", "Night trekking strictly permitted only with licensed Field Guide (Ajay Saini) and VHF radio link.", "blue"],
+              ].map(([title, desc, col]) => (
+                <div key={title} style={{ background: "rgba(255,255,255,0.025)", border: `1px solid ${col === "red" ? "rgba(239,68,68,0.3)" : col === "amber" ? "rgba(245,158,11,0.3)" : "rgba(59,130,246,0.25)"}`, borderRadius: 10, padding: "10px 14px", marginBottom: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: col === "red" ? "#fca5a5" : col === "amber" ? "#fcd34d" : "#93c5fd", marginBottom: 2 }}>{title}</div>
+                  <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.4 }}>{desc}</div>
                 </div>
               ))}
             </Card>
 
             <Card>
-              <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:8,display:"flex",alignItems:"center",gap:8}}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
                 <span>📢</span>
                 <span>Instant Trail Advisory Broadcaster</span>
               </div>
-              <div style={{fontSize:11.5,color:C.muted,marginBottom:12}}>
+              <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 12 }}>
                 Push immediate weather warnings directly to the 5 trekkers' User App notification feed:
               </div>
 
               {advisorySent && (
-                <div style={{background:"rgba(34,197,94,0.15)",border:"1px solid rgba(34,197,94,0.3)",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#86efac",fontWeight:600,marginBottom:10}}>
+                <div style={{ background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "#86efac", fontWeight: 600, marginBottom: 10 }}>
                   ✓ Advisory broadcasted to all active expedition members and saved to safety protocols!
                 </div>
               )}
@@ -6585,7 +6589,7 @@ const PageMountainWeather = () => {
                 placeholder="e.g. Heavy cloudburst approaching Manoranjan ridge. All trekkers hold position at stream shelter and report VHF check-in..."
                 rows={3}
                 style={{
-                  width:"100%",background:"rgba(255,255,255,0.04)",border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:12,padding:10,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box",outline:"none",marginBottom:10
+                  width: "100%", background: "rgba(255,255,255,0.04)", border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 12, padding: 10, fontFamily: "inherit", resize: "vertical", boxSizing: "border-box", outline: "none", marginBottom: 10
                 }}
               />
               <Btn variant="primary" onClick={handleBroadcastAdvisory} disabled={!advisoryText.trim()}>
@@ -6596,18 +6600,18 @@ const PageMountainWeather = () => {
 
           {/* Hourly temperature strip */}
           {wx?.hourly && (
-            <Card style={{marginBottom:14}}>
-              <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>Hourly Forecast &amp; Rain Probability (Next 24h)</div>
-              <div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:4}}>
-                {wx.hourly.time.slice(0,24).map((t,i)=>{
-                  const hr  = t.split("T")[1]?.substring(0,5);
+            <Card style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>Hourly Forecast &amp; Rain Probability (Next 24h)</div>
+              <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+                {wx.hourly.time.slice(0, 24).map((t, i) => {
+                  const hr = t.split("T")[1]?.substring(0, 5);
                   const tmp = wx.hourly.temperature_2m[i];
-                  const pp  = wx.hourly.precipitation_probability?.[i] ?? 0;
+                  const pp = wx.hourly.precipitation_probability?.[i] ?? 0;
                   return (
-                    <div key={i} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,flexShrink:0,minWidth:44,padding:"6px 4px",borderRadius:8,background:i===0?"rgba(59,130,246,0.1)":"transparent"}}>
-                      <div style={{fontSize:9,color:C.muted2}}>{hr}</div>
-                      <div style={{fontSize:13,fontWeight:600,color:tmp>35?C.red:tmp>30?C.amber:tmp>25?C.accent:C.teal}}>{tmp}°</div>
-                      {pp>20&&<div style={{fontSize:9,color:C.teal}}>💧{pp}%</div>}
+                    <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, flexShrink: 0, minWidth: 44, padding: "6px 4px", borderRadius: 8, background: i === 0 ? "rgba(59,130,246,0.1)" : "transparent" }}>
+                      <div style={{ fontSize: 9, color: C.muted2 }}>{hr}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: tmp > 35 ? C.red : tmp > 30 ? C.amber : tmp > 25 ? C.accent : C.teal }}>{tmp}°</div>
+                      {pp > 20 && <div style={{ fontSize: 9, color: C.teal }}>💧{pp}%</div>}
                     </div>
                   );
                 })}
@@ -6616,33 +6620,33 @@ const PageMountainWeather = () => {
           )}
 
           {/* Alerts & Air Quality row */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Card>
-              <div style={{fontSize:12,fontWeight:600,color:C.text,marginBottom:10}}>⚠️ Active Atmospheric Alerts</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: C.text, marginBottom: 10 }}>⚠️ Active Atmospheric Alerts</div>
               {[
-                {col:"amber",title:"Monsoon Cloudburst Watch",desc:"Low barometric pressure detected at Manoranjan ridge (928.4 hPa). High convection squalls probable."},
-                {col:"blue", title:"Wind & Mist Advisory",desc:`Moderate winds (${sensor.windSpeed} km/h) from ${windDir(sensor.windDir)}. Ridge visibility ~80m in cloud cover.`},
-              ].map(a=>(
-                <div key={a.title} style={{background:`rgba(255,255,255,0.03)`,border:`1px solid ${a.col==="amber"?"rgba(245,158,11,0.3)":"rgba(59,130,246,0.2)"}`,borderRadius:9,padding:"9px 12px",marginBottom:7}}>
-                  <div style={{fontSize:12,fontWeight:500,color:C.text,marginBottom:2}}>{a.title}</div>
-                  <div style={{fontSize:11,color:C.muted}}>{a.desc}</div>
+                { col: "amber", title: "Monsoon Cloudburst Watch", desc: "Low barometric pressure detected at Manoranjan ridge (928.4 hPa). High convection squalls probable." },
+                { col: "blue", title: "Wind & Mist Advisory", desc: `Moderate winds (${sensor.windSpeed} km/h) from ${windDir(sensor.windDir)}. Ridge visibility ~80m in cloud cover.` },
+              ].map(a => (
+                <div key={a.title} style={{ background: `rgba(255,255,255,0.03)`, border: `1px solid ${a.col === "amber" ? "rgba(245,158,11,0.3)" : "rgba(59,130,246,0.2)"}`, borderRadius: 9, padding: "9px 12px", marginBottom: 7 }}>
+                  <div style={{ fontSize: 12, fontWeight: 500, color: C.text, marginBottom: 2 }}>{a.title}</div>
+                  <div style={{ fontSize: 11, color: C.muted }}>{a.desc}</div>
                 </div>
               ))}
             </Card>
             <Card>
-              <div style={{fontSize:12,fontWeight:600,color:C.text,marginBottom:10}}>📊 Ridge Air Quality &amp; Particulates (PMS5003 Laser)</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: C.text, marginBottom: 10 }}>📊 Ridge Air Quality &amp; Particulates (PMS5003 Laser)</div>
               {[
-                ["AQI Index",sensor.aqi,200,sensor.aqi<50?C.green:sensor.aqi<100?C.amber:C.red],
-                ["CO₂ Level",sensor.co2-350,200,sensor.co2<450?C.green:C.amber],
-                ["Relative Humidity",sensor.humidity,100,C.teal],
-              ].map(([label,val,max,col])=>(
-                <div key={label} style={{marginBottom:10}}>
-                  <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:3}}>
-                    <span style={{color:C.muted}}>{label}</span>
-                    <span style={{color:col,fontWeight:600}}>{label==="CO₂ Level"?sensor.co2+" ppm":label==="AQI Index"?sensor.aqi:sensor.humidity+"%"}</span>
+                ["AQI Index", sensor.aqi, 200, sensor.aqi < 50 ? C.green : sensor.aqi < 100 ? C.amber : C.red],
+                ["CO₂ Level", sensor.co2 - 350, 200, sensor.co2 < 450 ? C.green : C.amber],
+                ["Relative Humidity", sensor.humidity, 100, C.teal],
+              ].map(([label, val, max, col]) => (
+                <div key={label} style={{ marginBottom: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 3 }}>
+                    <span style={{ color: C.muted }}>{label}</span>
+                    <span style={{ color: col, fontWeight: 600 }}>{label === "CO₂ Level" ? sensor.co2 + " ppm" : label === "AQI Index" ? sensor.aqi : sensor.humidity + "%"}</span>
                   </div>
-                  <div style={{height:5,borderRadius:4,background:"rgba(255,255,255,0.07)"}}>
-                    <div style={{height:"100%",width:`${Math.min(100,(val/max)*100)}%`,borderRadius:4,background:col,transition:"width 0.5s"}}/>
+                  <div style={{ height: 5, borderRadius: 4, background: "rgba(255,255,255,0.07)" }}>
+                    <div style={{ height: "100%", width: `${Math.min(100, (val / max) * 100)}%`, borderRadius: 4, background: col, transition: "width 0.5s" }} />
                   </div>
                 </div>
               ))}
@@ -6652,24 +6656,24 @@ const PageMountainWeather = () => {
       )}
 
       {/* ══ LIVE MAP ══ */}
-      {tab==="map" && (
+      {tab === "map" && (
         <div>
-          <div style={{display:"flex",gap:8,marginBottom:12,alignItems:"center",flexWrap:"wrap"}}>
-            {[["road","🗺️ Road"],["satellite","🛰️ Satellite"],["terrain","🏔️ Terrain"]].map(([v,label])=>(
-              <button key={v} onClick={()=>setMapType(v)} style={{
-                padding:"6px 14px",borderRadius:8,border:`1px solid ${mapType===v?C.accent:C.border}`,
-                background:mapType===v?"rgba(59,130,246,0.12)":"transparent",
-                color:mapType===v?C.accent:C.muted,fontSize:12,cursor:"pointer",fontFamily:"inherit",
+          <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center", flexWrap: "wrap" }}>
+            {[["road", "🗺️ Road"], ["satellite", "🛰️ Satellite"], ["terrain", "🏔️ Terrain"]].map(([v, label]) => (
+              <button key={v} onClick={() => setMapType(v)} style={{
+                padding: "6px 14px", borderRadius: 8, border: `1px solid ${mapType === v ? C.accent : C.border}`,
+                background: mapType === v ? "rgba(59,130,246,0.12)" : "transparent",
+                color: mapType === v ? C.accent : C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
               }}>{label}</button>
             ))}
-            <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8}}>
-              <span style={{fontSize:12,color:C.muted}}>3D tilt</span>
-              <Toggle on={mapPerspective} onChange={()=>setMapPerspective(x=>!x)}/>
+            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 12, color: C.muted }}>3D tilt</span>
+              <Toggle on={mapPerspective} onChange={() => setMapPerspective(x => !x)} />
             </div>
           </div>
           <LeafletMap height={500} tileType={mapType} perspective={mapPerspective}
-            markers={USERS.map(u=>({ lat:u.lat, lon:u.lon, color:u.status==="sos"?"#ef4444":u.status==="active"?"#22c55e":"#888", popup:`<b>${u.name}</b><br><small>${u.city} · ${u.status}</small>` }))}/>
-          <div style={{marginTop:10,display:"flex",gap:16,fontSize:11,color:C.muted2,flexWrap:"wrap"}}>
+            markers={USERS.map(u => ({ lat: u.lat, lon: u.lon, color: u.status === "sos" ? "#ef4444" : u.status === "active" ? "#22c55e" : "#888", popup: `<b>${u.name}</b><br><small>${u.city} · ${u.status}</small>` }))} />
+          <div style={{ marginTop: 10, display: "flex", gap: 16, fontSize: 11, color: C.muted2, flexWrap: "wrap" }}>
             <span>📍 18.52°N, 73.85°E</span>
             <span>🗺️ Mulshi Reservoir region · Western Ghats</span>
             <span>🏔️ Alt: {sensor.altitude}m ASL</span>
@@ -6679,66 +6683,66 @@ const PageMountainWeather = () => {
       )}
 
       {/* ══ HARDWARE SENSORS ══ */}
-      {tab==="hardware" && (
+      {tab === "hardware" && (
         <div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:14}}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: 14 }}>
             {[
-              {label:"Temperature",    value:`${sensor.temp}°C`,                 icon:"🌡️", color:sensor.temp>35?C.red:sensor.temp>28?C.amber:C.green, status:sensor.temp>35?"High alert":sensor.temp>28?"Warm":"Normal"},
-              {label:"Humidity",       value:`${sensor.humidity}%`,               icon:"💧", color:sensor.humidity>80?C.amber:C.teal,                   status:sensor.humidity>80?"High":sensor.humidity<30?"Dry":"Normal"},
-              {label:"Pressure",       value:`${sensor.pressure?.toFixed(1)} hPa`,icon:"🌀", color:C.purple,                                            status:"Stable"},
-              {label:"Wind Speed",     value:`${sensor.windSpeed} km/h`,          icon:"🌬️", color:sensor.windSpeed>50?C.red:sensor.windSpeed>25?C.amber:C.accent, status:sensor.windSpeed>50?"Alert":sensor.windSpeed>25?"Moderate":"Calm"},
-              {label:"UV Index",       value:`${sensor.uvIndex}`,                 icon:"☀️", color:sensor.uvIndex>7?C.red:sensor.uvIndex>3?C.amber:C.green, status:sensor.uvIndex>7?"Danger":sensor.uvIndex>3?"Moderate":"Low"},
-              {label:"CO₂",            value:`${sensor.co2} ppm`,                 icon:"🌿", color:sensor.co2>450?C.amber:C.green,                     status:sensor.co2>450?"Elevated":"Normal"},
-              {label:"Rainfall",       value:`${sensor.rainfall} mm/h`,           icon:"🌧️", color:sensor.rainfall>5?C.red:sensor.rainfall>0?C.teal:C.muted, status:sensor.rainfall>5?"Heavy":sensor.rainfall>0?"Light":"None"},
-              {label:"AQI",            value:`${sensor.aqi}`,                     icon:"💨", color:sensor.aqi<50?C.green:sensor.aqi<100?C.amber:C.red, status:sensor.aqi<50?"Good":sensor.aqi<100?"Moderate":"Poor"},
-              {label:"Altitude",       value:`${sensor.altitude}m ASL`,           icon:"🏔️", color:C.muted,                                            status:"Fixed GPS"},
-            ].map(({label,value,icon,color,status})=>(
-              <Card key={label} style={{marginBottom:0}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
-                  <div style={{fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em"}}>{label}</div>
-                  <span style={{fontSize:16}}>{icon}</span>
+              { label: "Temperature", value: `${sensor.temp}°C`, icon: "🌡️", color: sensor.temp > 35 ? C.red : sensor.temp > 28 ? C.amber : C.green, status: sensor.temp > 35 ? "High alert" : sensor.temp > 28 ? "Warm" : "Normal" },
+              { label: "Humidity", value: `${sensor.humidity}%`, icon: "💧", color: sensor.humidity > 80 ? C.amber : C.teal, status: sensor.humidity > 80 ? "High" : sensor.humidity < 30 ? "Dry" : "Normal" },
+              { label: "Pressure", value: `${sensor.pressure?.toFixed(1)} hPa`, icon: "🌀", color: C.purple, status: "Stable" },
+              { label: "Wind Speed", value: `${sensor.windSpeed} km/h`, icon: "🌬️", color: sensor.windSpeed > 50 ? C.red : sensor.windSpeed > 25 ? C.amber : C.accent, status: sensor.windSpeed > 50 ? "Alert" : sensor.windSpeed > 25 ? "Moderate" : "Calm" },
+              { label: "UV Index", value: `${sensor.uvIndex}`, icon: "☀️", color: sensor.uvIndex > 7 ? C.red : sensor.uvIndex > 3 ? C.amber : C.green, status: sensor.uvIndex > 7 ? "Danger" : sensor.uvIndex > 3 ? "Moderate" : "Low" },
+              { label: "CO₂", value: `${sensor.co2} ppm`, icon: "🌿", color: sensor.co2 > 450 ? C.amber : C.green, status: sensor.co2 > 450 ? "Elevated" : "Normal" },
+              { label: "Rainfall", value: `${sensor.rainfall} mm/h`, icon: "🌧️", color: sensor.rainfall > 5 ? C.red : sensor.rainfall > 0 ? C.teal : C.muted, status: sensor.rainfall > 5 ? "Heavy" : sensor.rainfall > 0 ? "Light" : "None" },
+              { label: "AQI", value: `${sensor.aqi}`, icon: "💨", color: sensor.aqi < 50 ? C.green : sensor.aqi < 100 ? C.amber : C.red, status: sensor.aqi < 50 ? "Good" : sensor.aqi < 100 ? "Moderate" : "Poor" },
+              { label: "Altitude", value: `${sensor.altitude}m ASL`, icon: "🏔️", color: C.muted, status: "Fixed GPS" },
+            ].map(({ label, value, icon, color, status }) => (
+              <Card key={label} style={{ marginBottom: 0 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                  <div style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>{label}</div>
+                  <span style={{ fontSize: 16 }}>{icon}</span>
                 </div>
-                <div style={{fontSize:24,fontWeight:700,color,marginBottom:5}}>{value}</div>
-                <div style={{display:"flex",alignItems:"center",gap:5}}>
-                  <div style={{width:6,height:6,borderRadius:"50%",background:sensorOnline?C.green:"#555",flexShrink:0}}/>
-                  <div style={{fontSize:10,color:C.muted2}}>{sensorOnline?status:"Offline"}</div>
+                <div style={{ fontSize: 24, fontWeight: 700, color, marginBottom: 5 }}>{value}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: sensorOnline ? C.green : "#555", flexShrink: 0 }} />
+                  <div style={{ fontSize: 10, color: C.muted2 }}>{sensorOnline ? status : "Offline"}</div>
                 </div>
               </Card>
             ))}
           </div>
 
           <Card>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
               <div>
-                <div style={{fontSize:11,color:C.muted,textTransform:"uppercase",letterSpacing:"0.07em"}}>
+                <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>
                   Autonomous Ridge Weather Station · REMOTE_01 Hardware Sensors (842m ASL)
                 </div>
-                <div style={{fontSize:12.5,color:C.text,marginTop:2,fontWeight:600}}>
+                <div style={{ fontSize: 12.5, color: C.text, marginTop: 2, fontWeight: 600 }}>
                   LoRa RF Telemetry Hop to Base Camp Gateway (IN865 Band · 865.0625 MHz)
                 </div>
               </div>
-              <Pill color={sensorOnline?"green":"red"}>{sensorOnline?"● RF Telemetry Linked":"○ Station Offline"}</Pill>
+              <Pill color={sensorOnline ? "green" : "red"}>{sensorOnline ? "● RF Telemetry Linked" : "○ Station Offline"}</Pill>
             </div>
 
             {[
-              {name:"Adafruit BMP280 — High-Precision Barometric Pressure & Temp", id:"BMP-01 (I2C 0x76)", latency:"28ms RF", fw:"v2.4 (16x Oversampling)"},
-              {name:"DHT22 — Digital Relative Humidity & Heat Index",              id:"DHT-01 (GPIO 4)",    latency:"32ms RF", fw:"v1.9 (2s Cycle)"},
-              {name:"Plantower PMS5003 — Laser PM2.5 / PM10 Alpine Air Sensor",     id:"PMS-01 (UART2 16/17)",latency:"38ms RF", fw:"v3.2 (Active Stream)"},
-              {name:"Optical & Tipping Bucket Precipitation Gauge",               id:"RAIN-01 (ADC 34/35)", latency:"24ms RF", fw:"v1.5 (0.1mm Resolution)"},
-              {name:"INMP441 — I2S Omnidirectional Acoustic Rockfall/Wind Mic",   id:"MIC-01 (I2S 25/32/33)",latency:"30ms RF", fw:"v2.1 (16kHz 32-bit)"},
-              {name:"Pressure Trend Engine — Cloudburst & Squall Predictor",      id:"TREND-BUF (1-min)",   latency:"Immediate", fw:"Drop >1.5hPa/min Alarm"},
-            ].map(hw=>(
-              <div key={hw.id} style={{display:"flex",alignItems:"center",gap:12,padding:"9px 0",borderBottom:`1px solid ${C.border}`}}>
-                <div style={{width:8,height:8,borderRadius:"50%",background:sensorOnline?C.green:C.red,flexShrink:0}}/>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:12,color:C.text,fontWeight:500}}>{hw.name}</div>
-                  <div style={{fontSize:10,color:C.muted2}}>{hw.id} · {hw.fw}</div>
+              { name: "Adafruit BMP280 — High-Precision Barometric Pressure & Temp", id: "BMP-01 (I2C 0x76)", latency: "28ms RF", fw: "v2.4 (16x Oversampling)" },
+              { name: "DHT22 — Digital Relative Humidity & Heat Index", id: "DHT-01 (GPIO 4)", latency: "32ms RF", fw: "v1.9 (2s Cycle)" },
+              { name: "Plantower PMS5003 — Laser PM2.5 / PM10 Alpine Air Sensor", id: "PMS-01 (UART2 16/17)", latency: "38ms RF", fw: "v3.2 (Active Stream)" },
+              { name: "Optical & Tipping Bucket Precipitation Gauge", id: "RAIN-01 (ADC 34/35)", latency: "24ms RF", fw: "v1.5 (0.1mm Resolution)" },
+              { name: "INMP441 — I2S Omnidirectional Acoustic Rockfall/Wind Mic", id: "MIC-01 (I2S 25/32/33)", latency: "30ms RF", fw: "v2.1 (16kHz 32-bit)" },
+              { name: "Pressure Trend Engine — Cloudburst & Squall Predictor", id: "TREND-BUF (1-min)", latency: "Immediate", fw: "Drop >1.5hPa/min Alarm" },
+            ].map(hw => (
+              <div key={hw.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 0", borderBottom: `1px solid ${C.border}` }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: sensorOnline ? C.green : C.red, flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, color: C.text, fontWeight: 500 }}>{hw.name}</div>
+                  <div style={{ fontSize: 10, color: C.muted2 }}>{hw.id} · {hw.fw}</div>
                 </div>
-                <Pill color={sensorOnline?"green":"red"}>{sensorOnline?"online":"offline"}</Pill>
-                <div style={{fontSize:10,color:"#93c5fd",minWidth:50,textAlign:"right",fontFamily:"monospace"}}>{sensorOnline?hw.latency:"—"}</div>
+                <Pill color={sensorOnline ? "green" : "red"}>{sensorOnline ? "online" : "offline"}</Pill>
+                <div style={{ fontSize: 10, color: "#93c5fd", minWidth: 50, textAlign: "right", fontFamily: "monospace" }}>{sensorOnline ? hw.latency : "—"}</div>
               </div>
             ))}
-            <div style={{fontSize:10.5,color:C.muted2,marginTop:12,display:"flex",gap:18,flexWrap:"wrap"}}>
+            <div style={{ fontSize: 10.5, color: C.muted2, marginTop: 12, display: "flex", gap: 18, flexWrap: "wrap" }}>
               <span>🔄 Last RF Packet: {sensor.lastSync}</span>
               <span>📻 Radio Transport: Semtech SX1276 LoRa (865.0625 MHz · India IN865 Ch 1)</span>
               <span>🔋 Ridge Solar BMS: 3.92V (91% · 5V 2W Solar Top)</span>
@@ -6748,48 +6752,48 @@ const PageMountainWeather = () => {
       )}
 
       {/* ══ 7-DAY FORECAST ══ */}
-      {tab==="forecast" && (
+      {tab === "forecast" && (
         <div>
           {wx?.daily ? (
             <>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:10,marginBottom:14}}>
-                {wx.daily.time.map((d,i)=>{
-                  const dt    = new Date(d);
-                  const dstr  = dt.toLocaleDateString("en-IN",{weekday:"short",day:"numeric"});
-                  const [ic]  = WX_CODES[wx.daily.weather_code[i]] ?? ["🌤️"];
-                  const tmax  = wx.daily.temperature_2m_max[i];
-                  const tmin  = wx.daily.temperature_2m_min[i];
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 10, marginBottom: 14 }}>
+                {wx.daily.time.map((d, i) => {
+                  const dt = new Date(d);
+                  const dstr = dt.toLocaleDateString("en-IN", { weekday: "short", day: "numeric" });
+                  const [ic] = WX_CODES[wx.daily.weather_code[i]] ?? ["🌤️"];
+                  const tmax = wx.daily.temperature_2m_max[i];
+                  const tmin = wx.daily.temperature_2m_min[i];
                   return (
-                    <Card key={d} style={{textAlign:"center",marginBottom:0,padding:"14px 8px"}}>
-                      <div style={{fontSize:10,color:C.muted,marginBottom:4}}>{dstr}</div>
-                      <div style={{fontSize:30,marginBottom:4}}>{ic}</div>
-                      <div style={{fontSize:16,fontWeight:700,color:C.red}}>{tmax}°</div>
-                      <div style={{fontSize:13,color:C.muted}}>{tmin}°</div>
-                      <div style={{fontSize:10,color:C.teal,marginTop:3}}>💧{wx.daily.precipitation_sum[i]}mm</div>
-                      <div style={{fontSize:10,color:C.muted2,marginTop:1}}>💨{wx.daily.wind_speed_10m_max[i]}km/h</div>
+                    <Card key={d} style={{ textAlign: "center", marginBottom: 0, padding: "14px 8px" }}>
+                      <div style={{ fontSize: 10, color: C.muted, marginBottom: 4 }}>{dstr}</div>
+                      <div style={{ fontSize: 30, marginBottom: 4 }}>{ic}</div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: C.red }}>{tmax}°</div>
+                      <div style={{ fontSize: 13, color: C.muted }}>{tmin}°</div>
+                      <div style={{ fontSize: 10, color: C.teal, marginTop: 3 }}>💧{wx.daily.precipitation_sum[i]}mm</div>
+                      <div style={{ fontSize: 10, color: C.muted2, marginTop: 1 }}>💨{wx.daily.wind_speed_10m_max[i]}km/h</div>
                     </Card>
                   );
                 })}
               </div>
               <Card>
-                <div style={{fontSize:12,fontWeight:500,color:C.text,marginBottom:12}}>Weekly Summary</div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
+                <div style={{ fontSize: 12, fontWeight: 500, color: C.text, marginBottom: 12 }}>Weekly Summary</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>
                   {[
-                    ["Avg High",`${(wx.daily.temperature_2m_max.reduce((a,b)=>a+b,0)/7).toFixed(1)}°C`,C.red],
-                    ["Avg Low", `${(wx.daily.temperature_2m_min.reduce((a,b)=>a+b,0)/7).toFixed(1)}°C`,C.teal],
-                    ["Total Rain",`${wx.daily.precipitation_sum.reduce((a,b)=>a+b,0).toFixed(1)} mm`,C.accent],
-                    ["Max Wind",`${Math.max(...wx.daily.wind_speed_10m_max).toFixed(0)} km/h`,C.amber],
-                  ].map(([k,v,col])=>(
-                    <div key={k} style={{background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"10px 12px",border:`1px solid ${C.border}`}}>
-                      <div style={{fontSize:10,color:C.muted2,marginBottom:4}}>{k}</div>
-                      <div style={{fontSize:20,fontWeight:700,color:col}}>{v}</div>
+                    ["Avg High", `${(wx.daily.temperature_2m_max.reduce((a, b) => a + b, 0) / 7).toFixed(1)}°C`, C.red],
+                    ["Avg Low", `${(wx.daily.temperature_2m_min.reduce((a, b) => a + b, 0) / 7).toFixed(1)}°C`, C.teal],
+                    ["Total Rain", `${wx.daily.precipitation_sum.reduce((a, b) => a + b, 0).toFixed(1)} mm`, C.accent],
+                    ["Max Wind", `${Math.max(...wx.daily.wind_speed_10m_max).toFixed(0)} km/h`, C.amber],
+                  ].map(([k, v, col]) => (
+                    <div key={k} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: "10px 12px", border: `1px solid ${C.border}` }}>
+                      <div style={{ fontSize: 10, color: C.muted2, marginBottom: 4 }}>{k}</div>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: col }}>{v}</div>
                     </div>
                   ))}
                 </div>
               </Card>
             </>
           ) : (
-            <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:200,color:C.muted2}}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200, color: C.muted2 }}>
               {loading ? "⏳ Loading forecast…" : "⚠️ Forecast unavailable"}
             </div>
           )}
@@ -6797,27 +6801,27 @@ const PageMountainWeather = () => {
       )}
 
       {/* ══ 3D NAVIGATION ══ */}
-      {tab==="navigation" && (
+      {tab === "navigation" && (
         <div>
-          <div style={{display:"flex",gap:10,marginBottom:12,alignItems:"center",flexWrap:"wrap"}}>
+          <div style={{ display: "flex", gap: 10, marginBottom: 12, alignItems: "center", flexWrap: "wrap" }}>
             <Pill color="green">● 3D Navigation Active</Pill>
             <Pill color="blue">📍 Rajmachi Fort, Maharashtra</Pill>
             <Pill color="amber">🏔️ Western Ghats Terrain (829m ASL)</Pill>
-            <span style={{fontSize:11,color:C.muted}}>Perspective tilt · Satellite + Terrain relief</span>
+            <span style={{ fontSize: 11, color: C.muted }}>Perspective tilt · Satellite + Terrain relief</span>
           </div>
           <LeafletMap height={520} tileType="satellite" perspective={true} zoom={13}
             center={[18.8286, 73.3986]}
-            markers={SOS_TEAMS.map(t=>({ lat:t.lat, lon:t.lon, color:"#f59e0b", popup:`<b>${t.name}</b><br><small>${t.vehicle} · ETA ${t.eta}</small>` }))}/>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginTop:14}}>
+            markers={SOS_TEAMS.map(t => ({ lat: t.lat, lon: t.lon, color: "#f59e0b", popup: `<b>${t.name}</b><br><small>${t.vehicle} · ETA ${t.eta}</small>` }))} />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginTop: 14 }}>
             {[
-              ["🧭","Heading",`${windDir(sensor.windDir)} · ${sensor.windDir}°`,C.accent],
-              ["🏔️","Altitude",`${sensor.altitude}m ASL`,C.purple],
-              ["📍","Coordinates","18.8286°N  73.3986°E",C.text],
-              ["🌡️","Conditions",`${sensor.temp}°C · ${wxDesc}`,C.amber],
-            ].map(([icon,k,v,col])=>(
-              <Card key={k} style={{marginBottom:0}}>
-                <div style={{fontSize:10,color:C.muted2,marginBottom:4}}>{icon} {k}</div>
-                <div style={{fontSize:14,fontWeight:600,color:col}}>{v}</div>
+              ["🧭", "Heading", `${windDir(sensor.windDir)} · ${sensor.windDir}°`, C.accent],
+              ["🏔️", "Altitude", `${sensor.altitude}m ASL`, C.purple],
+              ["📍", "Coordinates", "18.8286°N  73.3986°E", C.text],
+              ["🌡️", "Conditions", `${sensor.temp}°C · ${wxDesc}`, C.amber],
+            ].map(([icon, k, v, col]) => (
+              <Card key={k} style={{ marginBottom: 0 }}>
+                <div style={{ fontSize: 10, color: C.muted2, marginBottom: 4 }}>{icon} {k}</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: col }}>{v}</div>
               </Card>
             ))}
           </div>
@@ -6971,7 +6975,7 @@ export default function AdminPanel() {
             setFirestoreSosEvents(data.events);
           }
         }
-      } catch {}
+      } catch { }
     };
     pollBackendSOS();
     const interval = setInterval(pollBackendSOS, 2500);
@@ -7027,18 +7031,18 @@ export default function AdminPanel() {
             gain.connect(audioCtx.destination);
             osc.start();
             osc.stop(audioCtx.currentTime + 0.3);
-          } catch {}
+          } catch { }
         };
         playBeep();
         intervalId = setInterval(playBeep, 2000);
       }
-    } catch {}
+    } catch { }
 
     return () => {
       isCancelled = true;
       if (intervalId) clearInterval(intervalId);
       if (audioCtx) {
-        try { audioCtx.close(); } catch {}
+        try { audioCtx.close(); } catch { }
       }
     };
   }, [activeSOS]);
@@ -7110,7 +7114,7 @@ export default function AdminPanel() {
           const data = await response.json();
           if (Array.isArray(data?.users)) setFirestoreUsers(data.users);
         }
-      } catch {}
+      } catch { }
       return { success: true };
     }
     return res;
@@ -7201,51 +7205,51 @@ export default function AdminPanel() {
     setActiveAdmin(adminObj);
     try {
       localStorage.setItem("margsutra_admin_session", JSON.stringify(adminObj));
-    } catch {}
+    } catch { }
     setLoggedIn(true);
   };
 
   const handleLogout = () => {
     try {
       localStorage.removeItem("margsutra_admin_session"); localStorage.removeItem("coordage_admin_session");
-    } catch {}
+    } catch { }
     setActiveAdmin(null);
     setLoggedIn(false);
   };
 
-  if(!loggedIn) return <PageAdminAuth onLogin={handleLogin}/>;
+  if (!loggedIn) return <PageAdminAuth onLogin={handleLogin} />;
 
   const pages = {
-    dashboard:        <PageDashboard navigate={navigate} users={displayUsers} pendingAdmins={pendingAdmins} pendingTrekkers={pendingTrekkers}/>,
-    "all-users":      <PageAllUsers users={displayUsers} navigate={navigate}/>,
-    "trip-rosters":   <PageTripRosters
-                        defaultTab="expeditions"
-                        pendingTrekkers={pendingTrekkers}
-                        onApprove={handleApproveTrekker}
-                        onRemove={handleRemoveTrekker}
-                        refreshing={refreshingTrekkers}
-                        onRefresh={loadPendingTrekkers}
-                      />,
+    dashboard: <PageDashboard navigate={navigate} users={displayUsers} pendingAdmins={pendingAdmins} pendingTrekkers={pendingTrekkers} />,
+    "all-users": <PageAllUsers users={displayUsers} navigate={navigate} />,
+    "trip-rosters": <PageTripRosters
+      defaultTab="expeditions"
+      pendingTrekkers={pendingTrekkers}
+      onApprove={handleApproveTrekker}
+      onRemove={handleRemoveTrekker}
+      refreshing={refreshingTrekkers}
+      onRefresh={loadPendingTrekkers}
+    />,
     "admin-approvals": <PageAdminApprovals
-                        pendingAdmins={pendingAdmins}
-                        approvedAdmins={approvedAdmins}
-                        onApprove={handleApproveAdmin}
-                        onReject={handleRejectAdmin}
-                        refreshing={refreshingPending}
-                        onRefresh={loadPendingAdmins}
-                      />,
-    "device-tracking":<PageDeviceTracking users={displayUsers} connectionState={connectionState}/>,
-    "wearables-radar":<PageWearablesRadar users={displayUsers}/>,
-    "weather-console":<PageMountainWeather/>,
-    "live-tracking":  <PageLiveTracking navigate={navigate} users={displayUsers} connectionState={connectionState} error={error}/>,
-    "safety-protocol":<PageTripRosters
-                        defaultTab="protocols"
-                        pendingTrekkers={pendingTrekkers}
-                        onApprove={handleApproveTrekker}
-                        onRemove={handleRemoveTrekker}
-                        refreshing={refreshingTrekkers}
-                        onRefresh={loadPendingTrekkers}
-                      />,
+      pendingAdmins={pendingAdmins}
+      approvedAdmins={approvedAdmins}
+      onApprove={handleApproveAdmin}
+      onReject={handleRejectAdmin}
+      refreshing={refreshingPending}
+      onRefresh={loadPendingAdmins}
+    />,
+    "device-tracking": <PageDeviceTracking users={displayUsers} connectionState={connectionState} />,
+    "wearables-radar": <PageWearablesRadar users={displayUsers} />,
+    "weather-console": <PageMountainWeather />,
+    "live-tracking": <PageLiveTracking navigate={navigate} users={displayUsers} connectionState={connectionState} error={error} />,
+    "safety-protocol": <PageTripRosters
+      defaultTab="protocols"
+      pendingTrekkers={pendingTrekkers}
+      onApprove={handleApproveTrekker}
+      onRemove={handleRemoveTrekker}
+      refreshing={refreshingTrekkers}
+      onRefresh={loadPendingTrekkers}
+    />,
     "sos-navigation": (
       <PageSOSNavigation
         users={displayUsers}
@@ -7256,65 +7260,67 @@ export default function AdminPanel() {
     ),
 
     // Backward-compatible fallbacks
-    bluetooth:        <PageWearablesRadar users={displayUsers}/>,
-    "weather-admin":  <PageMountainWeather/>,
-    "weather-maps":   <PageMountainWeather/>,
-    "feature-access": <PageWearablesRadar users={displayUsers}/>,
+    bluetooth: <PageWearablesRadar users={displayUsers} />,
+    "weather-admin": <PageMountainWeather />,
+    "weather-maps": <PageMountainWeather />,
+    "feature-access": <PageWearablesRadar users={displayUsers} />,
   };
 
   return (
-    <div style={{display:"grid",gridTemplateColumns:"240px 1fr",minHeight:"780px",background:C.bg,fontFamily:"var(--font-sans)",color:C.text}}>
+    <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", minHeight: "780px", background: C.bg, fontFamily: "var(--font-sans)", color: C.text }}>
       {/* Sidebar */}
-      <aside style={{background:C.sidebar,display:"flex",flexDirection:"column",borderRight:`1px solid ${C.border}`}}>
-        <div style={{padding:"18px 16px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:10}}>
-          <div style={{width:32,height:32,borderRadius:"50%",background:"rgba(59,130,246,0.15)",border:`1px solid rgba(59,130,246,0.3)`,display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke={C.accent} strokeWidth="1.5"/><circle cx="12" cy="12" r="4" stroke={C.accent} strokeWidth="1.5"/><circle cx="12" cy="12" r="1.5" fill={C.accent}/></svg>
+      <aside style={{ background: C.sidebar, display: "flex", flexDirection: "column", borderRight: `1px solid ${C.border}` }}>
+        <div style={{ padding: "18px 16px 14px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 32, height: 32, borderRadius: "50%", background: "rgba(59,130,246,0.15)", border: `1px solid rgba(59,130,246,0.3)`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke={C.accent} strokeWidth="1.5" /><circle cx="12" cy="12" r="4" stroke={C.accent} strokeWidth="1.5" /><circle cx="12" cy="12" r="1.5" fill={C.accent} /></svg>
           </div>
-          <div><div style={{fontSize:14,fontWeight:600,color:C.text,letterSpacing:"0.03em"}}>Margsutra <span style={{color:C.accent}}>Admin</span></div><div style={{fontSize:10,color:C.muted2}}>Control panel v3.0</div></div>
+          <div><div style={{ fontSize: 14, fontWeight: 600, color: C.text, letterSpacing: "0.03em" }}>Margsutra <span style={{ color: C.accent }}>Admin</span></div><div style={{ fontSize: 10, color: C.muted2 }}>Control panel v3.0</div></div>
         </div>
-        <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:10}}>
-          <div style={{width:34,height:34,borderRadius:"50%",background:"rgba(59,130,246,0.18)",color:C.accent,fontSize:12,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 34, height: 34, borderRadius: "50%", background: "rgba(59,130,246,0.18)", color: C.accent, fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center" }}>
             {(activeAdmin?.name || "SA").slice(0, 2).toUpperCase()}
           </div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:12,fontWeight:500,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{activeAdmin?.name || "Super Admin"}</div>
-            <div style={{fontSize:10,color:C.muted2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{activeAdmin?.email || "admin@margsutra.app"}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 500, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeAdmin?.name || "Super Admin"}</div>
+            <div style={{ fontSize: 10, color: C.muted2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeAdmin?.email || "admin@margsutra.app"}</div>
           </div>
-          {activeSOS>0&&<div style={{marginLeft:"auto",background:"rgba(239,68,68,0.15)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:"50%",width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:C.red,fontWeight:700}}>{activeSOS}</div>}
+          {activeSOS > 0 && <div style={{ marginLeft: "auto", background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "50%", width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: C.red, fontWeight: 700 }}>{activeSOS}</div>}
         </div>
-        <nav style={{flex:1,overflowY:"auto",padding:"10px 0"}}>
-          {NAV.map(({section,items})=>(
+        <nav style={{ flex: 1, overflowY: "auto", padding: "10px 0" }}>
+          {NAV.map(({ section, items }) => (
             <div key={section}>
-              <div style={{fontSize:9,color:C.muted2,padding:"10px 16px 4px",letterSpacing:"0.12em",textTransform:"uppercase"}}>{section}</div>
-              {items.map(item=>{
-                const active=page===item.id;
-                const isSosNav=item.id==="sos-navigation";
-                const isApprovals=item.id==="admin-approvals";
+              <div style={{ fontSize: 9, color: C.muted2, padding: "10px 16px 4px", letterSpacing: "0.12em", textTransform: "uppercase" }}>{section}</div>
+              {items.map(item => {
+                const active = page === item.id;
+                const isSosNav = item.id === "sos-navigation";
+                const isApprovals = item.id === "admin-approvals";
                 return (
-                  <div key={item.id} onClick={()=>setPage(item.id)}
-                    style={{display:"flex",alignItems:"center",gap:10,padding:"8px 16px",cursor:"pointer",
-                      borderLeft:`2px solid ${active?(isSosNav?C.red:C.accent):"transparent"}`,
-                      background:active?(isSosNav?"rgba(239,68,68,0.1)":"rgba(59,130,246,0.1)"):"transparent",
-                      transition:"background 0.15s"}}>
-                    <span style={{fontSize:15,width:18,textAlign:"center",flexShrink:0}}>{item.icon}</span>
-                    <span style={{fontSize:12,color:active?C.text:isSosNav?"rgba(252,165,165,0.8)":C.muted,fontWeight:active?500:400}}>{item.label}</span>
-                    {isSosNav&&activeSOS>0&&<div style={{marginLeft:"auto",background:"rgba(239,68,68,0.2)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:10,padding:"1px 7px",fontSize:9,color:C.red,fontWeight:700}}>LIVE</div>}
-                    {isApprovals&&pendingAdmins.length>0&&<div style={{marginLeft:"auto",background:"rgba(245,158,11,0.2)",border:"1px solid rgba(245,158,11,0.35)",borderRadius:10,padding:"1px 7px",fontSize:9,color:C.amber,fontWeight:700}}>{pendingAdmins.length} PENDING</div>}
-                    {item.id==="trip-rosters"&&pendingTrekkers.length>0&&<div style={{marginLeft:"auto",background:"rgba(16,185,129,0.2)",border:"1px solid rgba(16,185,129,0.35)",borderRadius:10,padding:"1px 7px",fontSize:9,color:"#6ee7b7",fontWeight:700}}>{pendingTrekkers.length} PENDING</div>}
+                  <div key={item.id} onClick={() => setPage(item.id)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10, padding: "8px 16px", cursor: "pointer",
+                      borderLeft: `2px solid ${active ? (isSosNav ? C.red : C.accent) : "transparent"}`,
+                      background: active ? (isSosNav ? "rgba(239,68,68,0.1)" : "rgba(59,130,246,0.1)") : "transparent",
+                      transition: "background 0.15s"
+                    }}>
+                    <span style={{ fontSize: 15, width: 18, textAlign: "center", flexShrink: 0 }}>{item.icon}</span>
+                    <span style={{ fontSize: 12, color: active ? C.text : isSosNav ? "rgba(252,165,165,0.8)" : C.muted, fontWeight: active ? 500 : 400 }}>{item.label}</span>
+                    {isSosNav && activeSOS > 0 && <div style={{ marginLeft: "auto", background: "rgba(239,68,68,0.2)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 10, padding: "1px 7px", fontSize: 9, color: C.red, fontWeight: 700 }}>LIVE</div>}
+                    {isApprovals && pendingAdmins.length > 0 && <div style={{ marginLeft: "auto", background: "rgba(245,158,11,0.2)", border: "1px solid rgba(245,158,11,0.35)", borderRadius: 10, padding: "1px 7px", fontSize: 9, color: C.amber, fontWeight: 700 }}>{pendingAdmins.length} PENDING</div>}
+                    {item.id === "trip-rosters" && pendingTrekkers.length > 0 && <div style={{ marginLeft: "auto", background: "rgba(16,185,129,0.2)", border: "1px solid rgba(16,185,129,0.35)", borderRadius: 10, padding: "1px 7px", fontSize: 9, color: "#6ee7b7", fontWeight: 700 }}>{pendingTrekkers.length} PENDING</div>}
                   </div>
                 );
               })}
             </div>
           ))}
         </nav>
-        <div style={{padding:"12px 16px",borderTop:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <span style={{fontSize:10,color:C.muted2}}>© 2026 Margsutra</span>
-          <button onClick={handleLogout} style={{fontSize:11,color:C.muted,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}}>Sign out</button>
+        <div style={{ padding: "12px 16px", borderTop: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontSize: 10, color: C.muted2 }}>© 2026 Margsutra</span>
+          <button onClick={handleLogout} style={{ fontSize: 11, color: C.muted, background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}>Sign out</button>
         </div>
       </aside>
 
       {/* Main content container */}
-      <div style={{display:"flex",flexDirection:"column",minWidth:0,height:"100%"}}>
+      <div style={{ display: "flex", flexDirection: "column", minWidth: 0, height: "100%" }}>
         {/* Executive Command Header */}
         <header
           style={{
@@ -7520,8 +7526,8 @@ export default function AdminPanel() {
           </div>
         )}
 
-        <main style={{flex:1,overflow:"auto",padding:24}}>
-          {pages[page]||<div style={{color:C.muted}}>Page not found.</div>}
+        <main style={{ flex: 1, overflow: "auto", padding: 24 }}>
+          {pages[page] || <div style={{ color: C.muted }}>Page not found.</div>}
         </main>
       </div>
     </div>
