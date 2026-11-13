@@ -552,6 +552,74 @@ const formatClock = (value, fallback) => {
   return d ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : fallback;
 };
 
+// Press and hold for three seconds — the same guard the trekker app uses, so
+// a command alert can never be sent by a stray click.
+const HoldToSendButton = ({ onSend, disabled, label = "PRESS & HOLD 3s TO SEND SOS" }) => {
+  const [pct, setPct] = useState(0);
+  const timerRef = useRef(null);
+  const firedRef = useRef(false);
+
+  const stop = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    setPct(0);
+    firedRef.current = false;
+  };
+
+  const start = (e) => {
+    e?.preventDefault?.();
+    if (disabled || timerRef.current) return;
+    firedRef.current = false;
+    const startedAt = Date.now();
+    timerRef.current = setInterval(() => {
+      const progress = Math.min(100, ((Date.now() - startedAt) / 3000) * 100);
+      setPct(progress);
+      if (progress >= 100 && !firedRef.current) {
+        firedRef.current = true;
+        stop();
+        onSend?.();
+      }
+    }, 60);
+  };
+
+  useEffect(() => () => stop(), []);
+
+  return (
+    <button
+      type="button"
+      onPointerDown={start}
+      onPointerUp={stop}
+      onPointerLeave={stop}
+      onPointerCancel={stop}
+      onKeyDown={(e) => { if ((e.key === " " || e.key === "Enter") && !e.repeat) start(e); }}
+      onKeyUp={(e) => { if (e.key === " " || e.key === "Enter") stop(); }}
+      disabled={disabled}
+      aria-label="Press and hold for three seconds to send the alert to everyone"
+      style={{
+        position: "relative", overflow: "hidden", width: "100%", padding: "14px 18px",
+        borderRadius: 12, border: "none",
+        background: "linear-gradient(135deg, #dc2626 0%, #991b1b 100%)",
+        color: "#ffffff", fontSize: 14, fontWeight: 900, letterSpacing: "0.03em",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.55 : 1,
+        boxShadow: "0 0 22px rgba(220,38,38,0.45)",
+        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+        userSelect: "none", touchAction: "none", fontFamily: "inherit",
+      }}
+    >
+      <span
+        style={{
+          position: "absolute", left: 0, top: 0, bottom: 0, width: `${pct}%`,
+          background: "rgba(255,255,255,0.22)", transition: "width 0.06s linear",
+        }}
+      />
+      <span style={{ position: "relative" }}>📣 {label}</span>
+    </button>
+  );
+};
+
 const PageSOSNavigation = ({
   users = USERS,
   sosEvents = [],
@@ -602,6 +670,7 @@ const PageSOSNavigation = ({
     const list = [];
     sosEvents.forEach((ev) => {
       if (!ev) return;
+      if (ev.kind === "broadcast") return; // the console's own alerts live in "Sent alerts"
       const id = ev.id || `sos-${ev.userId}`;
       const acked = ev.status === "resolved" || ev.resolution || ev.acknowledged || acknowledgedMap[id];
       if (!acked) return;
@@ -945,9 +1014,10 @@ const PageSOSNavigation = ({
               }}
             />
 
-            <Btn variant="primary" onClick={handleSendBroadcast} disabled={sending || !message.trim()} style={{ width: "100%", justifyContent: "center" }}>
-              {sending ? "Sending…" : "📣 Send alert to everyone"}
-            </Btn>
+            <HoldToSendButton onSend={handleSendBroadcast} disabled={sending || !message.trim()} />
+            <div style={{ fontSize: 10.5, color: C.muted2, marginTop: 7, textAlign: "center" }}>
+              {sending ? "Sending…" : "Hold for 3 seconds — this reaches every member of the group."}
+            </div>
           </Card>
 
           {broadcasts.length > 0 && (
@@ -6044,9 +6114,14 @@ export default function AdminPanel() {
     };
   }, []);
 
+  // The group the console speaks for: the expeditions this admin is in charge
+  // of, the busiest one first (that is the group with the trekkers).
   const myTeam = useMemo(() => {
-    const mine = teamTrips.find((t) => t.adminInCharge === activeAdmin?.id);
-    return mine || teamTrips[0] || null;
+    const mine = teamTrips.filter((t) => !t.adminInCharge || t.adminInCharge === activeAdmin?.id);
+    const pool = mine.length ? mine : teamTrips;
+    return (
+      [...pool].sort((a, b) => (Number(b.rosterCount) || 0) - (Number(a.rosterCount) || 0))[0] || null
+    );
   }, [teamTrips, activeAdmin?.id]);
 
   // Incidents that are still waiting for a human to acknowledge them.
@@ -6396,184 +6471,6 @@ export default function AdminPanel() {
             </button>
           )}
         </div>
-
-        {/* Executive Command Header */}
-        <header
-          style={{
-            background: "rgba(11, 20, 34, 0.95)",
-            borderBottom: `1px solid ${C.border}`,
-            padding: "10px 24px",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: 12,
-            position: "sticky",
-            top: 0,
-            zIndex: 100,
-            backdropFilter: "blur(12px)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div
-              style={{
-                width: 34,
-                height: 34,
-                borderRadius: 8,
-                background: "rgba(59, 130, 246, 0.15)",
-                border: "1px solid rgba(59, 130, 246, 0.3)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 16,
-              }}
-            >
-              🧭
-            </div>
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>
-                  {activeAdmin?.organization || "Margsutra Expedition Command"}
-                </span>
-                <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: "rgba(245, 158, 11, 0.15)", color: "#fcd34d", fontWeight: 600 }}>
-                  ◐ DEMO CONTEXT
-                </span>
-              </div>
-              <div style={{ fontSize: 11, color: C.muted }}>
-                Rajmachi Fort Monsoon Expedition — Batch 12 · Base Camp: Udhewadi Village (829m ASL) · VHF: 145.500 MHz
-              </div>
-            </div>
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            {/* Dual-Mode Hybrid Transport Badge */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                background: offGridSimulation ? "rgba(245, 158, 11, 0.12)" : "rgba(34, 197, 94, 0.1)",
-                border: `1px solid ${offGridSimulation ? "rgba(245, 158, 11, 0.35)" : "rgba(34, 197, 94, 0.25)"}`,
-                borderRadius: 20,
-                padding: "4px 12px",
-              }}
-            >
-              <div
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  background: offGridSimulation ? C.amber : C.green,
-                  boxShadow: offGridSimulation ? "0 0 8px #f59e0b" : "0 0 8px #22c55e",
-                }}
-              />
-              <span style={{ fontSize: 11, fontWeight: 700, color: offGridSimulation ? "#fcd34d" : "#86efac" }}>
-                {offGridSimulation
-                  ? "OFF-GRID RADIO ACTIVE · LoRa 865.0625 MHz (0 Cell Signal)"
-                  : "DUAL-MODE HYBRID · Cloud WebSockets + LoRa RF Standby"}
-              </span>
-            </div>
-
-            <button
-              onClick={() => setOffGridSimulation((v) => !v)}
-              style={{
-                background: offGridSimulation ? "rgba(59, 130, 246, 0.2)" : "rgba(255, 255, 255, 0.05)",
-                border: `1px solid ${offGridSimulation ? C.accent : C.border}`,
-                color: offGridSimulation ? "#93c5fd" : C.muted,
-                borderRadius: 8,
-                padding: "6px 12px",
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: "pointer",
-                fontFamily: "inherit",
-              }}
-            >
-              {offGridSimulation ? "⚡ Restore Online Cloud Mode" : "📶 Simulate 0 Cellular (Off-Grid)"}
-            </button>
-
-            <button
-              onClick={() => setAlarmMuted((v) => !v)}
-              title={alarmMuted ? "Turn the console alarm back on" : "Mute the console alarm"}
-              style={{
-                background: alarmMuted ? "rgba(245,158,11,0.2)" : "rgba(255, 255, 255, 0.04)",
-                border: `1px solid ${alarmMuted ? C.amber : C.border}`,
-                color: alarmMuted ? "#fcd34d" : C.muted,
-                borderRadius: 8,
-                padding: "6px 12px",
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: "pointer",
-                fontFamily: "inherit",
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              <span>{alarmMuted ? "🔇" : "🔊"}</span>
-              <span>{alarmMuted ? "Alarm muted" : unacknowledgedSOSCount > 0 ? "Alarm sounding" : "Alarm armed"}</span>
-            </button>
-
-            <button
-              onClick={() => setPage("device-tracking")}
-              style={{
-                background: page === "device-tracking" ? "rgba(59, 130, 246, 0.25)" : "rgba(255, 255, 255, 0.04)",
-                border: `1px solid ${page === "device-tracking" ? C.accent : C.border}`,
-                color: page === "device-tracking" ? "#fff" : C.muted,
-                borderRadius: 8,
-                padding: "6px 12px",
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: "pointer",
-                fontFamily: "inherit",
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              <span>📡</span>
-              <span>Hardware Console</span>
-            </button>
-          </div>
-        </header>
-
-        {offGridSimulation && (
-          <div
-            style={{
-              background: "linear-gradient(90deg, #78350f 0%, #b45309 50%, #78350f 100%)",
-              color: "#fef3c7",
-              padding: "8px 24px",
-              fontSize: 12,
-              fontWeight: 600,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              boxShadow: "0 2px 10px rgba(180, 83, 9, 0.3)",
-              zIndex: 99,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span>⚠️</span>
-              <span>
-                <strong>OFF-GRID RADIO MODE ACTIVE:</strong> Cellular data link is disconnected. GPS telemetry, ridge weather sensor packets, and SOS triggers are operating 100% via Semtech SX1276 LoRa RF frames on 865.0625 MHz into your Base Camp ESP32 Gateway.
-              </span>
-            </div>
-            <button
-              onClick={() => setOffGridSimulation(false)}
-              style={{
-                background: "#ffffff",
-                color: "#78350f",
-                border: "none",
-                borderRadius: 6,
-                padding: "3px 10px",
-                fontSize: 11,
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              Re-enable Cloud ✕
-            </button>
-          </div>
-        )}
 
         {activeSOS > 0 && (
           <div

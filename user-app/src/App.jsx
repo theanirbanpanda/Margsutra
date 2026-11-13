@@ -4433,7 +4433,8 @@ export default function UserDashboard() {
   // to the SOS page.
   const [commandAlerts, setCommandAlerts] = useState([]);
   const [dismissedAlerts, setDismissedAlerts] = useState({});
-  const seenAlertRef = useRef(null);
+  const seenAlertRef = useRef(new Set());
+  const ringingRef = useRef(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -4447,13 +4448,29 @@ export default function UserDashboard() {
         const list = Array.isArray(data?.alerts) ? data.alerts : [];
         setCommandAlerts(list);
 
+        const activeIds = new Set(list.map((a) => a.id));
+
+        // Alerts the console took back down stop ringing here.
+        let withdrawn = false;
+        ringingRef.current.forEach((id) => {
+          if (!activeIds.has(id)) {
+            ringingRef.current.delete(id);
+            withdrawn = true;
+          }
+        });
+
         // A new alert (or one still waiting when the app starts) sounds the
         // siren and takes the trekker to the SOS page.
-        const latestId = list[0]?.id || null;
-        if (latestId && latestId !== seenAlertRef.current) {
-          seenAlertRef.current = latestId;
+        const fresh = list.filter((a) => !seenAlertRef.current.has(a.id));
+        if (fresh.length) {
+          fresh.forEach((a) => {
+            seenAlertRef.current.add(a.id);
+            ringingRef.current.add(a.id);
+          });
           alarmEngine.start();
           setPage("sos-nav");
+        } else if (withdrawn && ringingRef.current.size === 0) {
+          alarmEngine.stop();
         }
       } catch {
         /* transient — the next poll retries */
@@ -4461,7 +4478,7 @@ export default function UserDashboard() {
     };
 
     load();
-    const timer = setInterval(load, 8000);
+    const timer = setInterval(load, 6000);
     return () => {
       cancelled = true;
       clearInterval(timer);
@@ -4471,6 +4488,10 @@ export default function UserDashboard() {
   const acknowledgeCommandAlert = (alert) => {
     if (!alert) return;
     setDismissedAlerts((prev) => ({ ...prev, [alert.id]: true }));
+    ringingRef.current.delete(alert.id);
+    // Silence this member's device only — the console keeps its own state and
+    // a beacon of their own keeps ringing.
+    if (!activeSOS) alarmEngine.stop();
   };
   const [sosAcknowledged, setSosAcknowledged] = useState(null);
 

@@ -164,6 +164,10 @@ app.post("/api/sos/broadcast", (req, res) => {
     // Command team → every connected member of the group.
     io.emit("command-alert", event);
     console.log(`[SOS Broadcast HTTP] 📣 Command alert pushed to all members: ${event.message || ""}`);
+  } else if (event.type === "command-alert-clear") {
+    // The console took the alert back down — stop ringing everywhere.
+    io.emit("command-alert-clear", event);
+    console.log(`[SOS Broadcast HTTP] 🔕 Command alert withdrawn: ${event.id || ""}`);
   }
   return res.json({ success: true });
 });

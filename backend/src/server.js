@@ -386,6 +386,21 @@ app.post("/api/sos/:id/resolve", optionalAuth, async (req, res) => {
     if (result.error) return res.status(404).json({ error: result.error });
     sosEventsCache = { at: 0, key: "", data: null };
 
+    // If this was a command alert, every member must stop ringing for it.
+    try {
+      await fetch("http://localhost:4000/api/sos/broadcast", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event: {
+            type: "command-alert-clear",
+            id: req.params.id,
+            timestamp: Date.now(),
+          },
+        }),
+      });
+    } catch {}
+
     // Broadcast cancel to Socket.IO tracking server so admin and users stand down
     try {
       await fetch("http://localhost:4000/api/sos/broadcast", {
