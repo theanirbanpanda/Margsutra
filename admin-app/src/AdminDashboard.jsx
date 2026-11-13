@@ -25,6 +25,8 @@ import {
   resolveSOSEvent,
   acknowledgeSOSEvent,
   triggerDemoSOSEvent,
+  DEMO_ADMIN_EMAIL,
+  DEMO_PASSWORD,
   updateUserFeatureAccess,
   setAdminToken,
   authHeaders,
@@ -1648,9 +1650,9 @@ const PageAdminAuth = ({ onLogin }) => {
     themeConfig?.backdropUrl ||
     "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=2400&q=85";
 
-  // Login form state
-  const [loginEmail, setLoginEmail] = useState("");
-  const [loginPass, setLoginPass] = useState("");
+  // Login form state — prefilled with the demo account.
+  const [loginEmail, setLoginEmail] = useState(DEMO_ADMIN_EMAIL);
+  const [loginPass, setLoginPass] = useState(DEMO_PASSWORD);
   const [showLoginPass, setShowLoginPass] = useState(false);
   const [loginErr, setLoginErr] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
@@ -1978,7 +1980,7 @@ const PageAdminAuth = ({ onLogin }) => {
                 type="email"
                 value={loginEmail}
                 onChange={(e) => setLoginEmail(e.target.value)}
-                placeholder="admin@margsutra.app"
+                placeholder={DEMO_ADMIN_EMAIL}
                 autoComplete="email"
                 style={{
                   width: "100%",
@@ -2099,6 +2101,18 @@ const PageAdminAuth = ({ onLogin }) => {
             >
               {loginLoading ? "Authenticating…" : "Log In"}
             </button>
+
+            <div style={{
+              marginTop: 14, padding: "10px 14px", borderRadius: 10, textAlign: "center",
+              background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.25)",
+            }}>
+              <div style={{ fontSize: 10, color: "rgba(180, 210, 245, 0.65)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                Demo access
+              </div>
+              <div style={{ fontSize: 12.5, color: "rgba(226, 232, 240, 0.92)", marginTop: 4, fontWeight: 600 }}>
+                {DEMO_ADMIN_EMAIL} · {DEMO_PASSWORD}
+              </div>
+            </div>
           </form>
         )}
 
@@ -6699,7 +6713,7 @@ export default function AdminPanel() {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (parsed && (parsed.email === "admin@coordage.app" || (parsed.email && parsed.email.includes("coordage.app")))) {
-          parsed.email = "admin@margsutra.app";
+          parsed.email = DEMO_ADMIN_EMAIL;
           localStorage.setItem("margsutra_admin_session", JSON.stringify(parsed));
           localStorage.removeItem("coordage_admin_session");
         }
@@ -7003,7 +7017,7 @@ export default function AdminPanel() {
   }, []);
 
   const handleApproveTrekker = async (tripId, userId) => {
-    const res = await approveTrekker(tripId, userId, activeAdmin?.email || "admin@margsutra.app");
+    const res = await approveTrekker(tripId, userId, activeAdmin?.email || DEMO_ADMIN_EMAIL);
     if (res?.success) {
       await loadPendingTrekkers();
       return { success: true };
@@ -7012,7 +7026,7 @@ export default function AdminPanel() {
   };
 
   const handleRemoveTrekker = async (tripId, userId) => {
-    const res = await removeTrekker(tripId, userId, activeAdmin?.email || "admin@margsutra.app");
+    const res = await removeTrekker(tripId, userId, activeAdmin?.email || DEMO_ADMIN_EMAIL);
     if (res?.success) {
       await loadPendingTrekkers();
       return { success: true };
@@ -7021,7 +7035,7 @@ export default function AdminPanel() {
   };
 
   const handleApproveAdmin = async (adminId) => {
-    const res = await approveAdmin(adminId, activeAdmin?.email || "admin@margsutra.app");
+    const res = await approveAdmin(adminId, activeAdmin?.email || DEMO_ADMIN_EMAIL);
     if (res?.success) {
       await loadPendingAdmins();
       try {
@@ -7037,7 +7051,7 @@ export default function AdminPanel() {
   };
 
   const handleRejectAdmin = async (adminId) => {
-    const res = await rejectAdmin(adminId, activeAdmin?.email || "admin@margsutra.app");
+    const res = await rejectAdmin(adminId, activeAdmin?.email || DEMO_ADMIN_EMAIL);
     if (res?.success) {
       await loadPendingAdmins();
       return { success: true };
@@ -7050,7 +7064,7 @@ export default function AdminPanel() {
       .filter((u) => {
         const email = (u.email || "").toLowerCase();
         const role = (u.role || "").toLowerCase();
-        return role === "admin" || email === "admin@margsutra.app";
+        return role === "admin" || email === DEMO_ADMIN_EMAIL;
       })
       .filter((u) => u.status !== "pending_approval" && u.status !== "rejected");
   }, [firestoreUsers]);
@@ -7114,7 +7128,7 @@ export default function AdminPanel() {
   }, []);
 
   const handleLogin = (adminUser) => {
-    const adminObj = adminUser || { email: "admin@margsutra.app", name: "Super Admin", role: "admin" };
+    const adminObj = adminUser || { email: DEMO_ADMIN_EMAIL, name: "Super Admin", role: "admin" };
     setActiveAdmin(adminObj);
     try {
       const { token, ...session } = adminObj;
@@ -7208,7 +7222,7 @@ export default function AdminPanel() {
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 12, fontWeight: 500, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeAdmin?.name || "Super Admin"}</div>
-            <div style={{ fontSize: 10, color: C.muted2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeAdmin?.email || "admin@margsutra.app"}</div>
+            <div style={{ fontSize: 10, color: C.muted2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeAdmin?.email || DEMO_ADMIN_EMAIL}</div>
           </div>
           {activeSOS > 0 && <div style={{ marginLeft: "auto", background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "50%", width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: C.red, fontWeight: 700 }}>{activeSOS}</div>}
         </div>

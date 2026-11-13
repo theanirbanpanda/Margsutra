@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "dev:local": "node scripts/dev-local.js",
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "reset:demo": "node scripts/reset-demo-data.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

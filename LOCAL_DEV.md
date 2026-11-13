@@ -25,8 +25,8 @@ That runs five processes together:
 |---|---|---|
 | Firestore emulator | 8080 | Needs JDK 21+ (the script finds Homebrew's `openjdk@21`) |
 | Backend API | 5050 | Auto-detects the emulator, no credentials needed |
-| Admin console | 5174 | `admin@margsutra.app / admin123` |
-| Trekker app | 5173 | `anirban@margsutra.app / user123` (also `guide@margsutra.app / guide123`) |
+| Admin console | 5174 | `demoadmin@gmail.com / 123456` |
+| Trekker app | 5173 | `demouser@gmail.com / 123456` |
 | Tracking server | 4000 | Live locations + SOS relay |
 
 Only one stack can run at a time — the second one fails with
@@ -43,7 +43,8 @@ How the emulator is selected:
 
 Seeded demo data (created only if missing, so it is safe to re-run):
 
-* users `admin@margsutra.app`, `guide@margsutra.app`, `anirban@margsutra.app`
+* users `demoadmin@gmail.com` (admin) and `demouser@gmail.com` (trekker), both with the
+  password `123456` — these are the only two accounts that exist
 * expeditions `RAJM26` (Rajmachi, 5 demo members + 1 open slot) and `HAR26`
   (Harishchandragad, 20 slots) — the second one exists so the "enrolled → other
   expeditions locked" rule is visible.
@@ -62,8 +63,20 @@ starts both apps with the emulator switches overridden
 (`VITE_USE_FIRESTORE_EMULATOR=false VITE_FIREBASE_PROJECT_ID=coordage-416a1`).
 
 Sign-in works with the same demo credentials in both environments:
-`admin@margsutra.app / admin123`, `guide@margsutra.app / guide123`,
-`anirban@margsutra.app / user123`.
+`demoadmin@gmail.com / 123456` (admin console) and
+`demouser@gmail.com / 123456` (trekker app). No other account exists.
+
+## Resetting the demo
+
+```bash
+npm run reset:demo          # wipes the demo data and recreates the two accounts
+```
+
+The script clears the users, expeditions, rosters and SOS history, then
+recreates exactly two accounts (`demoadmin@gmail.com` and `demouser@gmail.com`,
+both `123456`) and the two demo expeditions RAJM26 + HAR26. The demo trekker
+starts enrolled on Rajmachi, so the "enrolled → other expeditions locked" rule
+is visible immediately.
 
 Production currently needs the Firestore read quota to be available; when it is
 exhausted the API answers `503 { quotaExceeded: true }` and `/api/trips` keeps

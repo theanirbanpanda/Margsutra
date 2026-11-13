@@ -62,12 +62,12 @@ export const RAJMACHI_ADMIN = {
 // The 5-Member Trekker Team on the Rajmachi Expedition (RAJM26)
 export const RAJMACHI_MEMBERS = [
   {
-    id: "9OovuZiHQnQKrLTuPF1J",
-    userId: "9OovuZiHQnQKrLTuPF1J",
+    id: "demo-user",
+    userId: "demo-user",
     name: "Anirban Panda",
     role: "trekker",
     badge: "Active Trekker",
-    email: "anirbanpandaxyz@gmail.com",
+    email: "demouser@gmail.com",
     phone: "+91 86375 40813",
     blood: "B+",
     medical: "None reported",

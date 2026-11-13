@@ -50,7 +50,7 @@ function toSafeProfile(id, data = {}) {
   const lastSeen = data.lastSeenAt || data.lastSeen;
   const reqAt = data.requestedAt;
   const emailLower = (data.email || "").toLowerCase();
-  const isSuperAdmin = emailLower === "admin@margsutra.app";
+  const isSuperAdmin = emailLower === DEMO_ADMIN_EMAIL;
   const approved = isSuperAdmin ? true : (data.approved !== undefined ? data.approved : (data.role === "admin" ? false : true));
   const status = isSuperAdmin ? "approved" : (data.status || (data.role === "admin" ? "pending_approval" : "active"));
 
@@ -103,13 +103,7 @@ function toSafeProfile(id, data = {}) {
 
 async function findUserByEmail(email) {
   const normalized = String(email).trim().toLowerCase();
-  let snapshot = await db.collection("users").where("email", "==", normalized).limit(1).get();
-  if (snapshot.empty && normalized === "anirban@margsutra.app") {
-    snapshot = await db.collection("users").where("email", "==", "anirbanpandaxyz@gmail.com").limit(1).get();
-  }
-  if (snapshot.empty && normalized === "anirbanpandaxyz@gmail.com") {
-    snapshot = await db.collection("users").where("email", "==", "anirban@margsutra.app").limit(1).get();
-  }
+  const snapshot = await db.collection("users").where("email", "==", normalized).limit(1).get();
   if (snapshot.empty) return null;
   const doc = snapshot.docs[0];
   return { id: doc.id, ...doc.data() };
@@ -176,7 +170,7 @@ async function listPendingAdmins() {
     .map((d) => ({ id: d.id, ...d.data() }))
     .filter((u) => {
       const email = (u.email || "").toLowerCase();
-      if (email === "admin@margsutra.app") return false;
+      if (email === DEMO_ADMIN_EMAIL) return false;
       return u.status === "pending_approval" || u.approved === false;
     });
 }
@@ -189,7 +183,7 @@ async function approveAdminUser(adminId, approvedBy = "System Administrator") {
     status: "approved",
     approved: true,
     approvedAt: new Date(),
-    approvedBy: approvedBy || "admin@margsutra.app",
+    approvedBy: approvedBy || DEMO_ADMIN_EMAIL,
     updatedAt: new Date(),
   };
   await docRef.set(updates, { merge: true });
@@ -204,7 +198,7 @@ async function rejectAdminUser(adminId, rejectedBy = "System Administrator") {
     status: "rejected",
     approved: false,
     rejectedAt: new Date(),
-    rejectedBy: rejectedBy || "admin@margsutra.app",
+    rejectedBy: rejectedBy || DEMO_ADMIN_EMAIL,
     updatedAt: new Date(),
   };
   await docRef.set(updates, { merge: true });
@@ -679,7 +673,7 @@ async function listPendingTripRequests() {
   return pending;
 }
 
-async function approveTripUser(tripId, userId, approvedBy = "admin@margsutra.app") {
+async function approveTripUser(tripId, userId, approvedBy = DEMO_ADMIN_EMAIL) {
   const tripRef = db.collection("trips").doc(tripId);
   const tripDoc = await tripRef.get();
   if (!tripDoc.exists) return { error: "Expedition not found." };
@@ -718,7 +712,7 @@ async function approveTripUser(tripId, userId, approvedBy = "admin@margsutra.app
   await rosterRef.update({
     status: "approved",
     approvedAt: now,
-    approvedBy: approvedBy || "admin@margsutra.app",
+    approvedBy: approvedBy || DEMO_ADMIN_EMAIL,
   });
 
   const userRef = db.collection("users").doc(userId);
@@ -728,7 +722,7 @@ async function approveTripUser(tripId, userId, approvedBy = "admin@margsutra.app
     activeTripName: tripData.name || "Expedition",
     tripStatus: "approved",
     tripApprovedAt: now,
-    tripApprovedBy: approvedBy || "admin@margsutra.app",
+    tripApprovedBy: approvedBy || DEMO_ADMIN_EMAIL,
     updatedAt: now,
   }, { merge: true });
 
@@ -743,7 +737,7 @@ async function approveTripUser(tripId, userId, approvedBy = "admin@margsutra.app
   };
 }
 
-async function removeTripUser(tripId, userId, removedBy = "admin@margsutra.app") {
+async function removeTripUser(tripId, userId, removedBy = DEMO_ADMIN_EMAIL) {
   const tripRef = db.collection("trips").doc(tripId);
   const tripDoc = await tripRef.get();
   if (tripDoc.exists) {
@@ -835,7 +829,7 @@ async function createSOSEvent(sosData = {}) {
   return { success: true, event: payload };
 }
 
-async function acknowledgeSOSEvent(eventId, acknowledgedBy = "admin@margsutra.app", note = "") {
+async function acknowledgeSOSEvent(eventId, acknowledgedBy = DEMO_ADMIN_EMAIL, note = "") {
   const docRef = db.collection("sos_events").doc(eventId);
   const docSnap = await docRef.get();
   if (!docSnap.exists) return { error: "SOS event not found" };
@@ -847,7 +841,7 @@ async function acknowledgeSOSEvent(eventId, acknowledgedBy = "admin@margsutra.ap
   // (and the trekker) that a human has seen it and is acting on it.
   await docRef.set({
     acknowledged: true,
-    acknowledgedBy: acknowledgedBy || "admin@margsutra.app",
+    acknowledgedBy: acknowledgedBy || DEMO_ADMIN_EMAIL,
     acknowledgedAt: now,
     acknowledgedNote: note || "",
     updatedAt: now,
@@ -857,7 +851,7 @@ async function acknowledgeSOSEvent(eventId, acknowledgedBy = "admin@margsutra.ap
     const userRef = db.collection("users").doc(eventData.userId);
     await userRef.set({
       sosAcknowledged: true,
-      sosAcknowledgedBy: acknowledgedBy || "admin@margsutra.app",
+      sosAcknowledgedBy: acknowledgedBy || DEMO_ADMIN_EMAIL,
       sosAcknowledgedAt: now,
       updatedAt: now,
     }, { merge: true });
@@ -868,12 +862,12 @@ async function acknowledgeSOSEvent(eventId, acknowledgedBy = "admin@margsutra.ap
     eventId,
     userId: eventData.userId || null,
     acknowledged: true,
-    acknowledgedBy: acknowledgedBy || "admin@margsutra.app",
+    acknowledgedBy: acknowledgedBy || DEMO_ADMIN_EMAIL,
     acknowledgedAt: now,
   };
 }
 
-async function resolveSOSEvent(eventId, notes = "Resolved by SAR Commander", resolvedBy = "admin@margsutra.app") {
+async function resolveSOSEvent(eventId, notes = "Resolved by SAR Commander", resolvedBy = DEMO_ADMIN_EMAIL) {
   const docRef = db.collection("sos_events").doc(eventId);
   const docSnap = await docRef.get();
   if (!docSnap.exists) return { error: "SOS event not found" };
@@ -884,7 +878,7 @@ async function resolveSOSEvent(eventId, notes = "Resolved by SAR Commander", res
   await docRef.set({
     status: "resolved",
     resolutionNotes: notes || "Resolved by SAR Commander",
-    resolvedBy: resolvedBy || "admin@margsutra.app",
+    resolvedBy: resolvedBy || DEMO_ADMIN_EMAIL,
     resolvedAt: now,
     updatedAt: now,
   }, { merge: true });
@@ -953,43 +947,43 @@ async function listSOSEvents(limitCount = 25) {
   }
 }
 
-const EMULATOR_USERS = [
+// ─────────────────────────────────────────────────────────────────────────────
+// DEMO ACCOUNTS — the only two accounts that exist.
+// Both use the same password so the demo can never fail on a typo.
+// ─────────────────────────────────────────────────────────────────────────────
+const DEMO_PASSWORD = "123456";
+const DEMO_ADMIN_EMAIL = "demoadmin@gmail.com";
+const DEMO_USER_EMAIL = "demouser@gmail.com";
+
+const DEMO_ACCOUNTS = [
   {
-    id: "demo-admin-001",
-    email: "admin@margsutra.app",
-    password: "admin123",
-    name: "Super Admin",
+    id: "demo-admin",
+    email: DEMO_ADMIN_EMAIL,
+    password: DEMO_PASSWORD,
+    name: "Demo Admin",
     role: "admin",
     phone: "+91 98765 00000",
     blood: "O+",
+    medical: "None",
     organization: "Margsutra Expedition Command & SAR",
     roleTitle: "Lead Command Dispatcher",
   },
   {
-    id: "demo-guide-001",
-    email: "guide@margsutra.app",
-    password: "guide123",
-    name: "Field Guide Ajay Saini",
-    role: "admin",
-    phone: "+91 98765 11111",
-    blood: "B+",
-    organization: "Sahyadri Field Operations",
-    roleTitle: "Expedition Field Guide",
-  },
-  {
-    id: "demo-user-001",
-    email: "anirban@margsutra.app",
-    password: "user123",
-    name: "Anirban Panda",
+    id: "demo-user",
+    email: DEMO_USER_EMAIL,
+    password: DEMO_PASSWORD,
+    name: "Demo User",
     role: "user",
     phone: "+91 90000 12345",
     blood: "B+",
     medical: "None",
-    ec1Name: "Ipsita Panda",
-    ec1Rel: "Sister",
+    ec1Name: "Demo Emergency Contact",
+    ec1Rel: "Family",
     ec1Ph: "+91 90000 12346",
   },
 ];
+
+const LEGACY_DEMO_USER_IDS = ["demo-admin-001", "demo-guide-001", "demo-user-001"];
 
 // Local-only demo data for the Firestore emulator. Safe to run on every boot:
 // it only creates documents that don't exist yet.
@@ -998,7 +992,21 @@ async function seedEmulatorData() {
   const bcrypt = require("bcryptjs");
   const now = new Date();
 
-  for (const u of EMULATOR_USERS) {
+  // Remove the legacy demo accounts so only the two current ones exist.
+  for (const legacyId of LEGACY_DEMO_USER_IDS) {
+    try {
+      const legacyRef = db.collection("users").doc(legacyId);
+      const legacySnap = await legacyRef.get();
+      if (legacySnap.exists) {
+        await legacyRef.delete();
+        console.log(`🧹 Removed legacy demo account: ${legacyId}`);
+      }
+    } catch (error) {
+      console.warn("Could not remove legacy demo account", legacyId, error?.message || error);
+    }
+  }
+
+  for (const u of DEMO_ACCOUNTS) {
     const ref = db.collection("users").doc(u.id);
     const snap = await ref.get();
     if (snap.exists) continue;
@@ -1025,7 +1033,7 @@ async function seedEmulatorData() {
       createdAt: now,
       updatedAt: now,
     }, { merge: true });
-    console.log(`👤 Emulator user ready: ${u.email} / ${u.password}`);
+    console.log(`👤 Demo account ready: ${u.email} / ${u.password}`);
   }
 
   // A second expedition so the "enrolled → other trips locked" flow is visible.
@@ -1051,8 +1059,8 @@ async function seedEmulatorData() {
       notes: "Confirmation and payment are handled by the Margsutra team over WhatsApp.",
       maxRoster: 20,
       baseRosterCount: 0,
-      createdBy: "demo-guide-001",
-      adminInCharge: "demo-guide-001",
+      createdBy: "demo-admin",
+      adminInCharge: "demo-admin",
       status: "upcoming",
       lat: 19.3888,
       lon: 73.7761,
@@ -1093,12 +1101,89 @@ const DEMO_TRIP_FIELDS = {
   demoRoster: true,
 };
 
+// A static snapshot of the two demo expeditions. It is served by /api/trips
+// when Firestore cannot be reached (quota exhausted / offline) so the demo
+// never shows an empty or broken list.
+function demoTripsSnapshot() {
+  const base = {
+    status: "upcoming",
+    isManaged: false,
+    rosterCount: 0,
+    demoRoster: false,
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+    updatedAt: new Date("2026-01-01T00:00:00Z"),
+    admins: [{ id: "demo-admin", name: "Demo Admin", email: DEMO_ADMIN_EMAIL }],
+    adminInCharge: "demo-admin",
+    adminInChargeName: "Demo Admin",
+    createdBy: "demo-admin",
+  };
+
+  return [
+    {
+      ...base,
+      id: "demo-rajm26",
+      code: "RAJM26",
+      name: DEMO_TRIP_FIELDS.name,
+      date: `${DEMO_TRIP_FIELDS.startDate} · ${DEMO_TRIP_FIELDS.startTime} – ${DEMO_TRIP_FIELDS.endDate} · ${DEMO_TRIP_FIELDS.endTime}`,
+      startDate: DEMO_TRIP_FIELDS.startDate,
+      startTime: DEMO_TRIP_FIELDS.startTime,
+      endDate: DEMO_TRIP_FIELDS.endDate,
+      endTime: DEMO_TRIP_FIELDS.endTime,
+      duration: DEMO_TRIP_FIELDS.duration,
+      location: DEMO_TRIP_FIELDS.location,
+      elevation: DEMO_TRIP_FIELDS.elevation,
+      difficulty: DEMO_TRIP_FIELDS.difficulty,
+      pickupLocation: DEMO_TRIP_FIELDS.pickupLocation,
+      baseLocation: DEMO_TRIP_FIELDS.baseLocation,
+      instructions: DEMO_TRIP_FIELDS.instructions,
+      gearList: DEMO_TRIP_FIELDS.gearList,
+      notes: DEMO_TRIP_FIELDS.notes,
+      maxRoster: DEMO_TRIP_FIELDS.maxRoster,
+      baseRosterCount: DEMO_TRIP_FIELDS.baseRosterCount,
+      demoRoster: true,
+      leader: "Demo Admin",
+      vhfChannel: "145.500 MHz (VHF Ch 1)",
+      lat: 18.8286,
+      lon: 73.3986,
+      geofence: { lat: 18.8286, lon: 73.3986, radius: 2500, zoneName: "Rajmachi Safe Trek Corridor" },
+    },
+    {
+      ...base,
+      id: "demo-har26",
+      code: "HAR26",
+      name: "Harishchandragad Peak & Konkan Kada Trek",
+      date: "Dec 19, 2026 · 05:30 AM – Dec 20, 2026 · 06:00 PM",
+      startDate: "Dec 19, 2026",
+      startTime: "05:30 AM",
+      endDate: "Dec 20, 2026",
+      endTime: "06:00 PM",
+      duration: "2 Days / 1 Night",
+      location: "Harishchandragad, Ahmednagar",
+      elevation: "1,424m ASL",
+      difficulty: "Challenging · 22 km trail",
+      pickupLocation: "Kalyan Railway Station, Platform 1",
+      baseLocation: "Pachnai Village Base Camp",
+      instructions:
+        "Report at Kalyan station by 05:00 AM. The Konkan Kada descent is exposed — follow the rope line " +
+        "and the guide at all times. Carry 3L of water; there is no refill after Pachnai.",
+      gearList: ["Trekking shoes with grip", "3L water minimum", "Headlamp", "Windproof layer", "Personal medication + ID"],
+      notes: "Confirmation and payment are handled by the Margsutra team over WhatsApp.",
+      maxRoster: 20,
+      baseRosterCount: 0,
+      leader: "Demo Admin",
+      lat: 19.3888,
+      lon: 73.7761,
+      geofence: { lat: 19.3888, lon: 73.7761, radius: 3000, zoneName: "Harishchandragad Safe Corridor" },
+    },
+  ];
+}
+
 async function seedDemoTrip() {
   const existing = await db.collection("trips").where("code", "==", DEMO_TRIP_CODE).limit(1).get();
 
-  const adminSnap = await db.collection("users").where("email", "==", "admin@margsutra.app").limit(1).get();
+  const adminSnap = await db.collection("users").where("email", "==", DEMO_ADMIN_EMAIL).limit(1).get();
   if (adminSnap.empty) {
-    console.warn("⚠️  Skipping demo trip seed — no admin@margsutra.app account found.");
+    console.warn(`⚠️  Skipping demo trip seed — no ${DEMO_ADMIN_EMAIL} account found.`);
     return { created: false, skipped: true };
   }
   const adminDoc = adminSnap.docs[0];
@@ -1186,6 +1271,11 @@ module.exports = {
   createSOSEvent,
   resolveSOSEvent,
   acknowledgeSOSEvent,
+  DEMO_ACCOUNTS,
+  DEMO_ADMIN_EMAIL,
+  DEMO_USER_EMAIL,
+  DEMO_PASSWORD,
+  demoTripsSnapshot,
   cancelUserSOS,
   listSOSEvents,
   listPendingAdmins,

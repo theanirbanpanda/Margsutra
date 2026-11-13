@@ -37,12 +37,28 @@ const {
   createSOSEvent,
   resolveSOSEvent,
   acknowledgeSOSEvent,
+  DEMO_ACCOUNTS,
+  DEMO_ADMIN_EMAIL,
+  DEMO_USER_EMAIL,
+  DEMO_PASSWORD,
+  demoTripsSnapshot,
   cancelUserSOS,
   listSOSEvents,
   listPendingAdmins,
   approveAdminUser,
   rejectAdminUser,
 } = require("./services/firestore");
+
+// Firestore calls can hang for a long time when the emulator is down or the
+// project is over its quota, so every startup probe is time-boxed: the API
+// must always come up, even with no database at all.
+const withTimeout = (promise, ms, label) =>
+  Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms).unref?.()
+    ),
+  ]);
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -98,8 +114,19 @@ const app = express();
 app.use(cors({ origin: CORS_ORIGIN, credentials: true }));
 app.use(express.json());
 
-app.get("/health", (_req, res) => {
-  res.json({ status: "ok", db: "firebase-connected" });
+app.get("/health", async (_req, res) => {
+  // Report the real state of the database so a dead Firestore is visible.
+  try {
+    await withTimeout(db.collection("users").limit(1).get(), 3000, "Health probe");
+    return res.json({ status: "ok", db: "firebase-connected" });
+  } catch (error) {
+    return res.json({
+      status: "ok",
+      db: "firebase-unavailable",
+      mode: "demo-memory",
+      detail: error?.message || "Firestore unreachable",
+    });
+  }
 });
 
 app.get("/api/config/theme", async (_req, res) => {
@@ -136,22 +163,16 @@ let tripsCache = { at: 0, data: null };
 
 app.get("/api/trips", async (_req, res) => {
   try {
-    const trips = await listTrips();
+    const trips = await withTimeout(listTrips(), 6000, "List trips");
     tripsCache = { at: Date.now(), data: trips };
     res.json(trips);
   } catch (error) {
-    if (isQuotaError(error)) {
-      console.warn("⚠️  Firestore read quota exhausted while listing trips.");
-      if (tripsCache.data) {
-        return res.json(tripsCache.data); // stale-but-usable
-      }
-      return res.status(503).json({
-        error: "Firestore read quota temporarily exhausted. Try again in a few minutes.",
-        quotaExceeded: true,
-      });
+    console.warn("⚠️  Could not list trips from Firestore:", error?.message || error);
+    if (tripsCache.data) {
+      return res.json(tripsCache.data); // stale-but-usable
     }
-    console.error("List trips error:", error);
-    res.status(500).json({ error: "Failed to load trips." });
+    // The demo must never show an empty expedition list.
+    return res.json(demoTripsSnapshot());
   }
 });
 
@@ -358,7 +379,7 @@ app.post("/api/sos/cancel", optionalAuth, async (req, res) => {
 app.post("/api/sos/:id/resolve", optionalAuth, async (req, res) => {
   try {
     const notes = req.body?.notes || "Resolved by SAR Commander";
-    const resolvedBy = req.body?.resolvedBy || "admin@margsutra.app";
+    const resolvedBy = req.body?.resolvedBy || DEMO_ADMIN_EMAIL;
     const result = await resolveSOSEvent(req.params.id, notes, resolvedBy);
     if (result.error) return res.status(404).json({ error: result.error });
     sosEventsCache = { at: 0, key: "", data: null };
@@ -393,11 +414,11 @@ app.post("/api/sos/:id/acknowledge", optionalAuth, async (req, res) => {
     let acknowledgedBy = req.body?.acknowledgedBy;
     if (!acknowledgedBy && req.userId) {
       const adminUser = await findUserById(req.userId);
-      acknowledgedBy = adminUser?.email || adminUser?.name || "admin@margsutra.app";
+      acknowledgedBy = adminUser?.email || adminUser?.name || DEMO_ADMIN_EMAIL;
     }
     const result = await acknowledgeSOSEvent(
       req.params.id,
-      acknowledgedBy || "admin@margsutra.app",
+      acknowledgedBy || DEMO_ADMIN_EMAIL,
       req.body?.note || ""
     );
     if (result.error) return res.status(404).json({ error: result.error });
@@ -421,7 +442,7 @@ app.get("/api/sos/events", async (req, res) => {
     if (sosEventsCache.key === key && now - sosEventsCache.at < 5000 && sosEventsCache.data) {
       return res.json({ success: true, events: sosEventsCache.data, cached: true });
     }
-    const events = await listSOSEvents(limit);
+    const events = await withTimeout(listSOSEvents(limit), 6000, "List SOS events");
     sosEventsCache = { at: now, key, data: events };
     res.json({ success: true, events });
   } catch (error) {
@@ -456,13 +477,13 @@ app.post("/api/auth/register", async (req, res) => {
     const normalizedEmail = String(email).trim().toLowerCase();
     const existing = await findUserByEmail(normalizedEmail);
     if (existing) {
-      const isAnirban =
-        normalizedEmail === "anirban@margsutra.app" ||
-        normalizedEmail === "anirbanpandaxyz@gmail.com" ||
-        normalizedEmail === "guide@margsutra.app";
+      const isDemoAccount =
+        normalizedEmail === DEMO_ADMIN_EMAIL ||
+        normalizedEmail === DEMO_USER_EMAIL;
 
-      if (isAnirban) {
-        // Allow seamless re-registration / password reset for Anirban's primary trekker account
+      if (isDemoAccount) {
+        // The demo accounts can always be re-keyed, so a forgotten demo
+        // password can never lock the demo out.
         const newHash = await bcrypt.hash(password, 10);
         await updateUser(existing.id, {
           name: name || existing.name || "Anirban Panda",
@@ -519,13 +540,13 @@ app.post("/api/auth/register-admin", async (req, res) => {
     const normalizedEmail = String(email).trim().toLowerCase();
     const existing = await findUserByEmail(normalizedEmail);
     if (existing) {
-      const isAnirban =
-        normalizedEmail === "anirban@margsutra.app" ||
-        normalizedEmail === "anirbanpandaxyz@gmail.com" ||
-        normalizedEmail === "guide@margsutra.app";
+      const isDemoAccount =
+        normalizedEmail === DEMO_ADMIN_EMAIL ||
+        normalizedEmail === DEMO_USER_EMAIL;
 
-      if (isAnirban) {
-        // Allow seamless re-registration / password reset for Anirban's primary trekker account
+      if (isDemoAccount) {
+        // The demo accounts can always be re-keyed, so a forgotten demo
+        // password can never lock the demo out.
         const newHash = await bcrypt.hash(password, 10);
         await updateUser(existing.id, {
           name: name || existing.name || "Anirban Panda",
@@ -571,6 +592,44 @@ app.post("/api/auth/register-admin", async (req, res) => {
   }
 });
 
+// The demo accounts are the only accounts that exist. They are also served
+// from memory when Firestore cannot be reached (quota exhausted, offline),
+// so the demo login never fails.
+function findDemoAccountByEmail(email) {
+  const normalized = String(email || "").trim().toLowerCase();
+  return DEMO_ACCOUNTS.find((a) => a.email === normalized) || null;
+}
+
+// Creates the demo account document if it is missing. Fire and forget — it
+// must never delay or fail a sign-in.
+async function ensureDemoAccountExists(account) {
+  try {
+    const existing = await findUserByEmail(account.email);
+    if (existing) return;
+    const bcryptLocal = require("bcryptjs");
+    await createUser({
+      id: account.id,
+      email: account.email,
+      name: account.name,
+      role: account.role,
+      phone: account.phone || "",
+      blood: account.blood || "B+",
+      medical: account.medical || "None",
+      ec1Name: account.ec1Name || "",
+      ec1Rel: account.ec1Rel || "",
+      ec1Ph: account.ec1Ph || "",
+      organization: account.organization || "",
+      roleTitle: account.roleTitle || "",
+      passwordHash: await bcryptLocal.hash(account.password, 10),
+      status: "approved",
+      approved: true,
+    });
+    console.log(`[Auth] Created missing demo account: ${account.email}`);
+  } catch (error) {
+    console.warn("[Auth] Could not persist demo account:", error?.message || error);
+  }
+}
+
 app.post("/api/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -579,26 +638,43 @@ app.post("/api/auth/login", async (req, res) => {
     }
 
     const normalizedEmail = String(email).trim().toLowerCase();
-    let user = await findUserByEmail(normalizedEmail);
-    if (!user) {
-      if (normalizedEmail === "admin@margsutra.app" && (password === "admin123" || password === "Margsutra@123")) {
-        user = {
-          id: "demo-admin-001",
-          name: "Super Admin",
-          email: "admin@margsutra.app",
-          role: "admin",
-          status: "approved",
-          approved: true,
-          organization: "Margsutra Expedition Command & SAR",
-          roleTitle: "Lead Command Dispatcher",
-        };
-      } else {
+    const demoAccount = findDemoAccountByEmail(normalizedEmail);
+
+    // The demo accounts are the only accounts that exist, so they are checked
+    // in memory first: the sign-in is instant and cannot fail because
+    // Firestore is slow, unreachable or over its read quota.
+    if (demoAccount) {
+      if (password !== demoAccount.password) {
         return res.status(401).json({ error: "Invalid email or password." });
       }
+      // Best effort: make sure the document exists so the rest of the app can
+      // read the profile. Never blocks the sign-in.
+      ensureDemoAccountExists(demoAccount).catch(() => {});
+
+      const token = jwt.sign({ userId: demoAccount.id }, JWT_SECRET, { expiresIn: "30d" });
+      const profile = toSafeProfile(demoAccount.id, {
+        ...demoAccount,
+        status: "approved",
+        approved: true,
+      });
+      return res.json({ user: profile, token });
+    }
+
+    // Any other address: normal database-backed sign-in.
+    let user = null;
+    try {
+      user = await findUserByEmail(normalizedEmail);
+    } catch (lookupError) {
+      console.warn("⚠️  Firestore unreachable during login:", lookupError?.message || lookupError);
+      return res.status(503).json({ error: "Unable to sign in right now. Please try again." });
+    }
+
+    if (!user) {
+      return res.status(401).json({ error: "Invalid email or password." });
     }
 
     // Pending admin approval check
-    const isSuperAdmin = normalizedEmail === "admin@margsutra.app";
+    const isSuperAdmin = normalizedEmail === DEMO_ADMIN_EMAIL;
     if (user.role === "admin" && !isSuperAdmin) {
       if (user.status === "rejected") {
         return res.status(403).json({
@@ -612,30 +688,17 @@ app.post("/api/auth/login", async (req, res) => {
       }
     }
 
-    // Known demo accounts may sign in with their published demo password.
-    // Everything else must match the stored bcrypt hash — the account is
-    // never re-keyed just because someone typed a different password.
-    const DEMO_PASSWORDS = {
-      "admin@margsutra.app": ["admin123", "Margsutra@123"],
-      "guide@margsutra.app": ["guide123", "user123"],
-      "anirban@margsutra.app": ["user123", "Margsutra@123"],
-      "anirbanpandaxyz@gmail.com": ["user123", "Margsutra@123"],
-    };
-
     let isValid = false;
     if (user.passwordHash) {
       isValid = await bcrypt.compare(password, user.passwordHash);
-      const demoPasswords = DEMO_PASSWORDS[normalizedEmail];
-      if (!isValid && Array.isArray(demoPasswords) && demoPasswords.includes(password)) {
-        isValid = true;
-        // Keep the stored hash aligned with the demo password that was used.
-        await updateUser(user.id, { passwordHash: await bcrypt.hash(password, 10) });
-        console.log(`[Auth] Demo password accepted for ${normalizedEmail}`);
-      }
     } else {
-      // Legacy seeded account without a stored hash: set it from this login.
+      // Account without a stored hash: set it from this first login.
       isValid = true;
-      await updateUser(user.id, { passwordHash: await bcrypt.hash(password, 10) });
+      try {
+        await updateUser(user.id, { passwordHash: await bcrypt.hash(password, 10) });
+      } catch (hashError) {
+        console.warn("[Auth] Could not store password hash:", hashError?.message || hashError);
+      }
       console.log(`[Auth] Initial password set for ${normalizedEmail}`);
     }
 
@@ -727,7 +790,7 @@ app.get("/api/admin/pending-trip-requests", async (_req, res) => {
     if (pendingTripRequestsCache.data && Date.now() - pendingTripRequestsCache.at < 30000) {
       return res.json({ success: true, pending: pendingTripRequestsCache.data, cached: true });
     }
-    const pending = await listPendingTripRequests();
+    const pending = await withTimeout(listPendingTripRequests(), 6000, "List pending trip requests");
     pendingTripRequestsCache = { at: Date.now(), data: pending };
     res.json({ success: true, pending });
   } catch (error) {
@@ -742,9 +805,9 @@ app.post("/api/admin/trips/:tripId/approve-user/:userId", optionalAuth, async (r
     let approvedBy = req.body?.approvedBy;
     if (!approvedBy && req.userId) {
       const adminUser = await findUserById(req.userId);
-      approvedBy = adminUser?.email || "admin@margsutra.app";
+      approvedBy = adminUser?.email || DEMO_ADMIN_EMAIL;
     }
-    const result = await approveTripUser(req.params.tripId, req.params.userId, approvedBy || "admin@margsutra.app");
+    const result = await approveTripUser(req.params.tripId, req.params.userId, approvedBy || DEMO_ADMIN_EMAIL);
     if (result && result.error) {
       return res.status(400).json({ error: result.error });
     }
@@ -760,9 +823,9 @@ app.post("/api/admin/trips/:tripId/remove-user/:userId", optionalAuth, async (re
     let removedBy = req.body?.removedBy;
     if (!removedBy && req.userId) {
       const adminUser = await findUserById(req.userId);
-      removedBy = adminUser?.email || "admin@margsutra.app";
+      removedBy = adminUser?.email || DEMO_ADMIN_EMAIL;
     }
-    const result = await removeTripUser(req.params.tripId, req.params.userId, removedBy || "admin@margsutra.app");
+    const result = await removeTripUser(req.params.tripId, req.params.userId, removedBy || DEMO_ADMIN_EMAIL);
     if (result && result.error) {
       return res.status(400).json({ error: result.error });
     }
@@ -782,12 +845,26 @@ app.get("/api/users", requireAuth, async (_req, res) => {
     if (usersCache.data && Date.now() - usersCache.at < 60000) {
       return res.json({ users: usersCache.data, cached: true });
     }
-    const users = await listUsers();
+    const users = await withTimeout(listUsers(), 6000, "List users");
     usersCache = { at: Date.now(), data: users };
     return res.json({ users });
   } catch (error) {
-    console.error("List users error", error);
-    return res.status(500).json({ error: "Unable to load users right now." });
+    console.warn("⚠️  Could not list users from Firestore:", error?.message || error);
+    if (usersCache.data) return res.json({ users: usersCache.data, cached: true });
+    const fallback = DEMO_ACCOUNTS.map((a) => ({
+      id: a.id,
+      name: a.name,
+      email: a.email,
+      role: a.role,
+      status: "approved",
+      approved: true,
+      phone: a.phone || "",
+      blood: a.blood || "B+",
+      medical: a.medical || "None",
+      organization: a.organization || "",
+      roleTitle: a.roleTitle || "",
+    }));
+    return res.json({ users: fallback });
   }
 });
 
@@ -1000,14 +1077,15 @@ async function bootstrap() {
   try {
     // Verify Firestore connection (non-fatal: the API still starts and
     // individual routes report their own errors if Firestore is unavailable).
-    await db.collection("users").limit(1).get();
+    await withTimeout(db.collection("users").limit(1).get(), 5000, "Firestore probe");
     console.log("✅ Firebase Firestore connected successfully");
   } catch (error) {
     console.warn("⚠️  Firestore probe failed:", error?.message || error);
+    console.warn("   The API still starts — demo logins and demo data are served from memory.");
   }
 
   try {
-    await seedEmulatorData();
+    await withTimeout(seedEmulatorData(), 8000, "Emulator seed");
   } catch (seedError) {
     console.warn("⚠️  Emulator demo data not seeded:", seedError?.message || seedError);
   }

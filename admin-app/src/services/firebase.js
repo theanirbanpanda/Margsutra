@@ -51,6 +51,13 @@ export const storage = getStorage(app);
 
 export const AUTH_API_URL = import.meta.env.VITE_AUTH_API_URL || "http://localhost:5050/api";
 
+// The two demo accounts. These are the only accounts that exist.
+export const DEMO_ADMIN_EMAIL = "demoadmin@gmail.com";
+export const DEMO_USER_EMAIL = "demouser@gmail.com";
+export const DEMO_PASSWORD = "123456";
+export const DEMO_ADMIN_ID = "demo-admin";
+export const DEMO_USER_ID = "demo-user";
+
 // Admin API token issued by POST /api/auth/login. Without it every protected
 // backend route (including GET /api/users) answers 401.
 export const getAdminToken = () => {
@@ -121,7 +128,7 @@ export const adminLogin = async (email, password) => {
 
     if (userDoc.exists() && userDoc.data().role === "admin") {
       const data = userDoc.data();
-      const isSuper = normalizedEmail === "admin@margsutra.app";
+      const isSuper = normalizedEmail === DEMO_ADMIN_EMAIL;
       if (!isSuper && (data.status === "pending_approval" || data.approved === false)) {
         await signOut(auth);
         return {
@@ -139,12 +146,22 @@ export const adminLogin = async (email, password) => {
       return { success: false, error: "Unauthorized: Admin access required" };
     }
   } catch (error) {
-    // Demo fallback for offline / mock testing
-    if (normalizedEmail === "admin@margsutra.app" && (password === "admin123" || password === "Margsutra@123")) {
+    // Demo fallback for offline / mock testing: the demo admin account always
+    // works so the console can never be locked out of a demo.
+    if (normalizedEmail === DEMO_ADMIN_EMAIL && password === DEMO_PASSWORD) {
       return {
         success: true,
-        user: { email: "admin@margsutra.app", uid: "demo-admin-001" },
-        userData: { id: "demo-admin-001", name: "Super Admin", email: "admin@margsutra.app", role: "admin", status: "approved", approved: true },
+        user: { email: DEMO_ADMIN_EMAIL, uid: DEMO_ADMIN_ID },
+        userData: {
+          id: DEMO_ADMIN_ID,
+          name: "Demo Admin",
+          email: DEMO_ADMIN_EMAIL,
+          role: "admin",
+          status: "approved",
+          approved: true,
+          organization: "Margsutra Expedition Command & SAR",
+          roleTitle: "Lead Command Dispatcher",
+        },
       };
     }
     return { success: false, error: error.message };
@@ -226,14 +243,14 @@ export const fetchPendingAdmins = async () => {
       .map((d) => ({ id: d.id, ...d.data() }))
       .filter((u) => {
         const email = (u.email || "").toLowerCase();
-        return email !== "admin@margsutra.app" && (u.status === "pending_approval" || u.approved === false);
+        return email !== DEMO_ADMIN_EMAIL && (u.status === "pending_approval" || u.approved === false);
       });
   } catch {
     return [];
   }
 };
 
-export const approveAdmin = async (adminId, approvedBy = "admin@margsutra.app") => {
+export const approveAdmin = async (adminId, approvedBy = DEMO_ADMIN_EMAIL) => {
   try {
     const res = await api(`/admin/approve-admin/${adminId}`, {
       method: "POST",
@@ -255,7 +272,7 @@ export const approveAdmin = async (adminId, approvedBy = "admin@margsutra.app") 
   }
 };
 
-export const rejectAdmin = async (adminId, rejectedBy = "admin@margsutra.app") => {
+export const rejectAdmin = async (adminId, rejectedBy = DEMO_ADMIN_EMAIL) => {
   try {
     const res = await api(`/admin/reject-admin/${adminId}`, {
       method: "POST",
@@ -641,7 +658,7 @@ export const fetchPendingTripRequests = async () => {
   }
 };
 
-export const approveTrekker = async (tripId, userId, approvedBy = "admin@margsutra.app") => {
+export const approveTrekker = async (tripId, userId, approvedBy = DEMO_ADMIN_EMAIL) => {
   // 1. Try Backend API
   try {
     const res = await api(`/admin/trips/${tripId}/approve-user/${userId}`, {
@@ -685,7 +702,7 @@ export const approveTrekker = async (tripId, userId, approvedBy = "admin@margsut
   }
 };
 
-export const removeTrekker = async (tripId, userId, removedBy = "admin@margsutra.app") => {
+export const removeTrekker = async (tripId, userId, removedBy = DEMO_ADMIN_EMAIL) => {
   // 1. Try Backend API
   try {
     const res = await api(`/admin/trips/${tripId}/remove-user/${userId}`, {

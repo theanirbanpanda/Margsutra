@@ -108,8 +108,8 @@ const C = {
    Remove or gate behind an env flag before any real deployment.
 ════════════════════════════════════════════════════════════════════════ */
 const CURRENT_USER = {
-  id:"U001", name:"Anirban Panda", email:"anirban@margsutra.app",
-  role:"Field Guide", status:"active", avatar:"AP",
+  id:"demo-user", name:"Demo User", email:"demouser@gmail.com",
+  role:"Trekker", status:"active", avatar:"DU",
   color:["#E6F1FB","#0C447C"], blood:"B+", medical:"None",
   lat:18.5196, lon:73.8554, city:"Mulshi, Maharashtra",
   phone:"+91 98765 43210", joined:"Jan 2025", trips:12, devices:3,
@@ -118,8 +118,8 @@ const CURRENT_USER = {
 };
 
 const DEFAULT_LOGIN = {
-  email: "anirban@margsutra.app",
-  pass: "user123",
+  email: "demouser@gmail.com",
+  pass: "123456",
 };
 
 const USER_PROFILE_KEY = "margsutra_user_profile";
@@ -451,8 +451,9 @@ const PageAuth = ({ onLogin, initialTab = "login" }) => {
     "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=2400&q=85";
 
   // Login form state
-  const [loginEmail, setLoginEmail] = useState("");
-  const [loginPass, setLoginPass] = useState("");
+  // Prefilled with the demo account so the demo can be opened in one click.
+  const [loginEmail, setLoginEmail] = useState(DEFAULT_LOGIN.email);
+  const [loginPass, setLoginPass] = useState(DEFAULT_LOGIN.pass);
   const [showLoginPass, setShowLoginPass] = useState(false);
   const [loginErr, setLoginErr] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
@@ -943,6 +944,18 @@ const PageAuth = ({ onLogin, initialTab = "login" }) => {
             >
               {loginLoading ? "Authenticating…" : "Log In"}
             </button>
+
+            <div style={{
+              marginTop: 14, padding: "10px 14px", borderRadius: 10, textAlign: "center",
+              background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.22)",
+            }}>
+              <div style={{ fontSize: 10, color: "rgba(180, 210, 245, 0.6)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                Demo access
+              </div>
+              <div style={{ fontSize: 12.5, color: "rgba(226, 232, 240, 0.9)", marginTop: 4, fontWeight: 600 }}>
+                {DEFAULT_LOGIN.email} · {DEFAULT_LOGIN.pass}
+              </div>
+            </div>
 
             <div style={{ textAlign: "center", marginTop: 20 }}>
               <span style={{ fontSize: 13, color: "rgba(180, 210, 245, 0.6)" }}>

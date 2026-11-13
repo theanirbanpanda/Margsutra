@@ -18,7 +18,8 @@
     "dev:backend": "npm run dev --workspace=backend",
     "dev:tracking": "npm run dev --workspace=tracking/server",
     "dev:all": "npm run dev",
-    "dev:prod": "npm run dev"
+    "dev:prod": "npm run dev",
+    "reset:demo": "npm run reset:demo --workspace=backend"
   },
   "dependencies": {
     "firebase-admin": "^13.0.0"
