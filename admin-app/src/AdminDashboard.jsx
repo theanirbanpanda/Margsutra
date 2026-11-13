@@ -3619,6 +3619,7 @@ const PageDashboard = ({ navigate, users = USERS, assignedTrip, admin }) => {
   const [loading, setLoading] = useState(false);
   const [rosterError, setRosterError] = useState("");
   const [query, setQuery] = useState("");
+  const [expandedMembers, setExpandedMembers] = useState({});
   const [selectedMember, setSelectedMember] = useState(null);
   const [removeTarget, setRemoveTarget] = useState(null);
   const [removing, setRemoving] = useState(false);
@@ -3739,14 +3740,20 @@ const PageDashboard = ({ navigate, users = USERS, assignedTrip, admin }) => {
         {loading && roster.length === 0 && !isDemo && <div style={{ padding: 24, textAlign: "center", color: C.muted, fontSize: 12 }}>Loading the approved expedition roster…</div>}
         {!loading && displayedRoster.length === 0 && <div style={{ padding: 26, textAlign: "center" }}><div style={{ color: C.text, fontSize: 13, fontWeight: 700 }}>No approved team members yet</div><div style={{ color: C.muted, fontSize: 11, marginTop: 5 }}>New enrollment requests are reviewed on Admin Duty Clearances.</div><button onClick={() => navigate("admin-approvals")} style={{ marginTop: 10, background: "none", border: 0, color: C.accent, cursor: "pointer", fontWeight: 700, fontSize: 11 }}>Open Duty Clearances →</button></div>}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,300px),1fr))", gap: 10, padding: 14 }}>
-          {displayedRoster.map((member) => <article key={member.userId || member.id || member.email} style={{ minWidth: 0, padding: 13, borderRadius: 11, border: `1px solid ${C.border}`, background: "rgba(255,255,255,.018)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}><div style={{ minWidth: 0 }}><div style={{ color: C.text, fontSize: 13, fontWeight: 750, overflowWrap: "anywhere" }}>{member.name}</div><div style={{ color: C.muted2, fontSize: 10, marginTop: 3 }}>{member.occupation || member.roleTitle || "Expedition member"}</div></div><Pill color="green">APPROVED</Pill></div>
+          {displayedRoster.map((member) => {
+            const memberKey = String(member.userId || member.id || member.email);
+            const expanded = Boolean(expandedMembers[memberKey]);
+            return <article key={memberKey} style={{ minWidth: 0, borderRadius: 11, border: `1px solid ${C.border}`, background: "rgba(255,255,255,.018)", overflow: "hidden" }}>
+            <button type="button" aria-expanded={expanded} onClick={() => setExpandedMembers((current) => ({ ...current, [memberKey]: !current[memberKey] }))} style={{ width: "100%", minHeight: 48, padding: "12px 13px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, border: 0, background: "transparent", color: C.text, textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}><span style={{ minWidth: 0, fontSize: 13, fontWeight: 750, overflowWrap: "anywhere" }}>{member.name}</span><span aria-hidden="true" style={{ flexShrink: 0, color: C.muted, fontSize: 16, transition: "transform .18s ease", transform: expanded ? "rotate(180deg)" : "rotate(0deg)" }}>⌄</span></button>
+            {expanded && <div style={{ padding: "0 13px 13px" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", paddingBottom: 10, borderBottom: `1px solid ${C.border}` }}><div style={{ color: C.muted2, fontSize: 10 }}>{member.occupation || member.roleTitle || "Expedition member"}</div><Pill color="green">APPROVED</Pill></div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "9px 12px", marginTop: 12 }}>
               {field("Sex", member.sex || member.gender)}{field("Blood group", member.blood || member.bloodGroup)}{field("Trekking capability", member.trekkingCapability || member.experienceLevel || member.trekExperience || member.experience)}{field("Contact", member.phone ? <a href={`tel:${member.phone}`} style={{ color: C.accent, textDecoration: "none" }}>{member.phone}</a> : "Not provided")}
             </div>
             {member.medical && member.medical !== "None" && <div style={{ marginTop: 10, padding: "7px 9px", borderRadius: 7, background: "rgba(245,158,11,.07)", color: "#fcd34d", fontSize: 10.5 }}>Medical note · {member.medical}</div>}
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 12, paddingTop: 9, borderTop: `1px solid ${C.border}` }}><button onClick={() => setSelectedMember(member)} style={{ color: C.accent, background: "none", border: 0, cursor: "pointer", fontSize: 10.5, fontWeight: 700 }}>View full profile</button><button onClick={() => setRemoveTarget(member)} style={{ color: "#fca5a5", background: "none", border: 0, cursor: "pointer", fontSize: 10.5, fontWeight: 700 }}>Remove from trip</button></div>
-          </article>)}
+            </div>}
+          </article>;
+          })}
         </div>
       </Card>
     </>}
