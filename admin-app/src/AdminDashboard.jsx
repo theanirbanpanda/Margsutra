@@ -2471,11 +2471,31 @@ const PageAdminApprovals = ({
   approvedAdmins = [],
   refreshing,
   onRefresh,
-  pendingTrekkerCount = 0,
+  pendingTrekkers = [],
+  onApproveTrekker,
+  onDenyTrekker,
   onReviewTrekkers,
 }) => {
   const [actingId, setActingId] = useState(null);
+  const [actingTrekker, setActingTrekker] = useState(null);
   const [toast, setToast] = useState(null);
+
+  // Trekker join requests are approved from here too — every approval the
+  // command team can make lives on this one page.
+  const handleTrekkerDecision = async (applicant, approve) => {
+    const applicantId = applicant.userId || applicant.id;
+    const key = `${applicant.tripId}-${applicantId}`;
+    setActingTrekker(key);
+    const res = approve ? await onApproveTrekker?.(applicant.tripId, applicantId) : await onDenyTrekker?.(applicant.tripId, applicantId);
+    setActingTrekker(null);
+    const name = applicant.name || "Trekker";
+    if (res?.success) {
+      setToast({ type: approve ? "success" : "info", text: approve ? `✓ ${name} enrolled on ${applicant.tripName || "the expedition"}.` : `${name}'s join request was declined.` });
+    } else {
+      setToast({ type: "error", text: `Failed to ${approve ? "approve" : "decline"}: ${res?.error || "Unknown error"}` });
+    }
+    setTimeout(() => setToast(null), 4000);
+  };
 
   const handleApprove = async (admin) => {
     setActingId(admin.id);
@@ -2543,35 +2563,75 @@ const PageAdminApprovals = ({
         </div>
       )}
 
-      {pendingTrekkerCount > 0 && (
-        <div
-          style={{
-            marginBottom: 16,
-            padding: "11px 14px",
-            borderRadius: 10,
-            background: "rgba(245,158,11,0.08)",
-            border: "1px solid rgba(245,158,11,0.3)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 10,
-            flexWrap: "wrap",
-          }}
-        >
-          <div style={{ fontSize: 12.5, color: "#fcd34d" }}>
-            🧭 {pendingTrekkerCount} trekker join request{pendingTrekkerCount === 1 ? "" : "s"} awaiting expedition approval.
+      {/* Trekker join requests — approved right here */}
+      <div style={{ marginBottom: 28 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#fbbf24", display: "flex", alignItems: "center", gap: 8 }}>
+            <span>🧭</span>
+            <span>Pending trekker join requests</span>
+            <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 12, background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.3)", color: "#fcd34d", fontWeight: 700 }}>
+              {pendingTrekkers.length}
+            </span>
           </div>
           {onReviewTrekkers && (
             <button
               type="button"
               onClick={onReviewTrekkers}
-              style={{ background: "rgba(245,158,11,0.16)", border: "1px solid rgba(245,158,11,0.35)", color: "#fcd34d", borderRadius: 7, padding: "6px 12px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
+              style={{ background: "transparent", border: `1px solid ${C.border}`, color: C.muted, borderRadius: 7, padding: "5px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
             >
-              Review in Expeditions & Rosters →
+              View rosters →
             </button>
           )}
         </div>
-      )}
+
+        {pendingTrekkers.length === 0 ? (
+          <div style={{ padding: "14px 16px", borderRadius: 10, background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.25)", fontSize: 12.5, color: "#86efac" }}>
+            ✓ No trekker join requests are waiting for approval.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 10 }}>
+            {pendingTrekkers.map((applicant) => {
+              const applicantId = applicant.userId || applicant.id;
+              const key = `${applicant.tripId}-${applicantId}`;
+              const isActing = actingTrekker === key;
+              return (
+                <Card key={key} style={{ padding: "13px 14px", border: "1px solid rgba(245,158,11,0.3)", background: "linear-gradient(140deg, rgba(245,158,11,0.07), rgba(11,20,34,0.6))" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{applicant.name || "Trekker"}</div>
+                      <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{applicant.tripName || "Expedition"}</div>
+                    </div>
+                    <Pill color="amber">pending</Pill>
+                  </div>
+                  <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.65, marginBottom: 10 }}>
+                    <div>📞 {applicant.phone || "No phone"} · 🩸 {applicant.blood || "B+"}</div>
+                    <div>🩺 {applicant.medical || "No medical notes"}</div>
+                    <div>🆘 {applicant.ec1Name || "Emergency contact"} ({applicant.ec1Rel || "Kin"}) · {applicant.ec1Ph || "—"}</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      type="button"
+                      disabled={isActing}
+                      onClick={() => handleTrekkerDecision(applicant, true)}
+                      style={{ flex: 1, padding: "7px 10px", borderRadius: 7, border: "1px solid rgba(34,197,94,0.35)", background: "rgba(34,197,94,0.14)", color: "#86efac", fontSize: 11.5, fontWeight: 700, cursor: isActing ? "not-allowed" : "pointer", fontFamily: "inherit" }}
+                    >
+                      {isActing ? "…" : "Approve"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isActing}
+                      onClick={() => handleTrekkerDecision(applicant, false)}
+                      style={{ flex: 1, padding: "7px 10px", borderRadius: 7, border: `1px solid ${C.border}`, background: "transparent", color: "#fca5a5", fontSize: 11.5, fontWeight: 700, cursor: isActing ? "not-allowed" : "pointer", fontFamily: "inherit" }}
+                    >
+                      Deny
+                    </button>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Pending Authorization Queue */}
       <div style={{ marginBottom: 28 }}>
@@ -3551,7 +3611,6 @@ const PageTripRosters = ({
     setDemoMembers(RAJMACHI_DEMO_MEMBERS.map((m) => ({ ...m })));
   };
 
-  const pendingCount = pendingTrekkers.length;
 
   const inFieldTrip = trips.find((t) => t.isManaged || t.status === "in-field");
 
@@ -3598,7 +3657,6 @@ const PageTripRosters = ({
         <button type="button" onClick={() => setActiveMainTab("expeditions")} style={tabStyle(activeMainTab === "expeditions")}>
           🧭 Expeditions
           <span style={{ fontSize: 10.5, padding: "1px 7px", borderRadius: 10, background: "rgba(255,255,255,0.08)" }}>{trips.length}</span>
-          {pendingCount > 0 && <span style={{ fontSize: 10.5, padding: "1px 7px", borderRadius: 10, background: "rgba(245,158,11,0.2)", color: "#fbbf24" }}>{pendingCount} pending</span>}
         </button>
         <button type="button" onClick={() => setActiveMainTab("protocols")} style={tabStyle(activeMainTab === "protocols", "green")}>
           🛡️ Safety directives
@@ -3612,55 +3670,6 @@ const PageTripRosters = ({
         <PageSafetyProtocol isEmbedded={true} />
       ) : (
         <>
-          {pendingCount > 0 && (
-            <div style={{ marginBottom: 22 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 700, color: "#fbbf24" }}>Pending trekker approvals</span>
-                <Pill color="amber">{pendingCount}</Pill>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 10 }}>
-                {pendingTrekkers.map((applicant) => {
-                  const applicantId = applicant.userId || applicant.id;
-                  const key = `${applicant.tripId}-${applicantId}`;
-                  const isActing = !!actionLoading[key];
-                  return (
-                    <Card key={key} style={{ padding: "13px 14px", border: "1px solid rgba(245,158,11,0.3)", background: "linear-gradient(140deg, rgba(245,158,11,0.07), rgba(11,20,34,0.6))" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{applicant.name || "Trekker"}</div>
-                          <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{applicant.tripName || "Expedition"}</div>
-                        </div>
-                        <Pill color="amber">pending</Pill>
-                      </div>
-                      <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.65, marginBottom: 10 }}>
-                        <div>📞 {applicant.phone || "No phone"} · 🩸 {applicant.blood || "B+"}</div>
-                        <div>🩺 {applicant.medical || "No medical notes"}</div>
-                        <div>🆘 {applicant.ec1Name || "Emergency contact"} ({applicant.ec1Rel || "Kin"}) · {applicant.ec1Ph || "—"}</div>
-                      </div>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <button
-                          type="button"
-                          disabled={isActing}
-                          onClick={() => handleApprove(applicant.tripId, applicantId)}
-                          style={{ flex: 1, padding: "7px 10px", borderRadius: 7, border: "1px solid rgba(34,197,94,0.35)", background: "rgba(34,197,94,0.14)", color: "#86efac", fontSize: 11.5, fontWeight: 700, cursor: isActing ? "not-allowed" : "pointer", fontFamily: "inherit" }}
-                        >
-                          {isActing ? "…" : "Approve"}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isActing}
-                          onClick={() => handleRemove(applicant.tripId, applicantId)}
-                          style={{ flex: 1, padding: "7px 10px", borderRadius: 7, border: `1px solid ${C.border}`, background: "transparent", color: "#fca5a5", fontSize: 11.5, fontWeight: 700, cursor: isActing ? "not-allowed" : "pointer", fontFamily: "inherit" }}
-                        >
-                          Deny
-                        </button>
-                      </div>
-                    </Card>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
           {trips.length === 0 ? (
             <Card style={{ textAlign: "center", padding: "40px 20px" }}>
@@ -4196,7 +4205,7 @@ const PageDashboard = ({ navigate, users = USERS, pendingAdmins = [], pendingTre
 
       {pendingTrekkers && pendingTrekkers.length > 0 && (
         <div
-          onClick={() => navigate("trip-rosters")}
+          onClick={() => navigate("admin-approvals")}
           style={{
             marginBottom: 16,
             padding: "12px 18px",
@@ -4233,7 +4242,7 @@ const PageDashboard = ({ navigate, users = USERS, pendingAdmins = [], pendingTre
               fontWeight: 600,
             }}
           >
-            Review Rosters ›
+            Review &amp; Approve ›
           </div>
         </div>
       )}
@@ -5551,70 +5560,6 @@ const PageDeviceTracking = ({ users = USERS, connectionState = "disconnected" })
 /* ════════════════════════════════════════════════
    PAGE: FEATURE ACCESS
 ════════════════════════════════════════════════ */
-const PageFeatureAccess = ({ users = [] }) => {
-  // Compute initial access state from dynamic users list
-  const computeInit = () => {
-    const init = {};
-    const allUsers = users && users.length > 0 ? users : USERS;
-    allUsers.forEach(u => {
-      if (!u?.id) return;
-      init[u.id] = {};
-      FEATURES.forEach(f => {
-        init[u.id][f] = u.features && typeof u.features[f] === "boolean"
-          ? u.features[f]
-          : u.role === "Field Guide" || ["Weather", "Emergency SOS"].includes(f);
-      });
-    });
-    return init;
-  };
-
-  const [access, setAccess] = useState(computeInit);
-  const [saved, setSaved] = useState(false);
-  const [saveErr, setSaveErr] = useState("");
-  const allUsers = users && users.length > 0 ? users : USERS;
-
-  const toggle = (uid, feat) => setAccess(a => ({ ...a, [uid]: { ...a[uid], [feat]: !a[uid][feat] } }));
-  const grantAll = uid => setAccess(a => ({ ...a, [uid]: Object.fromEntries(FEATURES.map(f => [f, true])) }));
-  const revokeAll = uid => setAccess(a => ({ ...a, [uid]: Object.fromEntries(FEATURES.map(f => [f, false])) }));
-  const save = async () => {
-    setSaveErr("");
-    const targets = allUsers.filter(u => u?.id && access[u.id]);
-    if (!targets.length) {
-      setSaveErr("No users to persist.");
-      return;
-    }
-    const results = await Promise.all(
-      targets.map(u => updateUserFeatureAccess(u.id, access[u.id]))
-    );
-    const failed = results.filter(r => !r?.success);
-    if (failed.length) {
-      setSaved(false);
-      setSaveErr(`${failed.length} of ${targets.length} users could not be saved — ${failed[0]?.error || "unknown error"}`);
-      return;
-    }
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
-  };
-  return (
-    <div>
-      <PageHeader title="Feature Access Control" sub="Grant or revoke access per user" right={<Btn variant="primary" onClick={save}>{saved ? "✓ Saved" : "Save changes"}</Btn>} />
-      {saved && <div style={{ background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.25)", borderRadius: 10, padding: "10px 16px", fontSize: 13, color: "#86efac", marginBottom: 16 }}>Access settings saved to Firestore.</div>}
-      {saveErr && <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 10, padding: "10px 16px", fontSize: 13, color: "#fca5a5", marginBottom: 16 }}>Save failed — {saveErr}</div>}
-      <Card style={{ padding: 0, overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead><tr><TH style={{ minWidth: 180 }}>User</TH>{FEATURES.map(f => <TH key={f} style={{ textAlign: "center", minWidth: 90, fontSize: 10 }}>{f}</TH>)}<TH style={{ textAlign: "center" }}>Actions</TH></tr></thead>
-          <tbody>{allUsers.map((u, i) => (
-            <tr key={u.id} style={{ background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.012)" }}>
-              <TD><div style={{ display: "flex", alignItems: "center", gap: 8 }}><Avatar initials={u.avatar} bg={u.color[0]} text={u.color[1]} /><div><div style={{ fontSize: 12, fontWeight: 500 }}>{u.name}</div><Pill color="blue">{u.role}</Pill></div></div></TD>
-              {FEATURES.map(f => <TD key={f} style={{ textAlign: "center" }}><Toggle on={access[u.id]?.[f]} onChange={() => toggle(u.id, f)} /></TD>)}
-              <TD style={{ textAlign: "center" }}><div style={{ display: "flex", gap: 6, justifyContent: "center" }}><Btn onClick={() => grantAll(u.id)}>All</Btn><Btn onClick={() => revokeAll(u.id)}>None</Btn></div></TD>
-            </tr>
-          ))}</tbody>
-        </table>
-      </Card>
-    </div>
-  );
-};
 
 
 
@@ -5625,275 +5570,7 @@ const PageFeatureAccess = ({ users = [] }) => {
    PAGE: WEARABLES & BIOMETRIC TELEMETRY RADAR
    (Replaces unrealistic desktop BLE scanning with real trekker telemetry stream)
 ════════════════════════════════════════════════ */
-const PageWearablesRadar = ({ users = USERS }) => {
-  const [syncing, setSyncing] = useState(false);
-  const [syncToast, setSyncToast] = useState("");
-  const [stressSim, setStressSim] = useState(false);
 
-  const displayUsers = users && users.length > 0 ? users : USERS;
-
-  // Build full 6-member wearable telemetry list
-  const memberTelemetry = useMemo(() => {
-    return [
-      {
-        id: RAJMACHI_ADMIN.id,
-        name: "Ajay Saini",
-        role: "Expedition Leader & Field Guide",
-        badge: "Lead Navigator",
-        avatar: "AS",
-        color: ["#f59e0b", "#78350f"],
-        device: "Garmin InReach Mini 2 + Fenix 7X Pro",
-        type: "SatCom + Tactical Watch",
-        battery: 95,
-        hr: 76,
-        spo2: 98,
-        alt: 842,
-        steps: 11420,
-        pace: "3.6 km/h",
-        signal: "strong",
-        protocol: "Iridium Satellite + VHF 145.500 MHz",
-        lastSync: "Just now",
-        status: "Leading at Manoranjan Ridge",
-      },
-      ...displayUsers.map((u, idx) => {
-        const isAnirban = u.name === "Anirban Panda";
-        const hr = stressSim && isAnirban ? 168 : (u.heartRate || (82 + (idx * 3)));
-        const spo2 = stressSim && isAnirban ? 89 : (u.spo2 || 98);
-        const deviceName = isAnirban
-          ? "Garmin Instinct 2 Solar"
-          : idx === 1
-            ? "Apple Watch Ultra 2"
-            : idx === 2
-              ? "Polar H10 Chest Strap"
-              : idx === 3
-                ? "Coros Vertix 2"
-                : "Suunto 9 Peak";
-
-        const deviceType = idx === 2 ? "Optical Chest Sensor" : "GPS Multisport Watch";
-
-        return {
-          id: u.id,
-          name: u.name,
-          role: u.badge || (u.isAdmin ? "Expedition Leader" : "Enrolled Trekker"),
-          badge: u.trailStatus || "On Trail",
-          avatar: u.avatar || (u.name || "TR").slice(0, 2).toUpperCase(),
-          color: u.color || ["#3b82f6", "#1e3a8a"],
-          device: deviceName,
-          type: deviceType,
-          battery: u.battery || (88 - idx * 4),
-          hr,
-          spo2,
-          alt: u.altitude || (829 - idx * 12),
-          steps: isAnirban ? 9420 : (8100 - idx * 450),
-          pace: "3.2 km/h",
-          signal: "strong",
-          protocol: "LoRa 868MHz Mesh + BLE Stream",
-          lastSync: "12s ago",
-          status: u.trailStatus || "Active on Trail",
-          isElevated: hr > 150 || spo2 < 90,
-        };
-      }).filter(u => u.name !== "Ajay Saini"),
-    ];
-  }, [displayUsers, stressSim]);
-
-  const handleSyncAll = () => {
-    setSyncing(true);
-    setSyncToast("Requesting immediate biometric telemetry sync across all active expedition wearables...");
-    setTimeout(() => {
-      setSyncing(false);
-      setSyncToast("✓ Telemetry refreshed: All 6 field wearables transmitting live biometrics.");
-      setTimeout(() => setSyncToast(""), 4500);
-    }, 1200);
-  };
-
-  const avgHr = Math.round(memberTelemetry.reduce((acc, m) => acc + m.hr, 0) / memberTelemetry.length);
-  const avgSpo2 = (memberTelemetry.reduce((acc, m) => acc + m.spo2, 0) / memberTelemetry.length).toFixed(1);
-  const criticalCount = memberTelemetry.filter((m) => m.hr > 150 || m.spo2 < 90 || m.battery < 20).length;
-
-  return (
-    <div>
-      <PageHeader
-        title="Expedition Wearables & Biometrics Radar"
-        sub="Continuous physiological telemetry streamed from trekkers' paired fitness gadgets and smartwatches"
-        right={
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <Pill color="amber">◐ 6 demo wearables</Pill>
-            <Pill color="amber">◐ Simulated telemetry</Pill>
-            <Pill color="blue">LoRa + Cellular Mesh</Pill>
-            <button
-              type="button"
-              onClick={() => setStressSim((s) => !s)}
-              style={{
-                fontSize: 11,
-                padding: "6px 12px",
-                borderRadius: 8,
-                border: `1px solid ${stressSim ? C.red : C.border}`,
-                background: stressSim ? "rgba(239,68,68,0.15)" : "rgba(255,255,255,0.04)",
-                color: stressSim ? "#fca5a5" : C.muted,
-                cursor: "pointer",
-                fontFamily: "inherit",
-              }}
-            >
-              {stressSim ? "⚠️ Bio-Stress Alert Active" : "🧪 Test Stress Event"}
-            </button>
-            <Btn variant="primary" onClick={handleSyncAll} disabled={syncing}>
-              {syncing ? "↻ Syncing Telemetry..." : "↻ Refresh Vitals"}
-            </Btn>
-          </div>
-        }
-      />
-
-      <div style={{ background: "rgba(245,158,11,0.09)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "#fcd34d", marginBottom: 14 }}>
-        ◐ <strong>Simulated vitals.</strong> No wearable is paired and no biometric stream is received. Heart rate,
-        SpO₂, steps and device names below are generated for demonstration.
-      </div>
-
-      {syncToast && (
-        <div
-          style={{
-            marginBottom: 16,
-            padding: "10px 16px",
-            borderRadius: 10,
-            background: "rgba(34, 197, 94, 0.12)",
-            border: "1px solid rgba(34, 197, 94, 0.35)",
-            color: "#86efac",
-            fontSize: 12.5,
-            fontWeight: 600,
-          }}
-        >
-          {syncToast}
-        </div>
-      )}
-
-      {/* Quick Metrics */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 16 }}>
-        <StatCard label="Avg Group Heart Rate" value={`${avgHr} BPM`} sub="Target: 60–130 BPM" color={avgHr > 120 ? C.amber : C.green} icon="❤️" />
-        <StatCard label="Avg Blood Oxygen" value={`${avgSpo2}%`} sub="Normal &gt; 95% SpO2" color={avgSpo2 < 92 ? C.red : C.teal} icon="🫁" />
-        <StatCard label="Active Biometric Beacons" value="6 / 6" sub="Garmin · Apple · Polar · Coros" color={C.accent} icon="⌚" />
-        <StatCard label="Health Alerts" value={criticalCount} sub={criticalCount > 0 ? "Elevated Exertion Detected" : "All Normal"} color={criticalCount > 0 ? C.red : C.green} icon="🛡️" />
-      </div>
-
-      {/* Telemetry Cards Grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: 14 }}>
-        {memberTelemetry.map((m) => {
-          const isLead = m.id === RAJMACHI_ADMIN.id;
-          const isWarning = m.isElevated;
-
-          return (
-            <Card
-              key={m.id}
-              style={{
-                background: isWarning ? "rgba(239, 68, 68, 0.08)" : "rgba(11, 20, 34, 0.95)",
-                borderColor: isWarning ? "rgba(239, 68, 68, 0.45)" : isLead ? "rgba(245, 158, 11, 0.4)" : C.border,
-                position: "relative",
-                overflow: "hidden",
-              }}
-            >
-              {isLead && (
-                <div style={{ position: "absolute", top: 12, right: 12 }}>
-                  <Pill color="amber">Expedition Leader</Pill>
-                </div>
-              )}
-              {isWarning && (
-                <div style={{ position: "absolute", top: 12, right: 12 }}>
-                  <Pill color="red">🚨 High Bio-Stress Alert</Pill>
-                </div>
-              )}
-
-              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-                <Avatar initials={m.avatar} bg={m.color[0]} text={m.color[1]} size={42} />
-                <div>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{m.name}</div>
-                  <div style={{ fontSize: 11, color: C.muted }}>{m.role} · {m.status}</div>
-                </div>
-              </div>
-
-              {/* Gadget Model Header */}
-              <div
-                style={{
-                  background: "rgba(255, 255, 255, 0.03)",
-                  border: `1px solid ${C.border}`,
-                  borderRadius: 8,
-                  padding: "8px 12px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: 12,
-                }}
-              >
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "#60a5fa" }}>{m.device}</div>
-                  <div style={{ fontSize: 10, color: C.muted2 }}>{m.type} · {m.protocol}</div>
-                </div>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: m.battery < 25 ? C.red : C.green }}>
-                    🔋 {m.battery}%
-                  </div>
-                  <div style={{ fontSize: 9.5, color: C.muted2 }}>{m.lastSync}</div>
-                </div>
-              </div>
-
-              {/* Vitals Grid */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <div
-                  style={{
-                    background: "rgba(255, 255, 255, 0.02)",
-                    border: `1px solid ${m.hr > 150 ? "rgba(239, 68, 68, 0.4)" : C.border}`,
-                    borderRadius: 8,
-                    padding: "10px",
-                    textAlign: "center",
-                  }}
-                >
-                  <div style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>
-                    Heart Rate
-                  </div>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: m.hr > 150 ? C.red : m.hr > 120 ? C.amber : "#86efac" }}>
-                    ❤️ {m.hr} <span style={{ fontSize: 11, fontWeight: 500, color: C.muted }}>BPM</span>
-                  </div>
-                  <div style={{ fontSize: 10, color: m.hr > 150 ? "#fca5a5" : C.muted2, marginTop: 2 }}>
-                    {m.hr > 150 ? "Anaerobic Max" : m.hr > 120 ? "Cardio Exertion" : "Aerobic Steady"}
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    background: "rgba(255, 255, 255, 0.02)",
-                    border: `1px solid ${m.spo2 < 90 ? "rgba(239, 68, 68, 0.4)" : C.border}`,
-                    borderRadius: 8,
-                    padding: "10px",
-                    textAlign: "center",
-                  }}
-                >
-                  <div style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>
-                    Blood Oxygen
-                  </div>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: m.spo2 < 90 ? C.red : "#38bdf8" }}>
-                    🫁 {m.spo2}%
-                  </div>
-                  <div style={{ fontSize: 10, color: m.spo2 < 90 ? "#fca5a5" : C.muted2, marginTop: 2 }}>
-                    {m.spo2 < 90 ? "Hypoxia Risk Alert" : "Optimal Saturation"}
-                  </div>
-                </div>
-
-                <div style={{ background: "rgba(255, 255, 255, 0.02)", border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 10px" }}>
-                  <div style={{ fontSize: 10, color: C.muted2 }}>Elevation</div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>🏔️ {m.alt}m ASL</div>
-                </div>
-
-                <div style={{ background: "rgba(255, 255, 255, 0.02)", border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 10px" }}>
-                  <div style={{ fontSize: 10, color: C.muted2 }}>Trail Activity</div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>👟 {m.steps.toLocaleString()} steps</div>
-                </div>
-              </div>
-            </Card>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
-const PageBluetooth = PageWearablesRadar;
 
 /* ════════════════════════════════════════════════
    BACKWARD COMPATIBLE SOS ALIASES
@@ -6628,7 +6305,6 @@ const NAV = [
     items: [
       { id: "trip-rosters", label: "Expeditions & Rosters", icon: "🧭" },
       { id: "all-users", label: "All Registered Users", icon: "👥" },
-      { id: "feature-access", label: "Feature Access Control", icon: "🔐" },
       { id: "admin-approvals", label: "Admin Duty Clearances", icon: "🛡️" },
     ],
   },
@@ -6636,7 +6312,6 @@ const NAV = [
     section: "Field Telemetry & Radar",
     items: [
       { id: "live-tracking", label: "Live Navigation & Trail", icon: "📍" },
-      { id: "wearables-radar", label: "Wearables & Vitals Radar", icon: "⌚" },
       { id: "device-tracking", label: "Field Hardware & Beacons", icon: "📡" },
     ],
   },
@@ -7169,11 +6844,12 @@ export default function AdminPanel() {
       onReject={handleRejectAdmin}
       refreshing={refreshingPending}
       onRefresh={loadPendingAdmins}
-      pendingTrekkerCount={pendingTrekkers.length}
+      pendingTrekkers={pendingTrekkers}
+      onApproveTrekker={handleApproveTrekker}
+      onDenyTrekker={handleRemoveTrekker}
       onReviewTrekkers={() => setPage("trip-rosters")}
     />,
     "device-tracking": <PageDeviceTracking users={displayUsers} connectionState={connectionState} />,
-    "wearables-radar": <PageWearablesRadar users={displayUsers} />,
     "weather-console": <PageMountainWeather />,
     "live-tracking": <PageLiveTracking navigate={navigate} users={displayUsers} connectionState={connectionState} error={error} />,
     "safety-protocol": <PageTripRosters
@@ -7199,10 +6875,8 @@ export default function AdminPanel() {
     ),
 
     // Backward-compatible fallbacks
-    bluetooth: <PageWearablesRadar users={displayUsers} />,
     "weather-admin": <PageMountainWeather />,
     "weather-maps": <PageMountainWeather />,
-    "feature-access": <PageFeatureAccess users={displayUsers} />,
   };
 
   return (
@@ -7246,7 +6920,7 @@ export default function AdminPanel() {
                     <span style={{ fontSize: 12, color: active ? C.text : isSosNav ? "rgba(252,165,165,0.8)" : C.muted, fontWeight: active ? 500 : 400 }}>{item.label}</span>
                     {isSosNav && activeSOS > 0 && <div style={{ marginLeft: "auto", background: "rgba(239,68,68,0.2)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 10, padding: "1px 7px", fontSize: 9, color: C.red, fontWeight: 700 }}>LIVE</div>}
                     {isApprovals && pendingAdmins.length > 0 && <div style={{ marginLeft: "auto", background: "rgba(245,158,11,0.2)", border: "1px solid rgba(245,158,11,0.35)", borderRadius: 10, padding: "1px 7px", fontSize: 9, color: C.amber, fontWeight: 700 }}>{pendingAdmins.length} PENDING</div>}
-                    {item.id === "trip-rosters" && pendingTrekkers.length > 0 && <div style={{ marginLeft: "auto", background: "rgba(16,185,129,0.2)", border: "1px solid rgba(16,185,129,0.35)", borderRadius: 10, padding: "1px 7px", fontSize: 9, color: "#6ee7b7", fontWeight: 700 }}>{pendingTrekkers.length} PENDING</div>}
+                    {isApprovals && pendingTrekkers.length > 0 && <div style={{ marginLeft: "auto", background: "rgba(16,185,129,0.2)", border: "1px solid rgba(16,185,129,0.35)", borderRadius: 10, padding: "1px 7px", fontSize: 9, color: "#6ee7b7", fontWeight: 700 }}>{pendingTrekkers.length} PENDING</div>}
                   </div>
                 );
               })}
