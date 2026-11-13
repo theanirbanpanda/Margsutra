@@ -69,7 +69,17 @@ function toSafeProfile(id, data = {}) {
     avatar: data.avatar || "EU",
     color: Array.isArray(data.color) && data.color.length === 2 ? data.color : ["#E6F1FB", "#0C447C"],
     blood: data.blood || data.bloodGroup || "B+",
+    bloodGroup: data.bloodGroup || data.blood || "B+",
     medical: data.medical || "None",
+    allergies: data.allergies || "None",
+    medications: data.medications || "None",
+    insurancePolicy: data.insurancePolicy || "",
+    emergencyBeaconId: data.emergencyBeaconId || "",
+    age: data.age ?? "",
+    sex: data.sex || data.gender || "",
+    occupation: data.occupation || "",
+    experienceLevel: data.experienceLevel || data.trekkingCapability || "",
+    trekkingCapability: data.trekkingCapability || data.experienceLevel || "",
     lat: typeof data.lat === "number" ? data.lat : 18.5196,
     lon: typeof data.lon === "number" ? data.lon : 73.8554,
     accuracy: typeof data.accuracy === "number" ? data.accuracy : null,
@@ -118,7 +128,7 @@ async function findUserById(id) {
 async function createUser(userData) {
   const normalizedEmail = String(userData.email).trim().toLowerCase();
   const avatar = userData.name.trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join("").toUpperCase() || "EU";
-  const userDocRef = db.collection("users").doc();
+  const userDocRef = userData.id ? db.collection("users").doc(String(userData.id)) : db.collection("users").doc();
   const isAdmin = userData.role === "admin";
 
   const record = {
@@ -129,6 +139,11 @@ async function createUser(userData) {
     passwordHash: userData.passwordHash,
     phone: userData.phone || "",
     city: userData.city || "",
+    age: userData.age ?? "",
+    sex: userData.sex || "",
+    occupation: userData.occupation || "",
+    experienceLevel: userData.experienceLevel || userData.trekkingCapability || "",
+    trekkingCapability: userData.trekkingCapability || userData.experienceLevel || "",
     role: userData.role || "Explorer",
     status: userData.status || (isAdmin ? "pending_approval" : "active"),
     approved: userData.approved !== undefined ? userData.approved : (isAdmin ? false : true),
@@ -138,6 +153,10 @@ async function createUser(userData) {
     blood: userData.blood || "B+",
     bloodGroup: userData.blood || "B+",
     medical: userData.medical || "None",
+    allergies: userData.allergies || "None",
+    medications: userData.medications || "None",
+    insurancePolicy: userData.insurancePolicy || "",
+    emergencyBeaconId: userData.emergencyBeaconId || "",
     avatar,
     color: ["#E6F1FB", "#0C447C"],
     lat: 18.5196,
@@ -583,8 +602,17 @@ async function joinTrip(tripId, userId, userData = {}) {
     name: userData.name || existingUser.name || existingUser.displayName || "Trekker",
     email: userData.email || existingUser.email || "",
     phone: userData.phone || existingUser.phone || "",
+    age: userData.age ?? existingUser.age ?? "",
+    sex: userData.sex || existingUser.sex || "",
+    occupation: userData.occupation || existingUser.occupation || "",
+    experienceLevel: userData.experienceLevel || existingUser.experienceLevel || "",
+    trekkingCapability: userData.trekkingCapability || existingUser.trekkingCapability || userData.experienceLevel || existingUser.experienceLevel || "",
     blood: userData.blood || existingUser.blood || "B+",
     medical: userData.medical || existingUser.medical || "None",
+    allergies: userData.allergies || existingUser.allergies || "None",
+    medications: userData.medications || existingUser.medications || "None",
+    insurancePolicy: userData.insurancePolicy || existingUser.insurancePolicy || "",
+    emergencyBeaconId: userData.emergencyBeaconId || existingUser.emergencyBeaconId || "",
     ec1Name: userData.ec1Name || existingUser.ec1Name || "",
     ec1Rel: userData.ec1Rel || existingUser.ec1Rel || "Family",
     ec1Ph: userData.ec1Ph || existingUser.ec1Ph || "",
@@ -774,9 +802,36 @@ async function getUserActiveTrip(userId) {
 
   const rosterDoc = await tripRef.collection("roster").doc(userId).get();
   const rosterData = rosterDoc.exists ? rosterDoc.data() : {};
+  const tripData = tripDoc.data();
+  let adminInCharge = null;
+  if (tripData.adminInCharge) {
+    const adminDoc = await db.collection("users").doc(String(tripData.adminInCharge)).get();
+    if (adminDoc.exists) {
+      const admin = adminDoc.data();
+      adminInCharge = {
+        id: adminDoc.id,
+        name: admin.name || admin.displayName || "Expedition Guide",
+        email: admin.email || "",
+        phone: admin.phone || "",
+        occupation: admin.occupation || "",
+        organization: admin.organization || "",
+        roleTitle: admin.roleTitle || "Expedition Guide",
+      };
+    }
+  }
 
   return {
-    trip: { id: tripDoc.id, ...tripDoc.data() },
+    trip: {
+      id: tripDoc.id,
+      ...tripData,
+      ...(adminInCharge ? {
+        adminInChargeName: adminInCharge.name,
+        adminInChargePhone: adminInCharge.phone,
+        adminInChargeOrganization: adminInCharge.organization,
+        adminInChargeRoleTitle: adminInCharge.roleTitle,
+        adminInChargeProfile: adminInCharge,
+      } : {}),
+    },
     status: rosterData.status || userData.tripStatus || "pending_approval",
     requestedAt: rosterData.requestedAt || userData.tripRequestedAt || null,
     approvedAt: rosterData.approvedAt || userData.tripApprovedAt || null,
@@ -1018,8 +1073,24 @@ const DEMO_ACCOUNTS = [
     name: "Demo Admin",
     role: "admin",
     phone: "+91 98765 00000",
+    age: 36,
+    sex: "Female",
+    city: "Pune, Maharashtra",
+    occupation: "Mountain operations coordinator",
+    experienceLevel: "Advanced · 8 years",
+    trekkingCapability: "Advanced · 8 years",
     blood: "O+",
     medical: "None",
+    allergies: "None",
+    medications: "None",
+    insurancePolicy: "Margsutra Demo Duty Cover · MDC-26017",
+    emergencyBeaconId: "MS-ADM-017",
+    ec1Name: "Arjun Sharma",
+    ec1Rel: "Spouse",
+    ec1Ph: "+91 98200 00117",
+    ec2Name: "Kavita Sharma",
+    ec2Rel: "Sister",
+    ec2Ph: "+91 98200 00118",
     organization: "Margsutra Expedition Command & SAR",
     roleTitle: "Lead Command Dispatcher",
   },
@@ -1030,11 +1101,24 @@ const DEMO_ACCOUNTS = [
     name: "Demo User",
     role: "user",
     phone: "+91 90000 12345",
+    age: 29,
+    sex: "Male",
+    city: "Mulshi, Maharashtra",
+    occupation: "Product designer",
+    experienceLevel: "Intermediate Trekker (Western Ghats / Sahyadri)",
+    trekkingCapability: "Intermediate Trekker (Western Ghats / Sahyadri)",
     blood: "B+",
     medical: "None",
-    ec1Name: "Demo Emergency Contact",
-    ec1Rel: "Family",
-    ec1Ph: "+91 90000 12346",
+    allergies: "None",
+    medications: "None",
+    insurancePolicy: "Demo Trek Cover · DTC-26020",
+    emergencyBeaconId: "MS-DU-020",
+    ec1Name: "Meera Rao",
+    ec1Rel: "Sister",
+    ec1Ph: "+91 99887 76655",
+    ec2Name: "Sunil Rao",
+    ec2Rel: "Father",
+    ec2Ph: "+91 98001 23456",
   },
 ];
 
@@ -1064,8 +1148,7 @@ async function seedEmulatorData() {
   for (const u of DEMO_ACCOUNTS) {
     const ref = db.collection("users").doc(u.id);
     const snap = await ref.get();
-    if (snap.exists) continue;
-    await ref.set({
+    const defaults = {
       id: u.id,
       uid: u.id,
       email: u.email,
@@ -1077,17 +1160,40 @@ async function seedEmulatorData() {
       approved: true,
       passwordHash: await bcrypt.hash(u.password, 10),
       phone: u.phone || "",
+      age: u.age ?? "",
+      sex: u.sex || "",
+      city: u.city || "",
+      occupation: u.occupation || "",
+      experienceLevel: u.experienceLevel || "",
+      trekkingCapability: u.trekkingCapability || u.experienceLevel || "",
       blood: u.blood || "B+",
+      bloodGroup: u.blood || "B+",
       medical: u.medical || "None",
+      allergies: u.allergies || "None",
+      medications: u.medications || "None",
+      insurancePolicy: u.insurancePolicy || "",
+      emergencyBeaconId: u.emergencyBeaconId || "",
       ec1Name: u.ec1Name || "",
       ec1Rel: u.ec1Rel || "",
       ec1Ph: u.ec1Ph || "",
+      ec2Name: u.ec2Name || "",
+      ec2Rel: u.ec2Rel || "",
+      ec2Ph: u.ec2Ph || "",
       organization: u.organization || "",
       roleTitle: u.roleTitle || "",
       features: {},
-      createdAt: now,
       updatedAt: now,
-    }, { merge: true });
+    };
+    if (snap.exists) {
+      const current = snap.data() || {};
+      const missing = Object.fromEntries(Object.entries(defaults).filter(([key, value]) =>
+        !["id", "uid", "email", "emailLower", "name", "displayName", "role", "status", "approved", "passwordHash", "features", "updatedAt"].includes(key) &&
+        (current[key] === undefined || current[key] === null || current[key] === "") && value !== ""
+      ));
+      if (Object.keys(missing).length) await ref.set({ ...missing, updatedAt: now }, { merge: true });
+      continue;
+    }
+    await ref.set({ ...defaults, createdAt: now }, { merge: true });
     console.log(`👤 Demo account ready: ${u.email} / ${u.password}`);
   }
 

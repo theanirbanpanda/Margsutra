@@ -23,7 +23,7 @@ import {
   triggerSOSEvent,
   cancelSOSEvent,
 } from "./services/firebase";
-import { DEMO_EXPEDITION_GUIDE, DEMO_EXPEDITION_MEMBERS, DEMO_USER_PROFILE } from "../../shared/demoExpeditionRoster";
+import { DEMO_EXPEDITION_GUIDE, DEMO_EXPEDITION_MEMBERS, DEMO_USER_PROFILE, withDemoProfileDefaults } from "../../shared/demoExpeditionRoster";
 
 
 /* ════════════════════════════════════════════════
@@ -108,13 +108,9 @@ const C = {
    Remove or gate behind an env flag before any real deployment.
 ════════════════════════════════════════════════════════════════════════ */
 const CURRENT_USER = {
-  id:"demo-user", name:"Demo User", email:"demouser@gmail.com",
-  role:"Trekker", status:"active", avatar:"DU",
-  color:["#E6F1FB","#0C447C"], blood:"B+", medical:"None",
-  lat:18.5196, lon:73.8554, city:"Mulshi, Maharashtra",
-  phone:"+91 98765 43210", joined:"Jan 2025", trips:12, devices:3,
-  ec1Name:"Meera Rao", ec1Rel:"Sister", ec1Ph:"+91 99887 76655",
-  ec2Name:"Sunil Rao", ec2Rel:"Father", ec2Ph:"+91 98001 23456",
+  ...DEMO_USER_PROFILE,
+  role: "Trekker", avatar: "DU", color: ["#E6F1FB", "#0C447C"],
+  lat: 18.5196, lon: 73.8554, joined: "Jan 2025", trips: 3, devices: 1,
 };
 
 const DEFAULT_LOGIN = {
@@ -1693,6 +1689,7 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
     return members;
   })();
   const isDemoDashboard = String(user?.email || "").toLowerCase() === "demouser@gmail.com" || user?.id === "demo-user" || user?.id === "demo-user-001";
+  const guideProfile = joinedTrip?.adminInChargeProfile || (isDemoDashboard ? DEMO_EXPEDITION_GUIDE : {});
 
   const handleSOSTrigger = () => {
     onSOS(true);
@@ -2089,8 +2086,8 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
         </div>
         <div style={{ padding: "12px 18px 18px" }}>
           <div style={{ padding: 12, marginBottom: 11, borderRadius: 12, border: `1px solid ${C.border}`, background: "rgba(59,130,246,.06)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <div><div style={{ color: C.muted2, fontSize: 9.5, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", marginBottom: 4 }}>Expedition guide</div><strong style={{ color: C.text, fontSize: 13 }}>{joinedTrip.adminInChargeName || joinedTrip.leader || (isDemoDashboard ? DEMO_EXPEDITION_GUIDE.name : "Expedition guide")}</strong>{isDemoDashboard && <span style={{ color: C.muted, fontSize: 11 }}> · {DEMO_EXPEDITION_GUIDE.occupation}</span>}</div>
-            {isDemoDashboard && <a href={`tel:${DEMO_EXPEDITION_GUIDE.phone}`} style={{ color: C.accent, textDecoration: "none", fontSize: 11.5, fontWeight: 700 }}>☎ {DEMO_EXPEDITION_GUIDE.phone}</a>}
+            <div><div style={{ color: C.muted2, fontSize: 9.5, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", marginBottom: 4 }}>Expedition guide</div><strong style={{ color: C.text, fontSize: 13 }}>{guideProfile.name || joinedTrip.adminInChargeName || joinedTrip.leader || "Expedition guide"}</strong>{(guideProfile.occupation || guideProfile.roleTitle || joinedTrip.adminInChargeRoleTitle) && <span style={{ color: C.muted, fontSize: 11 }}> · {guideProfile.occupation || guideProfile.roleTitle || joinedTrip.adminInChargeRoleTitle}</span>}</div>
+            {(guideProfile.phone || joinedTrip.adminInChargePhone) && <a href={`tel:${guideProfile.phone || joinedTrip.adminInChargePhone}`} style={{ color: C.accent, textDecoration: "none", fontSize: 11.5, fontWeight: 700 }}>☎ {guideProfile.phone || joinedTrip.adminInChargePhone}</a>}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 270px), 1fr))", gap: 9 }}>
           {dashboardTeam.map((member) => {
@@ -3812,25 +3809,29 @@ const PageProfile = ({ user, onUpdateUser, joinedTrip, onNavigate }) => {
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState("");
-
-  const [form, setForm] = useState({
-    name: user?.name || "",
-    phone: user?.phone || "",
-    city: user?.city || "",
-    experienceLevel: user?.experienceLevel || "Intermediate Trekker (Western Ghats / Sahyadri)",
-    blood: user?.blood || "B+",
-    medical: user?.medical || "None",
-    allergies: user?.allergies || "None",
-    medications: user?.medications || "None",
-    insurancePolicy: user?.insurancePolicy || "",
-    emergencyBeaconId: user?.emergencyBeaconId || "",
-    ec1Name: user?.ec1Name || "",
-    ec1Rel: user?.ec1Rel || "Family",
-    ec1Ph: user?.ec1Ph || "",
-    ec2Name: user?.ec2Name || "",
-    ec2Rel: user?.ec2Rel || "Family",
-    ec2Ph: user?.ec2Ph || "",
+  const demoProfile = String(user?.email || "").toLowerCase() === "demouser@gmail.com" || user?.id === "demo-user" ? DEMO_USER_PROFILE : {};
+  const getProfileForm = () => ({
+    name: user?.name || demoProfile.name || "",
+    age: user?.age ?? demoProfile.age ?? "",
+    sex: user?.sex || demoProfile.sex || "",
+    occupation: user?.occupation || demoProfile.occupation || "",
+    phone: user?.phone || demoProfile.phone || "",
+    city: user?.city || demoProfile.city || "",
+    experienceLevel: user?.experienceLevel || demoProfile.experienceLevel || "Intermediate Trekker (Western Ghats / Sahyadri)",
+    blood: user?.blood || user?.bloodGroup || demoProfile.blood || "B+",
+    medical: user?.medical || demoProfile.medical || "None",
+    allergies: user?.allergies || demoProfile.allergies || "None",
+    medications: user?.medications || demoProfile.medications || "None",
+    insurancePolicy: user?.insurancePolicy || demoProfile.insurancePolicy || "",
+    emergencyBeaconId: user?.emergencyBeaconId || demoProfile.emergencyBeaconId || "",
+    ec1Name: user?.ec1Name || demoProfile.ec1Name || "",
+    ec1Rel: user?.ec1Rel || demoProfile.ec1Rel || "Family",
+    ec1Ph: user?.ec1Ph || demoProfile.ec1Ph || "",
+    ec2Name: user?.ec2Name || demoProfile.ec2Name || "",
+    ec2Rel: user?.ec2Rel || demoProfile.ec2Rel || "Family",
+    ec2Ph: user?.ec2Ph || demoProfile.ec2Ph || "",
   });
+  const [form, setForm] = useState(getProfileForm);
 
   // Calculate duty-of-care readiness score
   const checks = [
@@ -3868,27 +3869,29 @@ const PageProfile = ({ user, onUpdateUser, joinedTrip, onNavigate }) => {
     }
 
     setSaving(true);
-    const updatedProfile = {
+    let updatedProfile = {
       ...user,
       ...form,
       updatedAt: new Date().toISOString(),
     };
 
     try {
-      // 1. Direct Firestore update
-      await updateUserProfileInFirestore(user.id, form);
-
-      // 2. Backend update if token available
       const token = localStorage.getItem(USER_TOKEN_KEY) || localStorage.getItem(LEGACY_USER_TOKEN_KEY);
       if (token && user?.id) {
-        await fetch(`${AUTH_API_URL}/users/${user.id}`, {
+        const response = await fetch(`${AUTH_API_URL}/users/${encodeURIComponent(user.id)}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${token}`
           },
           body: JSON.stringify(form)
-        }).catch(() => {});
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || `Profile save failed (${response.status}).`);
+        updatedProfile = { ...updatedProfile, ...(payload.user || {}) };
+      } else {
+        const stored = await updateUserProfileInFirestore(user.id, form);
+        if (!stored) throw new Error("Profile storage is unavailable. Please sign in again and retry.");
       }
 
       // 3. Update localStorage and parent state
@@ -3897,31 +3900,14 @@ const PageProfile = ({ user, onUpdateUser, joinedTrip, onNavigate }) => {
       setSaveSuccess(true);
       setEditing(false);
     } catch (err) {
-      setSaveError("Failed to save profile changes. Please try again.");
+      setSaveError(err?.message || "Failed to save profile changes. Please try again.");
     } finally {
       setSaving(false);
     }
   };
 
   const resetForm = () => {
-    setForm({
-      name: user?.name || "",
-      phone: user?.phone || "",
-      city: user?.city || "",
-      experienceLevel: user?.experienceLevel || "Intermediate Trekker (Western Ghats / Sahyadri)",
-      blood: user?.blood || "B+",
-      medical: user?.medical || "None",
-      allergies: user?.allergies || "None",
-      medications: user?.medications || "None",
-      insurancePolicy: user?.insurancePolicy || "",
-      emergencyBeaconId: user?.emergencyBeaconId || "",
-      ec1Name: user?.ec1Name || "",
-      ec1Rel: user?.ec1Rel || "Family",
-      ec1Ph: user?.ec1Ph || "",
-      ec2Name: user?.ec2Name || "",
-      ec2Rel: user?.ec2Rel || "Family",
-      ec2Ph: user?.ec2Ph || "",
-    });
+    setForm(getProfileForm());
     setEditing(false);
     setSaveError("");
   };
@@ -4013,6 +3999,8 @@ const PageProfile = ({ user, onUpdateUser, joinedTrip, onNavigate }) => {
                 <span>✉️ {user?.email}</span>
                 <span>📞 {form.phone || "No phone linked"}</span>
                 <span>📍 {form.city || "Western Ghats"}</span>
+                <span>{form.age ? `🎂 ${form.age}` : ""}{form.sex ? ` · ${form.sex}` : ""}</span>
+                <span>💼 {form.occupation || "Occupation not set"}</span>
                 <span>🥾 {form.experienceLevel}</span>
               </div>
             </div>
@@ -4117,6 +4105,18 @@ const PageProfile = ({ user, onUpdateUser, joinedTrip, onNavigate }) => {
               ) : (
                 <div style={{ fontSize: 13.5, color: C.text }}>{form.city || "Western Ghats"}</div>
               )}
+            </FieldRow>
+
+            <FieldRow label="AGE">
+              {editing ? <Input value={form.age} onChange={(e) => handleChange("age", e.target.value.replace(/[^0-9]/g, ""))} placeholder="Age in years" /> : <div style={{ fontSize: 13.5, color: C.text }}>{form.age || "Not provided"}</div>}
+            </FieldRow>
+
+            <FieldRow label="SEX">
+              {editing ? <Select value={form.sex} onChange={(e) => handleChange("sex", e.target.value)}><option value="">Select</option>{["Female", "Male", "Non-binary", "Prefer not to say"].map((value) => <option key={value} value={value} style={{ background: "#0b1422", color: "#fff" }}>{value}</option>)}</Select> : <div style={{ fontSize: 13.5, color: C.text }}>{form.sex || "Not provided"}</div>}
+            </FieldRow>
+
+            <FieldRow label="OCCUPATION">
+              {editing ? <Input value={form.occupation} onChange={(e) => handleChange("occupation", e.target.value)} placeholder="Occupation" /> : <div style={{ fontSize: 13.5, color: C.text }}>{form.occupation || "Not provided"}</div>}
             </FieldRow>
 
             <FieldRow label="TREKKING EXPERIENCE LEVEL">
@@ -4397,6 +4397,10 @@ const PageProfile = ({ user, onUpdateUser, joinedTrip, onNavigate }) => {
                 </div>
               )}
             </FieldRow>
+
+            <FieldRow label="EMERGENCY BEACON / DEVICE ID">
+              {editing ? <Input value={form.emergencyBeaconId} onChange={(e) => handleChange("emergencyBeaconId", e.target.value)} placeholder="Optional registered beacon ID" /> : <div style={{ fontSize: 13, color: form.emergencyBeaconId ? C.text : C.muted }}>{form.emergencyBeaconId || "Not linked"}</div>}
+            </FieldRow>
           </Card>
         </div>
       </div>
@@ -4444,7 +4448,9 @@ export default function UserDashboard() {
       if (!savedProfile) return null;
       const p = JSON.parse(savedProfile);
       if (p.id === "U001") return null; // clears stale mock
-      return p;
+      return String(p.email || "").toLowerCase() === "demouser@gmail.com" || p.id === "demo-user"
+        ? withDemoProfileDefaults(p, DEMO_USER_PROFILE)
+        : p;
     } catch {
       return null;
     }
@@ -4457,9 +4463,12 @@ export default function UserDashboard() {
 
   const handleLogin = (profile) => {
     const lastLoginAt = new Date().toISOString();
-    setUser(profile);
-    localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(profile));
-    localStorage.setItem(USER_SESSION_KEY, JSON.stringify({ userId: profile.id, email: profile.email, lastLoginAt }));
+    const completeProfile = String(profile?.email || "").toLowerCase() === "demouser@gmail.com" || profile?.id === "demo-user"
+      ? withDemoProfileDefaults(profile, DEMO_USER_PROFILE)
+      : profile;
+    setUser(completeProfile);
+    localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(completeProfile));
+    localStorage.setItem(USER_SESSION_KEY, JSON.stringify({ userId: completeProfile.id, email: completeProfile.email, lastLoginAt }));
     const savedTrip = localStorage.getItem("margsutra_joined_trip");
     setPage(savedTrip ? "dashboard" : "join-trip");
   };

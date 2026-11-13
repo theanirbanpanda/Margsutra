@@ -32,6 +32,7 @@ import {
   updateUserFeatureAccess,
   setAdminToken,
   authHeaders,
+  updateAdminProfile,
 } from "./services/firebase";
 import {
   calculateDistanceMeters,
@@ -40,7 +41,7 @@ import {
   RAJMACHI_MEMBERS,
 } from "./services/expeditionTeam";
 import { getDemoTrackingData, toFreshPosition } from "./services/trackingDemoData";
-import { DEMO_EXPEDITION_MEMBERS } from "../../shared/demoExpeditionRoster";
+import { DEMO_EXPEDITION_GUIDE, DEMO_EXPEDITION_MEMBERS, getDemoMemberProfile, withDemoProfileDefaults } from "../../shared/demoExpeditionRoster";
 
 /* ════════════════════════════════════════════════
    PAGE ERROR BOUNDARY
@@ -3607,226 +3608,215 @@ const PageTripRosters = ({
 /* ════════════════════════════════════════════════
    PAGE: DASHBOARD
 ════════════════════════════════════════════════ */
-const PageDashboard = ({ navigate, users = USERS, pendingAdmins = [], pendingTrekkers = [], assignedTrip }) => {
-  const active = users.filter(u => u.status === "active").length;
-  const sos = users.filter(u => u.status === "sos").length;
-  const [trips, setTrips] = useState(TRIPS);
-  const [tripsAreLive, setTripsAreLive] = useState(false);
-  const [showNewTrip, setShowNewTrip] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newDate, setNewDate] = useState("");
-  const [creatingTrip, setCreatingTrip] = useState(false);
+const PageDashboard = ({ navigate, users = USERS, assignedTrip, admin }) => {
+  const [roster, setRoster] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [rosterError, setRosterError] = useState("");
+  const [query, setQuery] = useState("");
+  const [selectedMember, setSelectedMember] = useState(null);
+  const [removeTarget, setRemoveTarget] = useState(null);
+  const [removing, setRemoving] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const [locallyRemovedDemo, setLocallyRemovedDemo] = useState([]);
+  const isDemo = String(admin?.email || "").toLowerCase() === DEMO_ADMIN_EMAIL;
+  const tripId = assignedTrip?.id || assignedTrip?.tripId;
 
-  useEffect(() => {
-    const unsubscribe = subscribeToTrips((liveTrips) => {
-      if (liveTrips === null) { setTripsAreLive(false); return; } // read failed, keep demo data
-      setTripsAreLive(true);
-      setTrips(liveTrips.length > 0 ? liveTrips : TRIPS);
-    });
-    return () => unsubscribe && unsubscribe();
-  }, []);
+  const loadRoster = useCallback(async () => {
+    if (!tripId) { setRoster([]); setLoading(false); return; }
+    setLoading(true);
+    setRosterError("");
+    try {
+      const members = await fetchTripRoster(tripId);
+      const approved = (Array.isArray(members) ? members : []).filter((member) => member.status === "approved");
+      setRoster(approved);
+    } catch (error) {
+      setRosterError(error?.message || "Could not load this expedition roster.");
+      setRoster([]);
+    } finally { setLoading(false); }
+  }, [tripId]);
 
-  const createTrip = async () => {
-    if (!newName.trim() || creatingTrip) return;
-    setCreatingTrip(true);
-    const result = await createTripRemote(newName.trim(), newDate.trim() || "Date TBD");
-    if (!result.success) {
-      // Firestore write failed — fall back to local-only so the demo still works
-      setTrips(t => [{
-        id: `TRIP${Date.now()}`, name: newName.trim(),
-        date: newDate.trim() || "Date TBD", roster: 1, status: "active", code: genTripCode()
-      }, ...t]);
+  useEffect(() => { loadRoster(); }, [loadRoster]);
+
+  const displayedRoster = useMemo(() => {
+    let list = roster;
+    // Demo trips remain populated for walkthroughs even when the local emulator
+    // has no roster documents. Never use this fallback for real admin accounts.
+    if (isDemo && list.length === 0 && assignedTrip) {
+      list = DEMO_EXPEDITION_MEMBERS.map((member) => ({ ...member, userId: member.id }));
     }
-    setCreatingTrip(false);
-    setNewName(""); setNewDate(""); setShowNewTrip(false);
+    return list.map((member, index) => {
+      const profile = users.find((user) => String(user.id || user.userId) === String(member.userId || member.id) || (member.email && String(user.email || "").toLowerCase() === String(member.email).toLowerCase()));
+      const merged = { ...profile, ...member, name: member.name || member.displayName || profile?.name || profile?.displayName || "Trekker", phone: member.phone || member.mobile || profile?.phone || profile?.mobile || "", blood: member.blood || member.bloodGroup || profile?.blood || profile?.bloodGroup || "", email: member.email || profile?.email || "" };
+      return isDemo ? getDemoMemberProfile(merged, index) : merged;
+    }).filter((member) => !locallyRemovedDemo.includes(member.userId || member.id) && `${member.name} ${member.email} ${member.phone}`.toLowerCase().includes(query.trim().toLowerCase()));
+  }, [roster, isDemo, assignedTrip, users, query, locallyRemovedDemo]);
+
+  const approvedCount = roster.filter((member) => member.status === "approved").length || (isDemo && assignedTrip ? DEMO_EXPEDITION_MEMBERS.length - locallyRemovedDemo.length : 0);
+  const teamWithContacts = roster.length ? roster.filter((member) => member.phone || member.mobile).length : (isDemo && assignedTrip ? DEMO_EXPEDITION_MEMBERS.filter((member) => !locallyRemovedDemo.includes(member.id) && member.phone).length : 0);
+  const capacity = Number(assignedTrip?.maxRoster) || null;
+  const removeMember = async () => {
+    if (!removeTarget || !tripId) return;
+    setRemoving(true);
+    try {
+      if (isDemo && roster.length === 0) {
+        setLocallyRemovedDemo((previous) => [...previous, removeTarget.userId || removeTarget.id]);
+        setRemoveTarget(null);
+        setSelectedMember(null);
+        setNotice({ kind: "success", text: `${removeTarget.name} removed from this demo roster.` });
+        setRemoving(false);
+        return;
+      }
+      const result = await removeTrekker(tripId, removeTarget.userId || removeTarget.id, admin?.id || admin?.email || DEMO_ADMIN_EMAIL);
+      if (result?.success === false) throw new Error(result.error || "Could not remove trekker.");
+      setRemoveTarget(null);
+      setSelectedMember(null);
+      setNotice({ kind: "success", text: `${removeTarget.name} removed from ${assignedTrip.name}.` });
+      await loadRoster();
+    } catch (error) {
+      setNotice({ kind: "error", text: error?.message || "Could not remove trekker." });
+    } finally { setRemoving(false); }
   };
-  return (
-    <div>
-      <PageHeader title="Operations Dashboard" sub="Live visibility for every trip, even where signal can't reach"
-        right={<div style={{ display: "flex", gap: 8 }}>{sos > 0 && <Pill color="red">🚨 {sos} SOS Active</Pill>}<Pill color="green">● Live</Pill></div>} />
 
-      {pendingAdmins && pendingAdmins.length > 0 && (
-        <div
-          onClick={() => navigate("admin-approvals")}
-          style={{
-            marginBottom: 16,
-            padding: "12px 18px",
-            borderRadius: 14,
-            background: "linear-gradient(90deg, rgba(245, 158, 11, 0.16), rgba(59, 130, 246, 0.12))",
-            border: "1px solid rgba(245, 158, 11, 0.35)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            cursor: "pointer",
-            boxShadow: "0 4px 16px rgba(245, 158, 11, 0.12)",
-            transition: "all 0.2s ease",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ fontSize: 20 }}>🛡️</span>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#fbbf24" }}>
-                {pendingAdmins.length} Administrator Access Request{pendingAdmins.length > 1 ? "s" : ""} Pending Authorization
-              </div>
-              <div style={{ fontSize: 11, color: "rgba(180, 210, 245, 0.7)" }}>
-                New expedition personnel have applied for administrative console clearance.
-              </div>
-            </div>
+  const metric = (label, value, detail, color) => <div style={{ padding: "15px 16px", borderRadius: 13, border: `1px solid ${C.border}`, background: C.card, minWidth: 0 }}><div style={{ color: C.muted, fontSize: 10, fontWeight: 750, letterSpacing: ".08em", textTransform: "uppercase" }}>{label}</div><div style={{ color, fontSize: 24, fontWeight: 800, marginTop: 5 }}>{value}</div><div style={{ color: C.muted2, fontSize: 10.5, marginTop: 3 }}>{detail}</div></div>;
+  const field = (label, value) => <div><div style={{ color: C.muted2, fontSize: 9, fontWeight: 750, textTransform: "uppercase", letterSpacing: ".07em" }}>{label}</div><div style={{ color: C.text, fontSize: 11.5, marginTop: 3, overflowWrap: "anywhere" }}>{value || "Not provided"}</div></div>;
+
+  return <div style={{ display: "grid", gap: 14 }}>
+    <PageHeader title="Operations Dashboard" sub="Manage the approved team for your in-charge expedition" right={<button onClick={() => navigate("trip-rosters")} style={{ border: `1px solid ${C.border2}`, borderRadius: 9, padding: "8px 12px", background: "rgba(59,130,246,.08)", color: C.accent, fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Expeditions & Rosters →</button>} />
+
+    {!assignedTrip ? <Card style={{ padding: 24, textAlign: "center" }}><div style={{ fontSize: 28, marginBottom: 8 }}>🧭</div><div style={{ color: C.text, fontSize: 15, fontWeight: 750 }}>No expedition assigned to you</div><div style={{ color: C.muted, fontSize: 12, margin: "7px auto 14px", maxWidth: 420 }}>Once you are set as in-charge from Expeditions & Rosters, the trip and its approved team will appear here.</div><Btn variant="primary" onClick={() => navigate("trip-rosters")}>Open Expeditions & Rosters</Btn></Card> : <>
+      <Card style={{ padding: 0, overflow: "hidden" }}>
+        <div style={{ padding: "18px 20px", background: "linear-gradient(110deg, rgba(59,130,246,.12), rgba(20,184,166,.06))", borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ minWidth: 0 }}><div style={{ color: C.accent, fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", marginBottom: 6 }}>Current in-charge expedition</div><h2 style={{ color: C.text, fontSize: 19, lineHeight: 1.3, margin: 0 }}>{assignedTrip.name}</h2><div style={{ color: C.muted, fontSize: 11.5, marginTop: 6 }}>{[assignedTrip.code, assignedTrip.location, assignedTrip.startDate || assignedTrip.date].filter(Boolean).join(" · ")}</div></div>
+            <Pill color={assignedTrip.status === "in-field" || assignedTrip.isManaged ? "green" : "blue"}>{assignedTrip.status === "in-field" || assignedTrip.isManaged ? "IN FIELD" : String(assignedTrip.status || "ASSIGNED").toUpperCase()}</Pill>
           </div>
-          <div
-            style={{
-              padding: "6px 14px",
-              borderRadius: 8,
-              background: "rgba(245, 158, 11, 0.22)",
-              border: "1px solid rgba(245, 158, 11, 0.4)",
-              color: "#fef3c7",
-              fontSize: 12,
-              fontWeight: 600,
-            }}
-          >
-            Review & Authorize ›
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 18px", marginTop: 15, color: C.muted, fontSize: 11 }}>
+            {assignedTrip.difficulty && <span>⛰ {assignedTrip.difficulty}</span>}{assignedTrip.duration && <span>◷ {assignedTrip.duration}</span>}{assignedTrip.pickupLocation && <span>⌖ Pickup: {assignedTrip.pickupLocation}</span>}{assignedTrip.vhfChannel && <span>▣ Radio: {assignedTrip.vhfChannel}</span>}
           </div>
         </div>
-      )}
-
-      {pendingTrekkers && pendingTrekkers.length > 0 && (
-        <div
-          onClick={() => navigate("admin-approvals")}
-          style={{
-            marginBottom: 16,
-            padding: "12px 18px",
-            borderRadius: 14,
-            background: "linear-gradient(90deg, rgba(16, 185, 129, 0.16), rgba(59, 130, 246, 0.12))",
-            border: "1px solid rgba(16, 185, 129, 0.35)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            cursor: "pointer",
-            boxShadow: "0 4px 16px rgba(16, 185, 129, 0.12)",
-            transition: "all 0.2s ease",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ fontSize: 20 }}>🧭</span>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#6ee7b7" }}>
-                {pendingTrekkers.length} Trekker Application{pendingTrekkers.length > 1 ? "s" : ""} Awaiting Expedition Approval
-              </div>
-              <div style={{ fontSize: 11, color: "rgba(180, 210, 245, 0.7)" }}>
-                Trekkers have applied to join active expeditions. Review safety info and authorize their enrollment.
-              </div>
-            </div>
-          </div>
-          <div
-            style={{
-              padding: "6px 14px",
-              borderRadius: 8,
-              background: "rgba(16, 185, 129, 0.22)",
-              border: "1px solid rgba(16, 185, 129, 0.4)",
-              color: "#ecfdf5",
-              fontSize: 12,
-              fontWeight: 600,
-            }}
-          >
-            Review &amp; Approve ›
-          </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10, padding: 14 }}>
+          {metric("Approved team", approvedCount, "Cleared for this expedition", C.accent)}
+          {metric("Roster capacity", capacity ? `${approvedCount} / ${capacity}` : approvedCount, capacity ? `${Math.max(0, capacity - approvedCount)} places remaining` : "Capacity not set", C.teal)}
+          {metric("Trip difficulty", assignedTrip.difficulty || "Not set", assignedTrip.duration || "Duration not set", C.amber)}
+          {metric("Team contacts", teamWithContacts, "Members with phone on file", C.green)}
         </div>
-      )}
+      </Card>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 16 }}>
-        <StatCard label="Registered Trekkers" value={users.length} sub="Duty-of-care profiles" color={C.accent} icon="👥" />
-        <StatCard label="In-Field Active" value={active} sub="Live telemetry streaming" color={C.green} icon="📍" />
-        <StatCard label="Active SOS Alerts" value={sos} sub={sos > 0 ? "Requires SAR dispatch" : "All sectors clear"} color={sos > 0 ? C.red : C.teal} icon="🚨" />
-        <StatCard label="Active Expeditions" value={trips.length} sub="Managed batches" color={C.purple} icon="🧭" />
+      <Card style={{ padding: 0, overflow: "hidden" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "15px 18px", borderBottom: `1px solid ${C.border}` }}>
+          <div><div style={{ color: C.text, fontSize: 14, fontWeight: 800 }}>Approved expedition team</div><div style={{ color: C.muted, fontSize: 11, marginTop: 3 }}>Review member profiles and manage this trip’s roster. Enrollment approvals are handled in Admin Duty Clearances.</div></div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find a team member…" style={{ width: 190, maxWidth: "42vw", background: "rgba(255,255,255,.04)", border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, padding: "8px 10px", fontSize: 11, outline: "none" }} /><button onClick={loadRoster} disabled={loading} style={{ padding: "8px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.muted, cursor: "pointer", fontSize: 11 }}>{loading ? "Loading…" : "↻ Refresh"}</button></div>
+        </div>
+        {notice && <div style={{ margin: "12px 16px 0", padding: "9px 11px", borderRadius: 8, background: notice.kind === "error" ? "rgba(239,68,68,.1)" : "rgba(34,197,94,.08)", color: notice.kind === "error" ? "#fca5a5" : "#86efac", fontSize: 11 }} onClick={() => setNotice(null)}>{notice.text}<span style={{ float: "right", cursor: "pointer" }}>×</span></div>}
+        {rosterError && <div style={{ padding: 16, color: "#fca5a5", fontSize: 11 }}>{rosterError} <button onClick={loadRoster} style={{ color: C.accent, background: "none", border: 0, cursor: "pointer" }}>Try again</button></div>}
+        {loading && roster.length === 0 && !isDemo && <div style={{ padding: 24, textAlign: "center", color: C.muted, fontSize: 12 }}>Loading the approved expedition roster…</div>}
+        {!loading && displayedRoster.length === 0 && <div style={{ padding: 26, textAlign: "center" }}><div style={{ color: C.text, fontSize: 13, fontWeight: 700 }}>No approved team members yet</div><div style={{ color: C.muted, fontSize: 11, marginTop: 5 }}>New enrollment requests are reviewed on Admin Duty Clearances.</div><button onClick={() => navigate("admin-approvals")} style={{ marginTop: 10, background: "none", border: 0, color: C.accent, cursor: "pointer", fontWeight: 700, fontSize: 11 }}>Open Duty Clearances →</button></div>}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,300px),1fr))", gap: 10, padding: 14 }}>
+          {displayedRoster.map((member) => <article key={member.userId || member.id || member.email} style={{ minWidth: 0, padding: 13, borderRadius: 11, border: `1px solid ${C.border}`, background: "rgba(255,255,255,.018)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}><div style={{ minWidth: 0 }}><div style={{ color: C.text, fontSize: 13, fontWeight: 750, overflowWrap: "anywhere" }}>{member.name}</div><div style={{ color: C.muted2, fontSize: 10, marginTop: 3 }}>{member.occupation || member.roleTitle || "Expedition member"}</div></div><Pill color="green">APPROVED</Pill></div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "9px 12px", marginTop: 12 }}>
+              {field("Sex", member.sex || member.gender)}{field("Blood group", member.blood || member.bloodGroup)}{field("Trekking capability", member.trekkingCapability || member.experienceLevel || member.trekExperience || member.experience)}{field("Contact", member.phone ? <a href={`tel:${member.phone}`} style={{ color: C.accent, textDecoration: "none" }}>{member.phone}</a> : "Not provided")}
+            </div>
+            {member.medical && member.medical !== "None" && <div style={{ marginTop: 10, padding: "7px 9px", borderRadius: 7, background: "rgba(245,158,11,.07)", color: "#fcd34d", fontSize: 10.5 }}>Medical note · {member.medical}</div>}
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 12, paddingTop: 9, borderTop: `1px solid ${C.border}` }}><button onClick={() => setSelectedMember(member)} style={{ color: C.accent, background: "none", border: 0, cursor: "pointer", fontSize: 10.5, fontWeight: 700 }}>View full profile</button><button onClick={() => setRemoveTarget(member)} style={{ color: "#fca5a5", background: "none", border: 0, cursor: "pointer", fontSize: 10.5, fontWeight: 700 }}>Remove from trip</button></div>
+          </article>)}
+        </div>
+      </Card>
+    </>}
+
+    {selectedMember && <div onClick={() => setSelectedMember(null)} style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,.68)", display: "grid", placeItems: "center", padding: 18 }}><div onClick={(event) => event.stopPropagation()} style={{ width: "min(480px,100%)", borderRadius: 15, border: `1px solid ${C.border2}`, background: "#0b1422", padding: 19 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 16 }}><div><div style={{ color: C.muted, fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em" }}>Team member profile</div><h3 style={{ color: C.text, margin: "5px 0 0", fontSize: 17 }}>{selectedMember.name}</h3></div><button onClick={() => setSelectedMember(null)} style={{ border: 0, background: "transparent", color: C.muted, cursor: "pointer", fontSize: 20 }}>×</button></div><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>{field("Email", selectedMember.email)}{field("Contact", selectedMember.phone)}{field("Sex", selectedMember.sex || selectedMember.gender)}{field("Occupation", selectedMember.occupation || selectedMember.roleTitle)}{field("Trekking capability", selectedMember.trekkingCapability || selectedMember.experienceLevel || selectedMember.trekExperience)}{field("Blood group", selectedMember.blood || selectedMember.bloodGroup)}{field("Medical notes", selectedMember.medical)}{field("Emergency contact", [selectedMember.ec1Name, selectedMember.ec1Ph].filter(Boolean).join(" · "))}</div></div></div>}
+    {removeTarget && <div onClick={() => !removing && setRemoveTarget(null)} style={{ position: "fixed", inset: 0, zIndex: 1001, background: "rgba(0,0,0,.68)", display: "grid", placeItems: "center", padding: 18 }}><div onClick={(event) => event.stopPropagation()} style={{ width: "min(400px,100%)", borderRadius: 14, border: `1px solid rgba(239,68,68,.3)`, background: "#0b1422", padding: 19 }}><h3 style={{ color: C.text, margin: "0 0 8px", fontSize: 15 }}>Remove trekker from this expedition?</h3><p style={{ color: C.muted, fontSize: 12, lineHeight: 1.55 }}>This removes <strong style={{ color: C.text }}>{removeTarget.name}</strong> from <strong style={{ color: C.text }}>{assignedTrip?.name}</strong>. Their account will not be deleted.</p><div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}><button disabled={removing} onClick={() => setRemoveTarget(null)} style={{ padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.border}`, color: C.muted, background: "transparent", cursor: "pointer" }}>Cancel</button><button disabled={removing} onClick={removeMember} style={{ padding: "8px 12px", borderRadius: 8, border: 0, color: "white", background: C.red, cursor: "pointer", fontWeight: 700 }}>{removing ? "Removing…" : "Remove member"}</button></div></div></div>}
+  </div>;
+};
+
+const PageAdminProfile = ({ admin, onUpdate }) => {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+  const isDemo = String(admin?.email || "").toLowerCase() === DEMO_ADMIN_EMAIL;
+  const initialForm = () => {
+    const defaults = isDemo ? DEMO_EXPEDITION_GUIDE : {};
+    return {
+      name: admin?.name || defaults.name || "",
+      age: admin?.age ?? defaults.age ?? "",
+      sex: admin?.sex || admin?.gender || defaults.sex || "",
+      occupation: admin?.occupation || defaults.occupation || "",
+      phone: admin?.phone || defaults.phone || "",
+      city: admin?.city || defaults.city || "",
+      organization: admin?.organization || defaults.organization || "",
+      roleTitle: admin?.roleTitle || defaults.roleTitle || "Expedition Administrator",
+      experienceLevel: admin?.experienceLevel || defaults.experienceLevel || "",
+      blood: admin?.blood || admin?.bloodGroup || defaults.blood || "",
+      medical: admin?.medical || defaults.medical || "None",
+      allergies: admin?.allergies || defaults.allergies || "None",
+      medications: admin?.medications || defaults.medications || "None",
+      insurancePolicy: admin?.insurancePolicy || defaults.insurancePolicy || "",
+      emergencyBeaconId: admin?.emergencyBeaconId || defaults.emergencyBeaconId || "",
+      ec1Name: admin?.ec1Name || defaults.ec1Name || "",
+      ec1Rel: admin?.ec1Rel || defaults.ec1Rel || "Family",
+      ec1Ph: admin?.ec1Ph || defaults.ec1Ph || "",
+      ec2Name: admin?.ec2Name || defaults.ec2Name || "",
+      ec2Rel: admin?.ec2Rel || defaults.ec2Rel || "Family",
+      ec2Ph: admin?.ec2Ph || defaults.ec2Ph || "",
+    };
+  };
+  const [form, setForm] = useState(initialForm);
+  useEffect(() => { setForm(initialForm()); }, [admin?.id, admin?.name, admin?.phone, admin?.age, admin?.sex, admin?.occupation, admin?.city, admin?.roleTitle, admin?.organization, admin?.experienceLevel, admin?.blood, admin?.medical, admin?.allergies, admin?.medications, admin?.insurancePolicy, admin?.emergencyBeaconId, admin?.ec1Name, admin?.ec1Rel, admin?.ec1Ph, admin?.ec2Name, admin?.ec2Rel, admin?.ec2Ph]);
+  const change = (key, value) => { setForm((current) => ({ ...current, [key]: value })); setSaved(false); setError(""); };
+  const cancel = () => { setForm(initialForm()); setEditing(false); setError(""); };
+  const save = async (event) => {
+    event?.preventDefault();
+    if (!form.name.trim()) { setError("Please enter your full name."); return; }
+    setSaving(true); setError(""); setSaved(false);
+    const result = await updateAdminProfile(admin?.id || admin?.uid, form);
+    if (!result.success) { setError(result.error || "Could not save profile changes."); setSaving(false); return; }
+    const updated = { ...admin, ...form, ...(result.user || {}), updatedAt: new Date().toISOString() };
+    onUpdate(updated);
+    try {
+      const { token: _token, ...session } = updated;
+      localStorage.setItem("margsutra_admin_session", JSON.stringify(session));
+    } catch { /* session storage may be unavailable */ }
+    setForm({ ...form, ...updated });
+    setSaved(true); setEditing(false); setSaving(false);
+  };
+  const profileField = (label, key, placeholder = "") => <label style={{ display: "block", minWidth: 0, padding: "10px 0", borderBottom: `1px solid ${C.border}` }}><span style={{ display: "block", color: C.muted2, fontSize: 9.5, fontWeight: 750, letterSpacing: ".07em", textTransform: "uppercase", marginBottom: 7 }}>{label}</span>{editing ? <Input value={form[key] || ""} onChange={(event) => change(key, event.target.value)} placeholder={placeholder} /> : <div style={{ color: form[key] ? C.text : C.muted2, minHeight: 18, fontSize: 13, lineHeight: 1.5, overflowWrap: "anywhere" }}>{form[key] || "Not provided"}</div>}</label>;
+  const readyCount = [form.phone, form.blood, form.medical, form.allergies, form.ec1Name && form.ec1Ph].filter(Boolean).length;
+  const initials = (form.name || "AD").split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+  const fieldGrid = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,180px),1fr))", columnGap: 22 };
+
+  return <div style={{ display: "grid", gap: 16, maxWidth: 1240, margin: "0 auto" }}>
+    <PageHeader title="Administrator Profile" sub="Duty-of-care credentials, emergency contacts & command details" right={editing ? <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><Btn onClick={cancel}>Cancel</Btn><Btn variant="primary" onClick={save} disabled={saving}>{saving ? "Saving…" : "💾 Save changes"}</Btn></div> : <Btn variant="primary" onClick={() => { setEditing(true); setSaved(false); }}>✏️ Edit Profile &amp; Medical Info</Btn>} />
+    {saved && <div role="status" style={{ borderRadius: 10, border: "1px solid rgba(34,197,94,.3)", background: "rgba(34,197,94,.08)", color: "#86efac", padding: "10px 13px", fontSize: 12 }}>✓ Administrator profile updated and synchronized.</div>}
+    {error && <div role="alert" style={{ borderRadius: 10, border: "1px solid rgba(239,68,68,.3)", background: "rgba(239,68,68,.08)", color: "#fca5a5", padding: "10px 13px", fontSize: 12 }}>{error}</div>}
+    <Card style={{ padding: 0, overflow: "hidden", borderColor: "rgba(59,130,246,.25)" }}>
+      <div style={{ padding: "clamp(18px,3vw,28px)", display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap", background: "linear-gradient(115deg,rgba(59,130,246,.14),rgba(20,184,166,.06))", borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ width: 68, height: 68, flex: "0 0 68px", borderRadius: 18, display: "grid", placeItems: "center", background: "rgba(59,130,246,.16)", border: "1px solid rgba(96,165,250,.35)", color: "#93c5fd", fontSize: 22, fontWeight: 800 }}>{initials}</div>
+        <div style={{ flex: 1, minWidth: 200 }}><div style={{ color: C.text, fontSize: 21, fontWeight: 800, letterSpacing: "-.02em" }}>{form.name || "Administrator"}</div><div style={{ color: C.muted, fontSize: 12, marginTop: 5, overflowWrap: "anywhere" }}>✉ {admin?.email || ""}</div><div style={{ color: C.muted, fontSize: 12, marginTop: 4 }}>☎ {form.phone || "Add a command contact number"}</div></div>
+        <div style={{ padding: "12px 15px", minWidth: 155, borderRadius: 12, border: `1px solid ${C.border}`, background: "rgba(5,12,22,.32)" }}><div style={{ fontSize: 9.5, color: C.muted, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 5 }}>Duty-of-care readiness</div><div style={{ color: "#34d399", fontSize: 19, fontWeight: 800 }}>{Math.round((readyCount / 5) * 100)}%</div><div style={{ color: C.muted2, fontSize: 10.5, marginTop: 2 }}>{readyCount} of 5 safety items ready</div></div>
       </div>
+      <div style={{ padding: "13px clamp(18px,3vw,28px)", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px 20px", color: C.muted, fontSize: 11 }}><Pill color="blue">COMMAND ADMIN</Pill><span>🏢 {form.organization || "Organization not set"}</span><span>🧭 {form.roleTitle || "Administrator"}</span><span>📍 {form.city || "Base not set"}</span></div>
+    </Card>
 
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 14, marginBottom: 14 }}>
-        <div>
-          <LiveMap points={users} teams={[]} height={380} leaderCoordinates={assignedTrip ? [Number(assignedTrip.lat ?? assignedTrip.geofence?.lat) || 20.5937, Number(assignedTrip.lon ?? assignedTrip.geofence?.lon) || 78.9629] : [20.5937, 78.9629]} tripName={assignedTrip?.name || "No assigned expedition"} />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginTop: 12 }}>
-            <StatCard label="GPS System Accuracy" value="±6m" sub="Field GNSS / NEO-6M" color={C.green} icon="🛰️" />
-            <StatCard label="Assigned Expedition" value={assignedTrip?.code || "None"} sub={assignedTrip?.location || assignedTrip?.name || "No trip assigned to this admin"} color={C.teal} icon="🏔️" />
-            <StatCard label="LoRa Gateway Mesh" value="865 MHz" sub="IN865 License-Exempt" color={C.purple} icon="📡" />
-          </div>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {sos > 0 && (
-            <Card style={{ borderColor: "rgba(239,68,68,0.4)", background: "rgba(239,68,68,0.08)", boxShadow: "0 4px 18px rgba(239,68,68,0.2)" }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: C.red, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-                <span>🚨</span>
-                <span>ACTIVE DISTRESS BEACON</span>
-              </div>
-              {users.filter(u => u.status === "sos").map(u => (
-                <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
-                  <Avatar initials={u.avatar} bg={u.color[0]} text={u.color[1]} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name}</div>
-                    <div style={{ fontSize: 10.5, color: C.muted }}>📍 {u.city} · Blood: <strong style={{ color: C.red }}>{u.blood || "B+"}</strong></div>
-                  </div>
-                  <Btn variant="danger" style={{ fontSize: 11, padding: "5px 10px" }} onClick={() => navigate("sos-navigation")}>
-                    Dispatch →
-                  </Btn>
-                </div>
-              ))}
-            </Card>
-          )}
-
-          <Card>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text, display: "flex", alignItems: "center", gap: 6 }}>
-                <span>Expedition Batches</span>
-                <span style={{ fontSize: 9, fontWeight: 600, padding: "1px 6px", borderRadius: 4, background: tripsAreLive ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.08)", color: tripsAreLive ? "#4ade80" : C.muted2 }}>
-                  {tripsAreLive ? "LIVE SYNC" : "STORED"}
-                </span>
-              </div>
-              <button onClick={() => navigate("trip-rosters")} style={{ fontSize: 11, color: C.accent, background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>
-                Manage All →
-              </button>
-            </div>
-
-            {trips.slice(0, 3).map(t => (
-              <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${C.border}`, fontSize: 12 }}>
-                <div style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
-                  <div style={{ color: C.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
-                  <div style={{ fontSize: 10.5, color: C.muted, marginTop: 2 }}>
-                    Code: <span style={{ fontWeight: 700, color: C.accent }}>{t.code}</span> · {t.rosterCount || 5} Trekkers
-                  </div>
-                </div>
-                <Pill color={t.status === "in-field" || t.isManaged ? "green" : t.status === "completed" ? "amber" : "gray"}>
-                  {t.isManaged || t.status === "in-field" ? "In-Field" : (t.status || "Upcoming")}
-                </Pill>
-              </div>
-            ))}
-          </Card>
-
-          <Card style={{ background: "rgba(59,130,246,0.04)", borderColor: "rgba(59,130,246,0.2)" }}>
-            <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 8 }}>
-              Field Command &amp; Radio Clearance
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 11.5, color: C.muted }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span>Lead Field Guide:</span>
-                <span style={{ color: C.text, fontWeight: 600 }}>Ajay Saini (WFR Certified)</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span>Radio VHF:</span>
-                <span style={{ color: "#fbbf24", fontWeight: 700 }}>145.500 MHz (Ch 1)</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span>Local SAR Base:</span>
-                <span style={{ color: C.text }}>Shivdurga Rescue (Lonavala)</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span>Sector Geofence:</span>
-                <span style={{ color: "#34d399", fontWeight: 600 }}>2.5 km Locked Corridor</span>
-              </div>
-            </div>
-          </Card>
-        </div>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,390px),1fr))", alignItems: "start", gap: 16 }}>
+      <div style={{ display: "grid", gap: 16 }}>
+        <Card>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 5 }}><div style={{ fontSize: 14, fontWeight: 750, color: C.text }}>👤 Personal &amp; Command Contact</div><span style={{ fontSize: 10.5, color: C.muted2 }}>{editing ? "Editable mode" : "Administrator identity"}</span></div>
+          <div style={fieldGrid}>{profileField("Full name", "name", "Full name")}<div style={{ padding: "10px 0", borderBottom: `1px solid ${C.border}` }}><span style={{ display: "block", color: C.muted2, fontSize: 9.5, fontWeight: 750, letterSpacing: ".07em", textTransform: "uppercase", marginBottom: 7 }}>Authenticated login email</span><div style={{ color: C.text, fontSize: 13, overflowWrap: "anywhere" }}>{admin?.email || "Not provided"}</div><div style={{ color: C.muted2, fontSize: 9.5, marginTop: 4 }}>🔒 Sign-in email cannot be changed</div></div>{profileField("Mobile phone", "phone", "+91 98765 43210")}{profileField("Home city / base", "city", "Pune, Maharashtra")}{profileField("Age", "age", "Age in years")}{profileField("Sex", "sex", "Female / Male / Non-binary")}{profileField("Occupation", "occupation", "Occupation")}{profileField("Organization", "organization", "Organization")}{profileField("Command role", "roleTitle", "Expedition Administrator")}{profileField("Trekking experience", "experienceLevel", "Experience level")}</div>
+        </Card>
+        <Card style={{ borderColor: "rgba(59,130,246,.25)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 5 }}><div style={{ fontSize: 14, fontWeight: 750, color: C.text }}>📞 Emergency Contacts (SAR Call Tree)</div><span style={{ fontSize: 10.5, color: C.muted2 }}>Direct next-of-kin</span></div>
+          {[{ title: "Primary emergency contact", name: "ec1Name", rel: "ec1Rel", phone: "ec1Ph", hint: "PRIMARY" }, { title: "Secondary emergency contact", name: "ec2Name", rel: "ec2Rel", phone: "ec2Ph", hint: "BACKUP" }].map((contact) => <div key={contact.name} style={{ marginTop: 13, padding: "12px 14px", borderRadius: 10, border: `1px solid ${C.border}`, background: "rgba(255,255,255,.025)" }}><div style={{ color: C.accent, fontSize: 10, fontWeight: 750, letterSpacing: ".06em", marginBottom: 5 }}>{contact.hint} · {contact.title.toUpperCase()}</div><div style={fieldGrid}>{profileField("Contact name", contact.name, "Full name")}{profileField("Relationship", contact.rel, "Family")}{profileField("Contact phone", contact.phone, "+91 98765 43210")}</div></div>)}
+          <div style={{ color: C.muted2, fontSize: 10.5, lineHeight: 1.5, marginTop: 12 }}>These contacts are kept with the administrator duty-of-care record.</div>
+        </Card>
       </div>
+      <Card style={{ borderColor: "rgba(239,68,68,.25)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}><div style={{ fontSize: 14, fontWeight: 750, color: C.text }}>⚕️ Medical &amp; Duty-of-Care Record</div><Pill color="red">🚨 Shared on SOS</Pill></div>
+        <div style={{ fontSize: 11.5, color: C.muted2, lineHeight: 1.55, marginBottom: 12 }}>Critical medical and equipment details available to responders during an emergency.</div>
+        {profileField("Blood group", "blood", "e.g. O+")}{profileField("Medical conditions", "medical", "None")}{profileField("Known allergies", "allergies", "None")}{profileField("Current medications", "medications", "None")}{profileField("Insurance policy", "insurancePolicy", "Policy provider / number")}{profileField("Emergency beacon / device ID", "emergencyBeaconId", "Registered beacon ID")}
+      </Card>
     </div>
-  );
+  </div>;
 };
 
 /* ════════════════════════════════════════════════
@@ -6048,7 +6038,9 @@ export default function AdminPanel() {
           localStorage.setItem("margsutra_admin_session", JSON.stringify(parsed));
           localStorage.removeItem("coordage_admin_session");
         }
-        return parsed;
+        return String(parsed?.email || "").toLowerCase() === DEMO_ADMIN_EMAIL
+          ? withDemoProfileDefaults(parsed, DEMO_EXPEDITION_GUIDE)
+          : parsed;
       }
       return null;
     } catch {
@@ -6291,7 +6283,7 @@ export default function AdminPanel() {
     let cancelled = false;
     const load = async () => {
       try {
-        const res = await fetch(`${AUTH_API_URL}/trips`);
+        const res = await fetch(`${AUTH_API_URL}/trips`, { cache: "no-store" });
         if (!res.ok) return;
         const data = await res.json();
         if (!cancelled && Array.isArray(data)) setTeamTrips(data);
@@ -6494,7 +6486,10 @@ export default function AdminPanel() {
   }, []);
 
   const handleLogin = (adminUser) => {
-    const adminObj = adminUser || { email: DEMO_ADMIN_EMAIL, name: "Super Admin", role: "admin" };
+    const loginUser = adminUser || { email: DEMO_ADMIN_EMAIL, name: "Super Admin", role: "admin" };
+    const adminObj = String(loginUser.email || "").toLowerCase() === DEMO_ADMIN_EMAIL
+      ? withDemoProfileDefaults(loginUser, DEMO_EXPEDITION_GUIDE)
+      : loginUser;
     setActiveAdmin(adminObj);
     try {
       const { token, ...session } = adminObj;
@@ -6516,7 +6511,8 @@ export default function AdminPanel() {
   if (!loggedIn) return <PageAdminAuth onLogin={handleLogin} />;
 
   const pages = {
-    dashboard: <PageDashboard navigate={navigate} users={displayUsers} pendingAdmins={pendingAdmins} pendingTrekkers={pendingTrekkers} assignedTrip={myTeam} />,
+    dashboard: <PageDashboard navigate={navigate} users={displayUsers} assignedTrip={myTeam} admin={activeAdmin} />,
+    "admin-profile": <PageAdminProfile admin={activeAdmin} onUpdate={setActiveAdmin} />,
     "all-users": <PageAllUsers users={displayUsers} navigate={navigate} />,
     "trip-rosters": <PageTripRosters
       defaultTab="expeditions"
@@ -6585,7 +6581,7 @@ export default function AdminPanel() {
           <div style={{ minWidth: 0 }}><div style={{ fontSize: 14, fontWeight: 600, color: C.text, letterSpacing: "0.03em" }}>Margsutra <span style={{ color: C.accent }}>Admin</span></div><div style={{ fontSize: 10, color: C.muted2 }}>Control panel v3.0</div></div>
           <button className="admin-drawer-close" onClick={() => setNavOpen(false)} aria-label="Close menu">✕</button>
         </div>
-        <div className="admin-profile" style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 10 }}>
+        <div className="admin-profile" role="button" tabIndex={0} title="View and edit administrator profile" onClick={() => { setPage("admin-profile"); setNavOpen(false); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setPage("admin-profile"); setNavOpen(false); } }} style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 10, cursor: "pointer", background: page === "admin-profile" ? "rgba(59,130,246,.1)" : "transparent" }}>
           <div style={{ width: 34, height: 34, borderRadius: "50%", background: "rgba(59,130,246,0.18)", color: C.accent, fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center" }}>
             {(activeAdmin?.name || "SA").slice(0, 2).toUpperCase()}
           </div>

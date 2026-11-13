@@ -568,8 +568,22 @@ app.post("/api/auth/register", async (req, res) => {
           name: name || existing.name || "Anirban Panda",
           phone: phone || existing.phone,
           city: city || existing.city,
+          age: req.body.age ?? existing.age,
+          sex: req.body.sex || existing.sex,
+          occupation: req.body.occupation || existing.occupation,
+          experienceLevel: req.body.experienceLevel || existing.experienceLevel,
           blood: blood || existing.blood,
           medical: medical || existing.medical,
+          allergies: req.body.allergies || existing.allergies,
+          medications: req.body.medications || existing.medications,
+          insurancePolicy: req.body.insurancePolicy || existing.insurancePolicy,
+          emergencyBeaconId: req.body.emergencyBeaconId || existing.emergencyBeaconId,
+          ec1Name: req.body.ec1Name || existing.ec1Name,
+          ec1Rel: req.body.ec1Rel || existing.ec1Rel,
+          ec1Ph: req.body.ec1Ph || existing.ec1Ph,
+          ec2Name: req.body.ec2Name || existing.ec2Name,
+          ec2Rel: req.body.ec2Rel || existing.ec2Rel,
+          ec2Ph: req.body.ec2Ph || existing.ec2Ph,
           passwordHash: newHash,
         });
         const token = jwt.sign({ userId: existing.id }, JWT_SECRET, { expiresIn: "30d" });
@@ -591,8 +605,16 @@ app.post("/api/auth/register", async (req, res) => {
       phone,
       city,
       role,
+      age: req.body.age,
+      sex: req.body.sex,
+      occupation: req.body.occupation,
+      experienceLevel: req.body.experienceLevel,
       blood,
       medical,
+      allergies: req.body.allergies,
+      medications: req.body.medications,
+      insurancePolicy: req.body.insurancePolicy,
+      emergencyBeaconId: req.body.emergencyBeaconId,
       ec1Name,
       ec1Rel,
       ec1Ph,
@@ -684,26 +706,61 @@ function findDemoAccountByEmail(email) {
 async function ensureDemoAccountExists(account) {
   try {
     const existing = await findUserByEmail(account.email);
-    if (existing) return;
+    const profileDefaults = {
+      name: account.name,
+      phone: account.phone || "",
+      age: account.age ?? "",
+      sex: account.sex || "",
+      city: account.city || "",
+      occupation: account.occupation || "",
+      experienceLevel: account.experienceLevel || "",
+      trekkingCapability: account.trekkingCapability || account.experienceLevel || "",
+      blood: account.blood || "B+",
+      medical: account.medical || "None",
+      allergies: account.allergies || "None",
+      medications: account.medications || "None",
+      insurancePolicy: account.insurancePolicy || "",
+      emergencyBeaconId: account.emergencyBeaconId || "",
+      ec1Name: account.ec1Name || "",
+      ec1Rel: account.ec1Rel || "",
+      ec1Ph: account.ec1Ph || "",
+      ec2Name: account.ec2Name || "",
+      ec2Rel: account.ec2Rel || "",
+      ec2Ph: account.ec2Ph || "",
+      organization: account.organization || "",
+      roleTitle: account.roleTitle || "",
+    };
+    if (existing) {
+      const missing = Object.fromEntries(Object.entries(profileDefaults).filter(([key, value]) =>
+        (existing[key] === undefined || existing[key] === null || existing[key] === "") && value !== ""
+      ));
+      if (account.email === DEMO_USER_EMAIL && existing.ec1Name === "Demo Emergency Contact") {
+        missing.ec1Name = profileDefaults.ec1Name;
+        missing.ec1Rel = profileDefaults.ec1Rel;
+        missing.ec1Ph = profileDefaults.ec1Ph;
+        missing.ec2Name = profileDefaults.ec2Name;
+        missing.ec2Rel = profileDefaults.ec2Rel;
+        missing.ec2Ph = profileDefaults.ec2Ph;
+      }
+      if (account.email === DEMO_ADMIN_EMAIL && existing.ec1Name === profileDefaults.ec1Name && existing.ec1Rel === "Family") {
+        missing.ec1Rel = profileDefaults.ec1Rel;
+      }
+      const updated = Object.keys(missing).length ? await updateUser(existing.id, missing) : existing;
+      return updated || { ...existing, ...missing };
+    }
     const bcryptLocal = require("bcryptjs");
-    await createUser({
+    const created = await createUser({
       id: account.id,
       email: account.email,
       name: account.name,
       role: account.role,
-      phone: account.phone || "",
-      blood: account.blood || "B+",
-      medical: account.medical || "None",
-      ec1Name: account.ec1Name || "",
-      ec1Rel: account.ec1Rel || "",
-      ec1Ph: account.ec1Ph || "",
-      organization: account.organization || "",
-      roleTitle: account.roleTitle || "",
+      ...profileDefaults,
       passwordHash: await bcryptLocal.hash(account.password, 10),
       status: "approved",
       approved: true,
     });
     console.log(`[Auth] Created missing demo account: ${account.email}`);
+    return created;
   } catch (error) {
     console.warn("[Auth] Could not persist demo account:", error?.message || error);
   }
@@ -728,11 +785,12 @@ app.post("/api/auth/login", async (req, res) => {
       }
       // Best effort: make sure the document exists so the rest of the app can
       // read the profile. Never blocks the sign-in.
-      ensureDemoAccountExists(demoAccount).catch(() => {});
-
-      const token = jwt.sign({ userId: demoAccount.id }, JWT_SECRET, { expiresIn: "30d" });
-      const profile = toSafeProfile(demoAccount.id, {
-        ...demoAccount,
+      let storedDemo = null;
+      try { storedDemo = await ensureDemoAccountExists(demoAccount); } catch { /* Demo sign-in remains available from canonical defaults. */ }
+      const accountProfile = { ...demoAccount, ...(storedDemo || {}) };
+      const token = jwt.sign({ userId: accountProfile.id || demoAccount.id }, JWT_SECRET, { expiresIn: "30d" });
+      const profile = toSafeProfile(accountProfile.id || demoAccount.id, {
+        ...accountProfile,
         status: "approved",
         approved: true,
       });
@@ -963,10 +1021,11 @@ app.get("/api/users/:id", requireSelf, async (req, res) => {
 app.put("/api/users/:id", requireSelf, async (req, res) => {
   try {
     const allowed = [
-      "name", "phone", "city", "blood", "medical",
+      "name", "phone", "city", "age", "sex", "occupation", "blood", "medical",
       "ec1Name", "ec1Rel", "ec1Ph",
       "ec2Name", "ec2Rel", "ec2Ph",
-      "experienceLevel", "allergies", "medications", "insurancePolicy", "emergencyBeaconId"
+      "experienceLevel", "allergies", "medications", "insurancePolicy", "emergencyBeaconId",
+      "organization", "roleTitle"
     ];
     const updates = {};
     for (const key of allowed) {
@@ -974,10 +1033,42 @@ app.put("/api/users/:id", requireSelf, async (req, res) => {
         updates[key] = req.body[key];
       }
     }
+    if (updates.name !== undefined) updates.displayName = String(updates.name).trim();
+    if (updates.blood !== undefined) updates.bloodGroup = updates.blood;
+    if (updates.experienceLevel !== undefined) updates.trekkingCapability = updates.experienceLevel;
     const updated = await updateUser(req.params.id, updates);
     if (!updated) {
       return res.status(404).json({ error: "User not found." });
     }
+    if (updated.activeTripId && updated.tripStatus) {
+      const rosterUpdates = Object.fromEntries([
+        "name", "email", "phone", "age", "sex", "occupation", "experienceLevel", "trekkingCapability", "blood",
+        "medical", "allergies", "medications", "insurancePolicy", "emergencyBeaconId",
+        "ec1Name", "ec1Rel", "ec1Ph", "ec2Name", "ec2Rel", "ec2Ph",
+      ].filter((key) => updated[key] !== undefined).map((key) => [key, updated[key]]));
+      await db.collection("trips").doc(updated.activeTripId).collection("roster").doc(updated.id).set(rosterUpdates, { merge: true }).catch((error) => {
+        console.warn("Could not sync profile updates to active trip roster:", error?.message || error);
+      });
+    }
+    if (updated.role === "admin" && updates.name !== undefined) {
+      try {
+        const inChargeTrips = await db.collection("trips").where("adminInCharge", "==", updated.id).get();
+        await Promise.all(inChargeTrips.docs.map((tripDoc) => {
+          const trip = tripDoc.data();
+          const admins = Array.isArray(trip.admins) ? trip.admins.map((entry) =>
+            String(entry?.id || entry) === String(updated.id) && typeof entry === "object"
+              ? { ...entry, name: updated.name }
+              : entry
+          ) : trip.admins;
+          const tripUpdate = { adminInChargeName: updated.name, updatedAt: new Date() };
+          if (admins) tripUpdate.admins = admins;
+          return tripDoc.ref.set(tripUpdate, { merge: true });
+        }));
+      } catch (syncError) {
+        console.warn("Could not sync administrator name to assigned expeditions:", syncError?.message || syncError);
+      }
+    }
+    usersCache = { at: 0, data: null };
     return res.json({ user: toSafeProfile(updated.id, updated) });
   } catch (error) {
     console.error("Update user error", error);

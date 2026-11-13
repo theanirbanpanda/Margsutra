@@ -82,6 +82,22 @@ export const authHeaders = (extra = {}) => {
   return { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...extra };
 };
 
+export const updateAdminProfile = async (adminId, updates) => {
+  if (!adminId) return { success: false, error: "Administrator account ID is missing." };
+  try {
+    const response = await api(`/users/${encodeURIComponent(adminId)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return { success: false, error: data.error || `Profile update failed (${response.status}).` };
+    return { success: true, user: data.user };
+  } catch (error) {
+    return { success: false, error: error?.message || "Unable to save administrator profile." };
+  }
+};
+
 const api = (path, options = {}) =>
   fetch(`${AUTH_API_URL}${path}`, {
     ...options,
