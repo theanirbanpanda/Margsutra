@@ -41,7 +41,7 @@ import {
   RAJMACHI_MEMBERS,
 } from "./services/expeditionTeam";
 import { getDemoTrackingData, toFreshPosition } from "./services/trackingDemoData";
-import { DEMO_EXPEDITION_GUIDE, DEMO_EXPEDITION_MEMBERS, getDemoMemberProfile, withDemoProfileDefaults } from "../../shared/demoExpeditionRoster";
+import { DEMO_EXPEDITION_GUIDE, DEMO_EXPEDITION_MEMBERS, DEMO_USER_PROFILE, getDemoMemberProfile, withDemoProfileDefaults } from "../../shared/demoExpeditionRoster";
 
 /* ════════════════════════════════════════════════
    PAGE ERROR BOUNDARY
@@ -5101,6 +5101,174 @@ const PageSOSAdmin = PageSOSNavigation;
 const PageSOSTracking = PageSOSNavigation;
 
 /* ════════════════════════════════════════════════
+   PAGE: FIELD HARDWARE & BEACONS — OPERATIONAL VIEW
+   ════════════════════════════════════════════════ */
+const PageFieldHardware = ({ users = [], admin, trip }) => {
+  const [fieldNodes, setFieldNodes] = useState(null);
+  const [clock, setClock] = useState(Date.now());
+  const [selectedMemberId, setSelectedMemberId] = useState("");
+
+  useEffect(() => {
+    const unsubscribe = subscribeToFieldTelemetry((nodes) => setFieldNodes(Array.isArray(nodes) ? nodes : null));
+    const timer = setInterval(() => setClock(Date.now()), 5000);
+    return () => { unsubscribe?.(); clearInterval(timer); };
+  }, []);
+
+  const isHarishchandragad = /^HAR/i.test(String(trip?.code || "")) || /harishchandragad/i.test(String(trip?.name || ""));
+  const demoTrip = trip || (isHarishchandragad ? TRIPS[1] : TRIPS[0]);
+  const demoUser = users.find((person) => String(person.email || "").toLowerCase() === DEMO_USER_PROFILE.email) || DEMO_USER_PROFILE;
+  const demoGuide = admin || DEMO_EXPEDITION_GUIDE;
+  const routeData = getDemoTrackingData(demoTrip, demoUser, demoGuide);
+  const demoUserPosition = routeData.participants.find((person) => person.isSelf || String(person.id) === String(demoUser.id)) || routeData.participants[0];
+  const demoPeople = [
+    { ...demoGuide, id: demoGuide.id || "demo-admin", email: demoGuide.email || DEMO_EXPEDITION_GUIDE.email, role: "Expedition guide", isGuide: true, lat: routeData.leader.lat, lon: routeData.leader.lon, accuracy: 5 },
+    { ...demoUser, id: demoUser.id || "demo-user", role: "Trekker", lat: demoUserPosition.lat, lon: demoUserPosition.lon, accuracy: 7 },
+  ];
+
+  const nodeMatchesPerson = (node, person) => [node.userId, node.user_id, node.memberId, node.member_id, node.ownerId, node.email]
+    .some((value) => value && (String(value).toLowerCase() === String(person.id || "").toLowerCase() || String(value).toLowerCase() === String(person.email || "").toLowerCase()));
+  const people = demoPeople.map((person, index) => {
+    const node = (fieldNodes || []).find((candidate) => nodeMatchesPerson(candidate, person));
+    const position = toFreshPosition(node, clock);
+    const nameKey = String(person.email || person.id).toLowerCase().includes("demoadmin") ? "admin" : "user";
+    return {
+      ...person,
+      ...((position && node) ? { lat: position.lat, lon: position.lon, accuracy: position.accuracy } : {}),
+      deviceId: node?.device_id || node?.deviceId || node?.imei || (nameKey === "admin" ? "MARG-ANDROID-0001" : "MARG-IOS-0042"),
+      phoneName: node?.phone_name || node?.phoneName || (nameKey === "admin" ? "Pixel 8 · Margsutra app" : "iPhone 14 · Margsutra app"),
+      bleNode: node?.ble_node_id || node?.bleNodeId || (nameKey === "admin" ? "BLE-RIDGE-01" : "BLE-RIDGE-01"),
+      bleRssi: Number(node?.ble_rssi ?? node?.bleRssi ?? (nameKey === "admin" ? -56 : -61)),
+      rssi: Number(node?.rssi ?? position?.rssi ?? (nameKey === "admin" ? -72 : -67)),
+      snr: Number(node?.snr ?? position?.snr ?? 8.6),
+      battery: Number(node?.battery_percent ?? node?.battery ?? (nameKey === "admin" ? 82 : 74)),
+      lastSeen: position ? Math.max(0, Math.floor((clock - position.timestamp) / 1000)) : (nameKey === "admin" ? 16 : 11),
+      sos: node?.active_sos === true || node?.sos === true,
+      sosMessage: node?.sos_message || node?.sosMessage || (nameKey === "admin" ? "I am lost, please help me." : "I’m injured. Please send urgent help."),
+      usingLivePosition: Boolean(position),
+    };
+  });
+  const pickedPerson = people.find((person) => person.id === selectedMemberId) || people[0];
+
+  const liveWeatherNode = (fieldNodes || []).filter((node) =>
+    node.temp !== undefined || node.pressure !== undefined || node.humidity !== undefined
+  ).sort((a, b) => Number(b.received_at || b.timestamp || 0) - Number(a.received_at || a.timestamp || 0))[0];
+  const liveWeatherAge = liveWeatherNode ? clock - Number(liveWeatherNode.received_at || liveWeatherNode.timestamp || 0) : Infinity;
+  const hasLiveWeather = Boolean(liveWeatherNode && liveWeatherAge >= 0 && liveWeatherAge < 120_000);
+  const scenarioWeather = isHarishchandragad
+    ? { temp: 17.8, humidity: 76, pressure: 862.4, rain: 0.6, wind: 18, pm25: 16, altitude: 1424 }
+    : { temp: 23.6, humidity: 82, pressure: 928.4, rain: 1.2, wind: 12, pm25: 22, altitude: 842 };
+  const stationValue = (keys, fallback) => {
+    if (!hasLiveWeather) return fallback;
+    for (const key of keys) {
+      const value = liveWeatherNode?.[key];
+      if (value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value))) return Number(value);
+    }
+    return null;
+  };
+  const weather = {
+    temp: stationValue(["temp"], scenarioWeather.temp),
+    humidity: stationValue(["humidity"], scenarioWeather.humidity),
+    pressure: stationValue(["pressure"], scenarioWeather.pressure),
+    rain: stationValue(["rain_mm"], scenarioWeather.rain),
+    wind: stationValue(["wind_kmh", "wind_speed"], scenarioWeather.wind),
+    pm25: stationValue(["pm2_5"], scenarioWeather.pm25),
+    altitude: stationValue(["altitude"], scenarioWeather.altitude),
+  };
+  const days = isHarishchandragad
+    ? [
+      ["Today", "Partly cloudy", "⛅", 21, 13, 20, 12], ["Tue", "Light showers", "🌦️", 20, 13, 48, 18],
+      ["Wed", "Cloud breaks", "🌤️", 22, 12, 18, 10], ["Thu", "Showers likely", "🌧️", 19, 12, 62, 24],
+      ["Fri", "Partly cloudy", "⛅", 20, 11, 25, 14], ["Sat", "Clear intervals", "🌤️", 22, 12, 15, 9],
+      ["Sun", "Light showers", "🌦️", 19, 12, 42, 20],
+    ]
+    : [
+      ["Today", "Cloudy", "☁️", 28, 21, 35, 12], ["Tue", "Passing showers", "🌦️", 27, 21, 58, 18],
+      ["Wed", "Mostly cloudy", "☁️", 28, 20, 32, 10], ["Thu", "Rain likely", "🌧️", 26, 20, 72, 22],
+      ["Fri", "Cloud breaks", "⛅", 27, 20, 40, 13], ["Sat", "Partly cloudy", "🌤️", 28, 19, 22, 11],
+      ["Sun", "Passing showers", "🌦️", 27, 20, 54, 17],
+    ];
+  const history = isHarishchandragad ? [16.2, 17.1, 16.8, 18.4, 17.6, 18.1, weather.temp ?? scenarioWeather.temp] : [21.4, 22.1, 22.8, 21.9, 23.2, 22.7, weather.temp ?? scenarioWeather.temp];
+  const chartPoints = history.map((value, index) => `${24 + index * 78},${92 - ((value - Math.min(...history) + 1) / (Math.max(...history) - Math.min(...history) + 2)) * 66}`).join(" ");
+  const freshPositions = people.filter((person) => person.usingLivePosition).length;
+  const liveNodeCount = (fieldNodes || []).length;
+  const lastPacketAt = liveWeatherNode?.received_at || liveWeatherNode?.timestamp;
+  const packetAge = lastPacketAt ? Math.max(0, Math.floor((clock - Number(lastPacketAt)) / 1000)) : null;
+  const mapCenter = [Number(demoTrip?.geofence?.lat ?? demoTrip?.lat ?? routeData.route[0][0]), Number(demoTrip?.geofence?.lon ?? demoTrip?.lon ?? routeData.route[0][1])];
+  const mapPeople = people.map((person) => ({ ...person, status: person.sos ? "sos" : "active", role: person.role || "Trekker" }));
+  const formatSeen = (seconds) => seconds < 60 ? `${seconds}s ago` : `${Math.floor(seconds / 60)}m ago`;
+
+  return <div style={{ display: "grid", gap: 14, maxWidth: 1500, margin: "0 auto" }}>
+    <PageHeader title="Field Hardware & Beacons" sub="Weather station, mobile GPS bridges & LoRa gateway" right={<div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}><Pill color={hasLiveWeather ? "green" : "amber"}>{hasLiveWeather ? "● LIVE RTDB" : "◐ DEMO SCENARIO"}</Pill></div>} />
+
+    <div style={{ padding: "11px 14px", borderRadius: 11, border: `1px solid ${hasLiveWeather ? "rgba(34,197,94,.3)" : "rgba(245,158,11,.28)"}`, background: hasLiveWeather ? "rgba(34,197,94,.06)" : "rgba(245,158,11,.055)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+      <span style={{ fontSize: 16 }}>{hasLiveWeather ? "📡" : "🧪"}</span>
+      <div style={{ flex: 1, minWidth: 220, color: C.text, fontSize: 11.5, lineHeight: 1.5 }}><strong>{hasLiveWeather ? "Gateway telemetry received" : "Illustrative expedition telemetry"}</strong><span style={{ color: C.muted }}> · {hasLiveWeather ? `${liveNodeCount} RTDB node${liveNodeCount === 1 ? "" : "s"} visible${packetAge !== null ? ` · last station packet ${formatSeen(packetAge)}` : ""}` : "7-day station history, forecast outlook and two phone-to-BLE-to-LoRa tracks shown as a prototype scenario"}</span></div>
+      <span style={{ color: C.muted2, fontSize: 10 }}>Member positions use live data only when a hardware record maps to that member; otherwise scenario positions are shown.</span>
+    </div>
+
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,190px),1fr))", gap: 10 }}>
+      <StatCard label="Gateway" value={hasLiveWeather ? "Receiving" : "Scenario online"} sub={hasLiveWeather ? `Latest packet ${formatSeen(packetAge || 0)}` : "GATEWAY-BASE · Wi-Fi uplink"} color={hasLiveWeather ? C.green : C.teal} icon="📻" />
+      <StatCard label="Weather station" value={hasLiveWeather ? "1 live station" : "RIDGE-WX-01"} sub={`${weather.altitude?.toLocaleString() || "—"}m · ${weather.temp?.toFixed(1) || "—"}°C · ${weather.humidity ?? "—"}% RH`} color={C.accent} icon="🌦️" />
+      <StatCard label="Phone bridges" value={`${people.length}/2 linked`} sub="Bluetooth → LoRa relay · two tracked demo devices" color={C.purple} icon="📱" />
+      <StatCard label="SOS channel" value={people.some((person) => person.sos) ? "SOS ACTIVE" : "Standby"} sub={people.some((person) => person.sos) ? "Responder action required" : "No active beacon alert"} color={people.some((person) => person.sos) ? C.red : C.green} icon="🚨" />
+    </div>
+
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,420px),1fr))", gap: 14, alignItems: "start" }}>
+      <Card style={{ padding: 0, overflow: "hidden" }}>
+        <div style={{ padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, borderBottom: `1px solid ${C.border}`, flexWrap: "wrap" }}><div><div style={{ color: C.text, fontSize: 13, fontWeight: 750 }}>Expedition signal map</div><div style={{ color: C.muted, fontSize: 10.5, marginTop: 3 }}>Mobile GPS → Bluetooth node → LoRa gateway</div></div><div style={{ display: "flex", gap: 10, color: C.muted, fontSize: 10 }}><span>📱 Member</span><span>📻 Gateway</span><span>🌦 Station</span></div></div>
+        <div style={{ padding: 10 }}><ExpeditionRadarMap center={mapCenter} route={routeData.route} waypoints={routeData.waypoints} people={mapPeople} tripName={demoTrip?.name || "Expedition"} /></div>
+        <div style={{ padding: "0 15px 14px", display: "flex", flexWrap: "wrap", gap: 14, color: C.muted2, fontSize: 10 }}><span>Weather node · {isHarishchandragad ? "Konkan Kada ridge" : "Manoranjan ridge"}</span><span>Gateway · base camp uplink</span><span>{freshPositions}/2 member fixes from live-mapped hardware</span></div>
+      </Card>
+
+      <Card style={{ padding: 0, overflow: "hidden" }}>
+        <div style={{ padding: "14px 15px", borderBottom: `1px solid ${C.border}` }}><div style={{ color: C.text, fontSize: 13, fontWeight: 750 }}>Connected mobile devices <span style={{ color: C.muted, fontWeight: 500 }}>· 2</span></div><div style={{ color: C.muted, fontSize: 10.5, marginTop: 3 }}>Latest phone GPS fix and radio delivery path</div></div>
+        <div style={{ display: "grid", gap: 0 }}>
+          {people.map((person, index) => <button key={person.id} type="button" onClick={() => setSelectedMemberId(person.id)} style={{ textAlign: "left", padding: 14, border: 0, borderBottom: index === 0 ? `1px solid ${C.border}` : 0, background: pickedPerson.id === person.id ? "rgba(59,130,246,.055)" : "transparent", color: "inherit", fontFamily: "inherit", cursor: "pointer" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}><Avatar initials={(person.name || "U").split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()} size={34} /><div style={{ flex: 1, minWidth: 0 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><strong style={{ color: C.text, fontSize: 12.5 }}>{person.name}</strong><Pill color={person.sos ? "red" : "green"}>{person.sos ? "SOS" : "● LINKED"}</Pill></div><div style={{ color: C.muted, fontSize: 10.5, marginTop: 3 }}>{person.phoneName}</div></div></div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 12px", margin: "12px 0 0 44px" }}>
+              <div><div style={{ color: C.muted2, fontSize: 9, textTransform: "uppercase", letterSpacing: ".06em" }}>Device ID</div><div style={{ color: C.text, fontSize: 10.5, fontFamily: "monospace", marginTop: 2 }}>{person.deviceId}</div></div>
+              <div><div style={{ color: C.muted2, fontSize: 9, textTransform: "uppercase", letterSpacing: ".06em" }}>Last GPS fix</div><div style={{ color: C.text, fontSize: 10.5, marginTop: 2 }}>{person.usingLivePosition ? formatSeen(person.lastSeen) : "Scenario · 12s ago"} · ±{person.accuracy || 7}m</div></div>
+              <div><div style={{ color: C.muted2, fontSize: 9, textTransform: "uppercase", letterSpacing: ".06em" }}>Bluetooth → node</div><div style={{ color: C.teal, fontSize: 10.5, marginTop: 2 }}>{person.bleNode} · {person.bleRssi} dBm</div></div>
+              <div><div style={{ color: C.muted2, fontSize: 9, textTransform: "uppercase", letterSpacing: ".06em" }}>LoRa → gateway</div><div style={{ color: C.accent, fontSize: 10.5, marginTop: 2 }}>{person.rssi} dBm · SNR {person.snr} dB</div></div>
+              <div><div style={{ color: C.muted2, fontSize: 9, textTransform: "uppercase", letterSpacing: ".06em" }}>Coordinates</div><div style={{ color: C.text, fontSize: 10, fontFamily: "monospace", marginTop: 2 }}>{Number(person.lat).toFixed(5)}, {Number(person.lon).toFixed(5)}</div></div>
+              <div><div style={{ color: C.muted2, fontSize: 9, textTransform: "uppercase", letterSpacing: ".06em" }}>Phone battery</div><div style={{ color: person.battery < 25 ? C.amber : C.green, fontSize: 10.5, marginTop: 2 }}>🔋 {person.battery}% · update {formatSeen(person.lastSeen)}</div></div>
+              <div style={{ gridColumn: "1 / -1", padding: "8px 9px", borderRadius: 8, border: `1px solid ${person.sos ? "rgba(239,68,68,.35)" : C.border}`, background: person.sos ? "rgba(239,68,68,.08)" : "rgba(255,255,255,.025)" }}><div style={{ color: person.sos ? C.red : C.muted2, fontSize: 9, textTransform: "uppercase", letterSpacing: ".06em" }}>SOS message · {person.sos ? "Active" : "Demo preview"}</div><div style={{ color: C.text, fontSize: 11, marginTop: 4 }}>“{person.sosMessage}”</div></div>
+            </div>
+          </button>)}
+        </div>
+      </Card>
+    </div>
+
+    <Card style={{ padding: 0, overflow: "hidden" }}>
+      <div style={{ padding: "15px 17px", display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", borderBottom: `1px solid ${C.border}`, flexWrap: "wrap" }}><div><div style={{ color: C.text, fontSize: 14, fontWeight: 750 }}>7-day field outlook</div><div style={{ color: C.muted, fontSize: 10.5, marginTop: 3 }}>{isHarishchandragad ? "Harishchandragad ridge station" : "Rajmachi ridge station"} · station observations blended with forecast outlook</div></div><Pill color="amber">{hasLiveWeather ? "Live now · outlook scenario" : "7-day scenario"}</Pill></div>
+      <div style={{ padding: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,390px),1fr))", gap: 16, alignItems: "center", marginBottom: 14 }}>
+          <div><div style={{ color: C.muted2, fontSize: 9.5, textTransform: "uppercase", letterSpacing: ".07em" }}>{hasLiveWeather ? "Illustrative 7-day station series · latest point from RTDB" : "Illustrative 7-day station temperature trend"}</div><div style={{ color: C.text, fontSize: 22, fontWeight: 800, marginTop: 5 }}>{history[0].toFixed(1)}° → {history[6].toFixed(1)}°<span style={{ color: C.muted, fontSize: 11, fontWeight: 500 }}> C</span></div><svg viewBox="0 0 492 112" role="img" aria-label="Illustrative seven day station temperature trend" style={{ width: "100%", height: 96, marginTop: 4 }}><defs><linearGradient id="fieldTempFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#38bdf8" stopOpacity=".25"/><stop offset="100%" stopColor="#38bdf8" stopOpacity="0"/></linearGradient></defs><polygon points={`24,102 ${chartPoints} 492,102`} fill="url(#fieldTempFill)"/><polyline points={chartPoints} fill="none" stroke="#38bdf8" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>{history.map((value, index) => <g key={index}><circle cx={24 + index * 78} cy={92 - ((value - Math.min(...history) + 1) / (Math.max(...history) - Math.min(...history) + 2)) * 66} r="3.5" fill="#bae6fd"/><text x={24 + index * 78} y="109" textAnchor="middle" fill="#7890aa" fontSize="9">{["D-6","D-5","D-4","D-3","D-2","D-1","Now"][index]}</text></g>)}</svg></div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
+            {[["Temperature", weather.temp == null ? "—" : `${weather.temp.toFixed(1)} °C`, "🌡️"], ["Humidity", weather.humidity == null ? "—" : `${weather.humidity}%`, "💧"], ["Pressure", weather.pressure == null ? "—" : `${weather.pressure.toFixed(1)} hPa`, "↕️"], ["Rain rate", weather.rain == null ? "—" : `${weather.rain.toFixed(1)} mm/h`, "🌧️"], ["Wind", weather.wind == null ? "—" : `${weather.wind} km/h`, "💨"], ["PM2.5", weather.pm25 == null ? "—" : `${weather.pm25} µg/m³`, "◉"]].map(([label, value, icon]) => <div key={label} style={{ padding: "9px 10px", borderRadius: 9, background: "rgba(255,255,255,.025)", border: `1px solid ${C.border}` }}><div style={{ color: C.muted2, fontSize: 9.5 }}>{icon} {label}</div><div style={{ color: C.text, fontSize: 13, fontWeight: 700, marginTop: 3 }}>{value}</div></div>)}
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 8 }}>
+          {days.map(([day, label, icon, high, low, rain, wind]) => <div key={day} style={{ padding: "10px 9px", borderRadius: 10, border: `1px solid ${C.border}`, background: day === "Today" ? "rgba(59,130,246,.07)" : "rgba(255,255,255,.018)", textAlign: "center" }}><div style={{ color: C.muted, fontSize: 10, fontWeight: 700 }}>{day}</div><div style={{ fontSize: 22, margin: "6px 0 3px" }}>{icon}</div><div style={{ color: C.text, fontSize: 10, minHeight: 26 }}>{label}</div><div style={{ color: C.text, fontSize: 12, fontWeight: 750, marginTop: 4 }}>{high}° <span style={{ color: C.muted }}>/{low}°</span></div><div style={{ color: rain >= 60 ? "#7dd3fc" : C.muted, fontSize: 9.5, marginTop: 5 }}>☔ {rain}% · 💨 {wind} km/h</div></div>)}
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", color: C.muted2, fontSize: 9.5, marginTop: 12 }}><span>Station: {liveWeatherNode?.node_id || liveWeatherNode?.id || "RIDGE-WX-01"} · {hasLiveWeather ? "current readings from RTDB" : "illustrative 7-day station history"}</span></div>
+      </div>
+    </Card>
+
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,390px),1fr))", gap: 14 }}>
+      <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 11, gap: 8, flexWrap: "wrap" }}><div style={{ color: C.text, fontSize: 13, fontWeight: 750 }}>Sensor station health</div><Pill color={hasLiveWeather ? "green" : "teal"}>{hasLiveWeather ? "RTDB station" : "Scenario station"}</Pill></div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 8 }}>{[["Station ID", liveWeatherNode?.node_id || liveWeatherNode?.id || "RIDGE-WX-01"], ["Hardware", "ESP32 · SX1276 · weather array"], ["Sensors", "Temp · RH · pressure · rain · PM2.5"], ["Sampling", "30-second interval"], ["LoRa link", `${Number(liveWeatherNode?.rssi ?? -68)} dBm · SNR ${Number(liveWeatherNode?.snr ?? 9.4)} dB`], ["Last packet", packetAge !== null && hasLiveWeather ? formatSeen(packetAge) : "Scenario · 8s ago"]].map(([label, value]) => <div key={label} style={{ padding: "9px 10px", background: "rgba(255,255,255,.02)", border: `1px solid ${C.border}`, borderRadius: 9 }}><div style={{ color: C.muted2, fontSize: 9, textTransform: "uppercase", letterSpacing: ".05em" }}>{label}</div><div style={{ color: C.text, fontSize: 10.5, marginTop: 4, overflowWrap: "anywhere" }}>{value}</div></div>)}</div>
+      </Card>
+      <Card>
+        <div style={{ color: C.text, fontSize: 13, fontWeight: 750, marginBottom: 10 }}>Gateway delivery path</div>
+        <div style={{ display: "grid", gap: 8 }}>{[["01", "Phone GPS", "Coordinates + accuracy"], ["02", "Bluetooth LE", "Paired ridge receiver · 2 devices"], ["03", "LoRa uplink", "Gateway radio · 865 MHz"], ["04", "Cloud handoff", hasLiveWeather ? "Firebase RTDB · packets arriving" : "Firebase RTDB · scenario state"]].map(([n, title, detail], i) => <div key={n} style={{ display: "flex", alignItems: "center", gap: 9 }}><span style={{ width: 23, height: 23, borderRadius: "50%", display: "grid", placeItems: "center", background: i === 3 && hasLiveWeather ? "rgba(34,197,94,.14)" : "rgba(59,130,246,.12)", color: i === 3 && hasLiveWeather ? C.green : C.accent, fontSize: 9, fontWeight: 800 }}>{n}</span><div><div style={{ color: C.text, fontSize: 10.5, fontWeight: 700 }}>{title}</div><div style={{ color: C.muted2, fontSize: 9.5 }}>{detail}</div></div>{i < 3 && <span style={{ marginLeft: "auto", color: C.muted2 }}>→</span>}</div>)}</div>
+      </Card>
+    </div>
+  </div>;
+};
+
+/* ════════════════════════════════════════════════
    PAGE: LIVE TRACKING
 ════════════════════════════════════════════════ */
 const PageLiveTracking = ({ navigate, users = USERS, connectionState = "disconnected", error = null, trip }) => {
@@ -6582,7 +6750,7 @@ export default function AdminPanel() {
       onDenyTrekker={handleRemoveTrekker}
       onReviewTrekkers={() => setPage("trip-rosters")}
     />,
-    "device-tracking": <PageDeviceTracking users={displayUsers} connectionState={connectionState} />,
+    "device-tracking": <PageFieldHardware users={displayUsers} admin={activeAdmin} trip={myTeam} />,
     "weather-console": <PageMountainWeather trip={myTeam} />,
     "live-tracking": <PageLiveTrackingRebuilt navigate={navigate} users={displayUsers} connectionState={connectionState} error={error} trip={myTeam} admin={activeAdmin} />,
     "safety-protocol": <PageTripRosters
