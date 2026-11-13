@@ -1,11 +1,22 @@
 # Margsutra — local development
 
-Two ways to run the stack locally:
+Two ways to run the stack locally. **Never mix them**: if the API talks to
+production Firestore while the frontends talk to the emulator (or vice versa),
+the two halves disagree and the app looks broken.
 
-## A. Local Firestore emulator (default, recommended while the production quota is exhausted)
+| Command | API + apps talk to |
+|---|---|
+| `npm run dev` (or `npm run dev:all`) | the local Firestore emulator |
+| `npm run dev:local` | the local Firestore emulator (same as `dev`, plus an explicit emulator flag) |
+
+> The production Firebase project shares one daily read quota for the whole
+> project. If it is exhausted the API answers `503 { quotaExceeded: true }` and
+> logins fail — that is when the emulator stack is the way to keep working.
+
+## A. Local Firestore emulator (default)
 
 ```bash
-npm run dev           # or: npm run dev:all — both start the emulator stack
+npm run dev           # emulator + backend + admin app + user app + tracking
 ```
 
 That runs five processes together:
@@ -49,6 +60,10 @@ npm run dev:prod
 This runs the backend against the real Firebase project (service account key) and
 starts both apps with the emulator switches overridden
 (`VITE_USE_FIRESTORE_EMULATOR=false VITE_FIREBASE_PROJECT_ID=coordage-416a1`).
+
+Sign-in works with the same demo credentials in both environments:
+`admin@margsutra.app / admin123`, `guide@margsutra.app / guide123`,
+`anirban@margsutra.app / user123`.
 
 Production currently needs the Firestore read quota to be available; when it is
 exhausted the API answers `503 { quotaExceeded: true }` and `/api/trips` keeps

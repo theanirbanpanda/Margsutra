@@ -246,6 +246,7 @@ app.get("/api/trips/:tripId/roster", async (req, res) => {
 });
 
 app.post("/api/trips/:tripId/join", optionalAuth, async (req, res) => {
+  pendingTripRequestsCache = { at: 0, data: null };
   try {
     const userId = req.userId || req.body?.userId;
     if (!userId) {
@@ -717,9 +718,17 @@ app.post("/api/admin/users/:id/features", requireAuth, async (req, res) => {
   }
 });
 
+// Cached for 30s: several open consoles poll this and the project shares one
+// daily Firestore read quota.
+let pendingTripRequestsCache = { at: 0, data: null };
+
 app.get("/api/admin/pending-trip-requests", async (_req, res) => {
   try {
+    if (pendingTripRequestsCache.data && Date.now() - pendingTripRequestsCache.at < 30000) {
+      return res.json({ success: true, pending: pendingTripRequestsCache.data, cached: true });
+    }
     const pending = await listPendingTripRequests();
+    pendingTripRequestsCache = { at: Date.now(), data: pending };
     res.json({ success: true, pending });
   } catch (error) {
     console.error("List pending trip requests error:", error);
@@ -728,6 +737,7 @@ app.get("/api/admin/pending-trip-requests", async (_req, res) => {
 });
 
 app.post("/api/admin/trips/:tripId/approve-user/:userId", optionalAuth, async (req, res) => {
+  pendingTripRequestsCache = { at: 0, data: null };
   try {
     let approvedBy = req.body?.approvedBy;
     if (!approvedBy && req.userId) {
@@ -763,9 +773,17 @@ app.post("/api/admin/trips/:tripId/remove-user/:userId", optionalAuth, async (re
   }
 });
 
+// Cached for 60s — the console roster is not time-critical and the whole
+// project shares one daily Firestore read quota.
+let usersCache = { at: 0, data: null };
+
 app.get("/api/users", requireAuth, async (_req, res) => {
   try {
+    if (usersCache.data && Date.now() - usersCache.at < 60000) {
+      return res.json({ users: usersCache.data, cached: true });
+    }
     const users = await listUsers();
+    usersCache = { at: Date.now(), data: users };
     return res.json({ users });
   } catch (error) {
     console.error("List users error", error);

@@ -6771,7 +6771,7 @@ export default function AdminPanel() {
           if (document.hidden) nextDelay = 120000;
           else if (socketRef.current !== "connected") nextDelay = 10000;
           else if (activeSosRef.current > 0) nextDelay = 15000;
-          else nextDelay = 60000;
+          else nextDelay = 120000;
         } else {
           failures += 1;
           nextDelay = Math.min(120000, 15000 * Math.pow(2, failures));
@@ -7058,12 +7058,12 @@ export default function AdminPanel() {
   useEffect(() => {
     loadPendingAdmins();
     loadPendingTrekkers();
-    // 30s keeps the approval queue fresh without draining the Firestore
+    // 60s keeps the approval queue fresh without draining the Firestore
     // read quota (the console can stay open for hours).
     const interval = setInterval(() => {
       loadPendingAdmins();
       loadPendingTrekkers();
-    }, 30000);
+    }, 60000);
     return () => clearInterval(interval);
   }, [loadPendingAdmins, loadPendingTrekkers]);
 
@@ -7103,9 +7103,9 @@ export default function AdminPanel() {
     };
 
     loadUsers();
-    // 60s is plenty for an operator roster and keeps the Firestore read
-    // quota from being drained by a background tab.
-    const refresh = setInterval(loadUsers, 60000);
+    // 5 minutes: the operator roster is not time-critical and the whole
+    // project shares one daily Firestore read quota.
+    const refresh = setInterval(loadUsers, 300000);
     return () => {
       cancelled = true;
       clearInterval(refresh);
