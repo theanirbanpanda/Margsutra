@@ -702,6 +702,8 @@ const PageSOSNavigation = ({
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [broadcasts, setBroadcasts] = useState([]);
+  const [broadcastToDismiss, setBroadcastToDismiss] = useState(null);
+  const [dismissingBroadcastId, setDismissingBroadcastId] = useState(null);
 
   const loadBroadcasts = useCallback(async () => {
     setLoadingBroadcasts(true);
@@ -767,11 +769,18 @@ const PageSOSNavigation = ({
   // trekker has on their own beacon).
   const handleDismissBroadcast = async (alert) => {
     if (!alert) return;
-    setBroadcasts((prev) => prev.filter((b) => b.id !== alert.id));
+    setDismissingBroadcastId(alert.id);
     try {
-      await onResolveSOS?.(alert.id, "", "Alert dismissed by command");
+      const result = await onResolveSOS?.(alert.id, "", "Alert dismissed by command");
+      if (result?.success === false) throw new Error(result?.error || "The alert could not be withdrawn.");
+      setBroadcasts((prev) => prev.filter((b) => b.id !== alert.id));
+      setBroadcastToDismiss(null);
+      showToast("success", "Alert withdrawn. Recipients will stop hearing the alarm.");
     } catch (e) {
       console.warn("Could not dismiss the alert:", e?.message || e);
+      showToast("error", `Could not withdraw the alert: ${e?.message || "unknown error"}`);
+    } finally {
+      setDismissingBroadcastId(null);
     }
   };
 
@@ -1025,25 +1034,26 @@ const PageSOSNavigation = ({
               <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.07em" }}>
                 Sent alerts
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {broadcasts.slice(0, 6).map((b) => (
-                  <div key={b.id} style={{ padding: "8px 10px", borderRadius: 8, background: "rgba(255,255,255,0.02)", border: `1px solid ${C.border}` }}>
+                  <div key={b.id} style={{ padding: "12px 14px", borderRadius: 10, background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.28)" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
                       <Pill color={b.severity === "critical" ? "red" : b.severity === "urgent" ? "amber" : "blue"}>{b.severity}</Pill>
                       <span style={{ fontSize: 10.5, color: C.muted2, marginLeft: "auto" }}>{formatClock(b.timestamp, "Just now")}</span>
                     </div>
-                    <div style={{ fontSize: 11.5, color: C.text, lineHeight: 1.5, marginBottom: 7 }}>{b.message}</div>
+                    <div style={{ fontSize: 12.5, color: C.text, lineHeight: 1.5, marginBottom: 11 }}>{b.message}</div>
                     <div style={{ display: "flex", justifyContent: "flex-end" }}>
                       <button
                         type="button"
-                        onClick={() => handleDismissBroadcast(b)}
+                        onClick={() => setBroadcastToDismiss(b)}
                         style={{
-                          padding: "4px 10px", borderRadius: 6, border: `1px solid ${C.border}`,
-                          background: "transparent", color: C.muted, fontSize: 10.5, fontWeight: 700,
-                          cursor: "pointer", fontFamily: "inherit",
+                          padding: "10px 16px", borderRadius: 9, border: "1px solid rgba(248,113,113,0.75)",
+                          background: "linear-gradient(135deg, #dc2626, #991b1b)", color: "#fff", fontSize: 12,
+                          fontWeight: 900, cursor: "pointer", fontFamily: "inherit",
+                          boxShadow: "0 0 16px rgba(220,38,38,0.25)",
                         }}
                       >
-                        ✕ Dismiss
+                        🛑 Withdraw alert & silence recipients
                       </button>
                     </div>
                   </div>
@@ -1053,6 +1063,27 @@ const PageSOSNavigation = ({
           )}
         </div>
       </div>
+
+      {broadcastToDismiss && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.76)", backdropFilter: "blur(6px)", zIndex: 320, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="withdraw-alert-title" style={{ width: "100%", maxWidth: 460, padding: 24, borderRadius: 16, background: "#0d1b2e", border: "2px solid rgba(239,68,68,0.7)", boxShadow: "0 0 36px rgba(220,38,38,0.24)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+              <span style={{ fontSize: 28 }}>🚨</span>
+              <div id="withdraw-alert-title" style={{ fontSize: 17, fontWeight: 900, color: "#fff" }}>Withdraw this team alert?</div>
+            </div>
+            <div style={{ padding: "12px 14px", borderRadius: 10, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", color: "#fecaca", fontSize: 12.5, lineHeight: 1.55, marginBottom: 18 }}>
+              This removes the alert for everyone and tells recipients to stop the alarm. It does not resolve any trekker emergency beacon.
+              <div style={{ color: "#fff", marginTop: 8, fontWeight: 700 }}>{broadcastToDismiss.message}</div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+              <Btn variant="default" onClick={() => setBroadcastToDismiss(null)} disabled={!!dismissingBroadcastId}>Keep alert active</Btn>
+              <Btn variant="danger" onClick={() => handleDismissBroadcast(broadcastToDismiss)} disabled={!!dismissingBroadcastId} style={{ padding: "10px 16px", fontWeight: 900 }}>
+                {dismissingBroadcastId ? "Withdrawing…" : "🛑 Confirm withdrawal"}
+              </Btn>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stand-down confirmation */}
       {standDownTarget && (

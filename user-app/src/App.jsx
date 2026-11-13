@@ -1647,7 +1647,7 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
     : null;
   const safetyStatus  = pressureTrend === null ? "unknown" : pressureTrend < -2 ? "unsafe" : pressureTrend < -0.5 ? "caution" : "safe";
   const statusColor   = {safe:C.green, caution:C.amber, unsafe:C.red, unknown:C.muted};
-  const statusLabel   = {safe:"Safe to Trek ✓", caution:"Use Caution ⚠️", unsafe:"Unsafe Conditions ✗", unknown:"Conditions Unverified"};
+  const statusLabel   = {safe:"Safe to Trek ✓", caution:"Use Caution ⚠️", unsafe:"Unsafe Conditions ✗"};
 
   const handleSOSTrigger = () => {
     onSOS(true);
@@ -2921,7 +2921,6 @@ const PageSOSNav = ({
     if (!alert) return;
     setAlertBusy(alert.id);
     onAcknowledgeAlert?.(alert);
-    alarmEngine.stop();
     try {
       await authFetch(`http://localhost:5050/api/sos/${alert.id}/acknowledge`, {
         method: "POST",
@@ -4494,8 +4493,8 @@ export default function UserDashboard() {
     setDismissedAlerts((prev) => ({ ...prev, [alert.id]: true }));
     ringingRef.current.delete(alert.id);
     // Silence this member's device only — the console keeps its own state and
-    // a beacon of their own keeps ringing.
-    if (!activeSOS) alarmEngine.stop();
+    // a beacon of their own or another unacknowledged command alert keeps ringing.
+    if (!activeSOS && ringingRef.current.size === 0) alarmEngine.stop();
   };
   const [sosAcknowledged, setSosAcknowledged] = useState(null);
 
