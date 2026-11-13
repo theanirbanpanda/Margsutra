@@ -3818,7 +3818,7 @@ const PageDashboard = ({ navigate, users = USERS, pendingAdmins = [], pendingTre
                 <span style={{ color: C.text, fontWeight: 600 }}>Ajay Saini (WFR Certified)</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span>Walkie-Talkie VHF:</span>
+                <span>Radio VHF:</span>
                 <span style={{ color: "#fbbf24", fontWeight: 700 }}>145.500 MHz (Ch 1)</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>

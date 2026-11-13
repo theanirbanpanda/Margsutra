@@ -1593,6 +1593,8 @@ const PageAuth = ({ onLogin, initialTab = "login" }) => {
 const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
   const [wx, setWx] = useState(null);
   const [wxLoading, setWxLoading] = useState(true);
+  const [teamRoster, setTeamRoster] = useState([]);
+  const [teamRosterLoading, setTeamRosterLoading] = useState(false);
   const [sensor, setSensor] = useState({
     temp:null, humidity:null, pressure:null, windSpeed:null, windDir:null,
     uvIndex:null, rainfall:null, aqi:null,
@@ -1638,6 +1640,33 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
     return ()=>clearInterval(t);
   },[joinedTrip]);
 
+  useEffect(() => {
+    const tripId = joinedTrip?.id || joinedTrip?.tripId;
+    if (!tripId) {
+      setTeamRoster([]);
+      return;
+    }
+    let cancelled = false;
+    setTeamRosterLoading(true);
+    authFetch(`${AUTH_API_URL}/trips/${encodeURIComponent(tripId)}/roster`)
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => {
+        if (!cancelled) {
+          const approved = Array.isArray(data?.roster)
+            ? data.roster.filter((member) => member.status === "approved")
+            : [];
+          setTeamRoster(approved);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setTeamRoster([]);
+      })
+      .finally(() => {
+        if (!cancelled) setTeamRosterLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [joinedTrip?.id, joinedTrip?.tripId]);
+
   /* Weather values are only ever what the API returned — no synthetic drift. */
 
   const wxCode = wx?.current?.weather_code??0;
@@ -1648,6 +1677,14 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
   const safetyStatus  = pressureTrend === null ? "unknown" : pressureTrend < -2 ? "unsafe" : pressureTrend < -0.5 ? "caution" : "safe";
   const statusColor   = {safe:C.green, caution:C.amber, unsafe:C.red, unknown:C.muted};
   const statusLabel   = {safe:"Safe to Trek ✓", caution:"Use Caution ⚠️", unsafe:"Unsafe Conditions ✗"};
+  const dashboardTeam = (() => {
+    const members = [...teamRoster];
+    const selfIndex = members.findIndex((member) => member.userId === user?.id || member.id === user?.id);
+    const self = { ...user, ...(selfIndex >= 0 ? members[selfIndex] : {}), userId: user?.id };
+    if (selfIndex >= 0) members[selfIndex] = self;
+    else if (user?.id) members.unshift(self);
+    return members;
+  })();
 
   const handleSOSTrigger = () => {
     onSOS(true);
@@ -1954,7 +1991,7 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
             <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text, marginTop: 2 }}>🧭 {joinedTrip.leader || "Field Guide Ajay Saini"}</div>
           </div>
           <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.border}` }}>
-            <div style={{ fontSize: 10, color: C.muted2, textTransform: "uppercase" }}>WALKIE-TALKIE VHF</div>
+            <div style={{ fontSize: 10, color: C.muted2, textTransform: "uppercase" }}>RADIO VHF</div>
             <div style={{ fontSize: 12.5, fontWeight: 700, color: "#fbbf24", marginTop: 2 }}>📻 {joinedTrip.vhfChannel || joinedTrip.emergencyFrequency || "145.500 MHz (Ch 1)"}</div>
           </div>
           <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.border}` }}>
@@ -2033,6 +2070,36 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
         </div>
 
       </div>
+
+      <Card style={{ padding: 0, overflow: "hidden", marginBottom: 18 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "16px 18px", borderBottom: `1px solid ${C.border}` }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: C.text }}>Expedition Team Members</div>
+            <div style={{ fontSize: 11.5, color: C.muted, marginTop: 3 }}>People approved for {joinedTrip.name}</div>
+          </div>
+          <Pill color="blue">👥 {dashboardTeam.length} {dashboardTeam.length === 1 ? "member" : "members"}</Pill>
+        </div>
+        <div style={{ padding: "4px 18px 10px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 12, padding: "10px 8px", color: C.muted2, fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+            <span>Name</span><span>Age</span><span>Gender</span><span>Mobile</span><span>Trek experience</span>
+          </div>
+          {dashboardTeam.map((member) => (
+            <div key={member.userId || member.id || member.email} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 12, alignItems: "center", padding: "12px 8px", borderTop: `1px solid ${C.border}`, fontSize: 12.5 }}>
+              <strong style={{ color: C.text }}>{member.name || member.displayName || "Trekker"}{(member.userId || member.id) === user?.id && <span style={{ color: C.accent, fontSize: 10, marginLeft: 7 }}>YOU</span>}</strong>
+              <span style={{ color: C.muted }}>{member.age ?? member.ageYears ?? "Not provided"}</span>
+              <span style={{ color: C.muted }}>{member.gender || "Not provided"}</span>
+              <span style={{ color: C.text }}>{member.phone || member.mobile || "Not provided"}</span>
+              <span style={{ color: C.muted }}>{member.experienceLevel || member.trekExperience || member.experience || "Not provided"}</span>
+            </div>
+          ))}
+          {!teamRosterLoading && dashboardTeam.length === 0 && (
+            <div style={{ padding: "16px 8px", borderTop: `1px solid ${C.border}`, color: C.muted, fontSize: 12 }}>No approved team member details are available yet.</div>
+          )}
+          {teamRosterLoading && dashboardTeam.length === 0 && (
+            <div style={{ padding: "16px 8px", borderTop: `1px solid ${C.border}`, color: C.muted, fontSize: 12 }}>Loading expedition members…</div>
+          )}
+        </div>
+      </Card>
 
     </div>
   );
@@ -2155,8 +2222,6 @@ const PageLiveTracking = ({ user, joinedTrip, onNavigate, activeSOS, onSOS }) =>
         joinedTrip={joinedTrip}
         serverUrl={TRACKING_SERVER_URL}
         token={trackingToken}
-        activeSOS={activeSOS}
-        onSOS={onSOS}
         onTokenExpired={issueToken}
       />
     </div>
@@ -4374,9 +4439,10 @@ export default function UserDashboard() {
   };
 
   const handleLogin = (profile) => {
+    const lastLoginAt = new Date().toISOString();
     setUser(profile);
     localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(profile));
-    localStorage.setItem(USER_SESSION_KEY, JSON.stringify({ userId: profile.id, email: profile.email }));
+    localStorage.setItem(USER_SESSION_KEY, JSON.stringify({ userId: profile.id, email: profile.email, lastLoginAt }));
     const savedTrip = localStorage.getItem("margsutra_joined_trip");
     setPage(savedTrip ? "dashboard" : "join-trip");
   };
