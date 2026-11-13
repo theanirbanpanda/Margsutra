@@ -1627,8 +1627,6 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
   useEffect(() => {
     setSosActive(activeSOS);
   }, [activeSOS]);
-  const [expandProtocol, setExpandProtocol] = useState(null);
-  const [safetyProtocols, setSafetyProtocols] = useState(FALLBACK_SAFETY_PROTOCOLS);
 
   /* Fetch Open-Meteo weather */
   useEffect(()=>{
@@ -1664,34 +1662,6 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
   },[joinedTrip]);
 
   /* Weather values are only ever what the API returned — no synthetic drift. */
-
-  useEffect(() => {
-    const unsubscribe = subscribeToSafetyProtocols((protocols) => {
-      if (!protocols.length) return;
-      const publishedProtocols = protocols
-        .map((protocol) => ({
-          ...protocol,
-          icon: protocol.icon || deriveProtocolIcon(protocol.title),
-          status: protocol.status || "draft",
-          updated:
-            protocol.updated ||
-            (protocol.updatedAt
-              ? new Date(protocol.updatedAt).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })
-              : "Recently"),
-        }))
-        .filter((protocol) => protocol.status === "published");
-
-      if (publishedProtocols.length > 0) {
-        setSafetyProtocols(publishedProtocols);
-      }
-    });
-
-    return () => unsubscribe();
-  }, []);
 
   const wxCode = wx?.current?.weather_code??0;
   const [wxIcon, wxDesc] = WX_CODES[wxCode]??["🌤️","—"];
@@ -2019,8 +1989,8 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
         </div>
       </Card>
 
-      {/* 2-Column Responsive Dashboard Body */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 16, marginBottom: 18 }}>
+      {/* Dashboard body */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16, marginBottom: 18 }}>
         {/* Left: Weather & Barometric Trend */}
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <Card style={{
@@ -2081,152 +2051,8 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
           </Card>
         </div>
 
-        {/* Right: Duty-of-Care & Emergency SOS */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {/* Duty-of-Care Casualty Profile Card */}
-          <Card>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
-                Trekker Duty-of-Care Readiness
-              </div>
-              <Pill color="green">● Verified for Field</Pill>
-            </div>
-
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-              <Avatar
-                initials={user?.avatar || (user?.name || "T").slice(0, 2).toUpperCase()}
-                bg={user?.color?.[0] || "#E6F1FB"}
-                text={user?.color?.[1] || "#0C447C"}
-                size={40}
-              />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {user?.name}
-                </div>
-                <div style={{ fontSize: 11.5, color: C.muted }}>
-                  {user?.phone || "+91 86375 40813"} · {user?.city || "Western Ghats"}
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
-              <div style={{ background: "rgba(239, 68, 68, 0.08)", border: "1px solid rgba(239, 68, 68, 0.25)", borderRadius: 8, padding: "8px 12px" }}>
-                <div style={{ fontSize: 10, color: "#fca5a5", fontWeight: 700 }}>BLOOD GROUP</div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: "#ef4444", marginTop: 2 }}>🩸 {user?.blood || "B+"}</div>
-              </div>
-              <div style={{ background: "rgba(255, 255, 255, 0.03)", border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px" }}>
-                <div style={{ fontSize: 10, color: C.muted2, fontWeight: 700 }}>EMERGENCY CONTACT</div>
-                <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>
-                  {user?.ec1Name ? `${user.ec1Name} (${user.ec1Rel || "Family"})` : "Family · +91 91531 91902"}
-                </div>
-              </div>
-            </div>
-
-            <Btn onClick={() => onNavigate("profile")} style={{ width: "100%", justifyContent: "center", fontSize: 11.5 }}>
-              👤 View &amp; Update Medical Records →
-            </Btn>
-          </Card>
-
-          {/* Rapid Emergency SOS Action Card */}
-          <Card style={{
-            background: sosActive
-              ? "linear-gradient(135deg, rgba(239, 68, 68, 0.25) 0%, rgba(185, 28, 28, 0.3) 100%)"
-              : "rgba(239, 68, 68, 0.05)",
-            border: sosActive ? "2px solid #ef4444" : "1px solid rgba(239, 68, 68, 0.25)",
-            padding: "16px 20px"
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: sosActive ? "#f87171" : C.text, display: "flex", alignItems: "center", gap: 6 }}>
-                <span>🚨</span>
-                <span>Mountain Emergency Distress Beacon</span>
-              </div>
-              <Pill color={sosActive ? "red" : "gray"}>
-                {sosActive ? "● ACTIVE DISTRESS" : "Standby (Safe)"}
-              </Pill>
-            </div>
-            <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.5, marginBottom: 14 }}>
-              Broadcasts real-time GPS telemetry, blood group, and emergency contacts to SAR Command. Two-step confirmation guards against accidental false alarms.
-            </div>
-
-            <div style={{ display: "flex", gap: 10 }}>
-              {sosActive ? (
-                <button
-                  onClick={cancelSOS}
-                  style={{
-                    flex: 1,
-                    padding: "10px",
-                    borderRadius: 8,
-                    background: "linear-gradient(135deg, #10b981, #059669)",
-                    border: "none",
-                    color: "#ffffff",
-                    fontSize: 12.5,
-                    fontWeight: 800,
-                    cursor: "pointer",
-                    boxShadow: "0 2px 10px rgba(16, 185, 129, 0.4)",
-                    fontFamily: "inherit"
-                  }}
-                >
-                  🛑 Cancel SOS (I Am Safe / False Alarm)
-                </button>
-              ) : (
-                <button
-                  onClick={handleSOSTrigger}
-                  style={{
-                    flex: 1,
-                    padding: "10px",
-                    borderRadius: 8,
-                    background: "linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)",
-                    border: "none",
-                    color: "#ffffff",
-                    fontSize: 12.5,
-                    fontWeight: 800,
-                    cursor: "pointer",
-                    boxShadow: "0 4px 14px rgba(239, 68, 68, 0.4)",
-                    fontFamily: "inherit",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 8
-                  }}
-                >
-                  <span>🚨</span>
-                  <span>TRIGGER SOS (2-STEP VERIFICATION)</span>
-                </button>
-              )}
-            </div>
-          </Card>
-        </div>
       </div>
 
-      {/* Safety Protocols */}
-      <div style={{marginTop:4}}>
-        <div style={{fontSize:13,fontWeight:600,color:C.text,marginBottom:12}}>📋 Safety Protocols</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-          {safetyProtocols.map(p=>(
-            <Card key={p.id} style={{cursor:"pointer",transition:"border-color 0.2s",
-              borderColor:expandProtocol===p.id?"rgba(59,130,246,0.4)":C.border}}
-              onClick={()=>setExpandProtocol(expandProtocol===p.id?null:p.id)}>
-              <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
-                <div style={{fontSize:20,flexShrink:0,marginTop:2}}>{p.icon}</div>
-                <div style={{flex:1}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                    <div style={{fontSize:13,fontWeight:500,color:C.text}}>{p.title}</div>
-                    <span style={{fontSize:12,color:C.muted,transition:"transform 0.2s",
-                      display:"inline-block",transform:expandProtocol===p.id?"rotate(180deg)":"none"}}>▾</span>
-                  </div>
-                  <div style={{fontSize:10,color:C.muted2,marginTop:2}}>Updated {p.updated}</div>
-                  {expandProtocol===p.id&&(
-                    <div style={{fontSize:12,color:C.muted,marginTop:10,lineHeight:1.7,
-                      paddingTop:10,borderTop:`1px solid ${C.border}`}}>
-                      {p.body}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
-      </div>
     </div>
   );
 };
@@ -3096,6 +2922,37 @@ const PageWeatherMaps = ({ joinedTrip, onNavigate }) => {
 ════════════════════════════════════════════════ */
 const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate, sosDelivery, sosAcknowledged }) => {
   const [currentStep, setCurrentStep] = useState(0);
+  const [expandProtocol, setExpandProtocol] = useState(null);
+  const [safetyProtocols, setSafetyProtocols] = useState(FALLBACK_SAFETY_PROTOCOLS);
+
+  // Safety protocols live here — the dashboard no longer repeats them.
+  useEffect(() => {
+    const unsubscribe = subscribeToSafetyProtocols((protocols) => {
+      if (!protocols.length) return;
+      const publishedProtocols = protocols
+        .map((protocol) => ({
+          ...protocol,
+          icon: protocol.icon || deriveProtocolIcon(protocol.title),
+          status: protocol.status || "draft",
+          updated:
+            protocol.updated ||
+            (protocol.updatedAt
+              ? new Date(protocol.updatedAt).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })
+              : "Recently"),
+        }))
+        .filter((protocol) => protocol.status === "published");
+
+      if (publishedProtocols.length > 0) {
+        setSafetyProtocols(publishedProtocols);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
   const [elapsed, setElapsed]         = useState(0);
   const [teamPos, setTeamPos]         = useState({lat:RESCUE_TEAMS[0].lat,lon:RESCUE_TEAMS[0].lon});
   const [navMode, setNavMode]         = useState(false);
@@ -3249,6 +3106,38 @@ const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate, sosDelivery, sosAcknow
     );
   };
 
+  // Safety protocols — the single home for them in the trekker app.
+  const protocolsBlock = (
+        <div style={{marginTop:16}}>
+          <div style={{fontSize:13,fontWeight:600,color:C.text,marginBottom:12}}>📋 Safety Protocols</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(280px, 1fr))",gap:10}}>
+            {safetyProtocols.map(p=>(
+              <Card key={p.id} style={{cursor:"pointer",transition:"border-color 0.2s",
+                borderColor:expandProtocol===p.id?"rgba(59,130,246,0.4)":C.border}}
+                onClick={()=>setExpandProtocol(expandProtocol===p.id?null:p.id)}>
+                <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
+                  <div style={{fontSize:20,flexShrink:0,marginTop:2}}>{p.icon}</div>
+                  <div style={{flex:1}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                      <div style={{fontSize:13,fontWeight:500,color:C.text}}>{p.title}</div>
+                      <span style={{fontSize:12,color:C.muted,transition:"transform 0.2s",
+                        display:"inline-block",transform:expandProtocol===p.id?"rotate(180deg)":"none"}}>▾</span>
+                    </div>
+                    <div style={{fontSize:10,color:C.muted2,marginTop:2}}>Updated {p.updated}</div>
+                    {expandProtocol===p.id&&(
+                      <div style={{fontSize:12,color:C.muted,marginTop:10,lineHeight:1.7,
+                        paddingTop:10,borderTop:`1px solid ${C.border}`}}>
+                        {p.body}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+  );
+
   if (!activeSOS) return (
     <div>
       <PageHeader title="SOS Navigation" sub="Real-time routing when an emergency is active"/>
@@ -3261,6 +3150,8 @@ const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate, sosDelivery, sosAcknow
           your rescue team to your location with live ETA and turn-by-turn instructions.
         </div>
       </div>
+
+      {protocolsBlock}
     </div>
   );
 
@@ -3453,6 +3344,8 @@ const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate, sosDelivery, sosAcknow
           </Card>
         </div>
       </div>
+
+      {protocolsBlock}
     </div>
   );
 };

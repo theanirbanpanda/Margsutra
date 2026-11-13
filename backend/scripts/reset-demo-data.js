@@ -236,6 +236,7 @@ async function main() {
       id,
       code,
       ...fields,
+      date: `${trip.startDate} · ${trip.startTime} – ${trip.endDate} · ${trip.endTime}`,
       status: "upcoming",
       isManaged: false,
       rosterCount: trip.baseRosterCount,
