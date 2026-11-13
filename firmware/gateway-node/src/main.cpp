@@ -70,6 +70,7 @@ struct SensorData {
   int pm25, pm10;
   int pressTrend;
   bool sosActive;
+  bool gpsFix;
   float lat, lon;
   unsigned long receivedAt;
   int rssi;
@@ -275,6 +276,8 @@ void pushToFirebase(const SensorData& d) {
   json.set("active_sos", d.sosActive);
   json.set("lat", d.lat);
   json.set("lon", d.lon);
+  json.set("gps_fix", d.gpsFix);
+  json.set("received_at/.sv", "timestamp");
   json.set("rssi", d.rssi);
   json.set("snr", d.snr);
 
@@ -423,6 +426,7 @@ void handleIncomingLoRaPacket(int packetSize) {
   lastData.pressTrend = doc["pressure_trend"] | 0;
   lastData.lat = doc["lat"] | 0.0;
   lastData.lon = doc["lon"] | 0.0;
+  lastData.gpsFix = doc["gps_fix"] | false;
   lastData.sosActive = doc["sos"] | false;
   lastData.rssi = LoRa.packetRssi();
   lastData.snr = LoRa.packetSnr();

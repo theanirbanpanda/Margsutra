@@ -22,6 +22,7 @@ import {
   subscribeToTrips,
   subscribeToUsers,
   subscribeToSOSEvents,
+  subscribeToFieldTelemetry,
   resolveSOSEvent,
   acknowledgeSOSEvent,
   broadcastSOSAlert,
@@ -38,6 +39,8 @@ import {
   RAJMACHI_ADMIN,
   RAJMACHI_MEMBERS,
 } from "./services/expeditionTeam";
+import { getDemoTrackingData, toFreshPosition } from "./services/trackingDemoData";
+import { DEMO_EXPEDITION_MEMBERS } from "../../shared/demoExpeditionRoster";
 
 /* ════════════════════════════════════════════════
    PAGE ERROR BOUNDARY
@@ -137,11 +140,11 @@ const TRIPS = [
     isManaged: true,
     status: "in-field",
     code: "RAJM26",
-    lat: 18.8286,
-    lon: 73.3986,
+    lat: 18.8296834,
+    lon: 73.3974108,
     geofence: {
-      lat: 18.8286,
-      lon: 73.3986,
+      lat: 18.8296834,
+      lon: 73.3974108,
       radius: 2500,
       zoneName: "Rajmachi Safe Trek Corridor",
     },
@@ -167,11 +170,11 @@ const TRIPS = [
     isManaged: false,
     status: "upcoming",
     code: "HAR26",
-    lat: 19.3853,
-    lon: 73.7786,
+    lat: 19.391453,
+    lon: 73.793874,
     geofence: {
-      lat: 19.3853,
-      lon: 73.7786,
+      lat: 19.391453,
+      lon: 73.793874,
       radius: 3000,
       zoneName: "Harishchandragad Plateau Safety Perimeter",
     },
@@ -382,7 +385,7 @@ const buildFallbackRoute = (selectedSOS) => {
   ];
 };
 
-const LiveMap = ({ points = [], teams = [], height = 380, showPulse = true, routeFrom = null, routeTo = null, routePath = null, zoom: _zoom, onZoom }) => {
+const LiveMap = ({ points = [], teams = [], height = 380, showPulse = true, routeFrom = null, routeTo = null, routePath = null, zoom: _zoom, onZoom, leaderCoordinates = [RAJMACHI_ADMIN.lat, RAJMACHI_ADMIN.lon], tripName = "Expedition" }) => {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef([]);
@@ -423,7 +426,7 @@ const LiveMap = ({ points = [], teams = [], height = 380, showPulse = true, rout
       iconAnchor: [19, 19],
       popupAnchor: [0, -18],
     });
-    const adminMk = L.marker([RAJMACHI_ADMIN.lat, RAJMACHI_ADMIN.lon], { icon: leaderIcon }).addTo(map);
+    const adminMk = L.marker(leaderCoordinates, { icon: leaderIcon }).addTo(map);
     adminMk.bindPopup(`
       <b>👑 You (Ajay Saini) · Expedition Leader</b><br/>
       <span style="color:#fbbf24;font-weight:600">Field Guide & Lead Navigator</span><br/>
@@ -435,21 +438,16 @@ const LiveMap = ({ points = [], teams = [], height = 380, showPulse = true, rout
 
     // 2. Trail Corridor polyline
     const trailPoly = L.polyline([
-      [18.8229, 73.3932],
-      [18.8242, 73.3945],
-      [18.8256, 73.3958],
-      [18.8271, 73.3971],
-      [18.8286, 73.3986],
-      [RAJMACHI_ADMIN.lat, RAJMACHI_ADMIN.lon],
+      leaderCoordinates,
     ], {
       color: "#f59e0b",
       weight: 3.5,
       opacity: 0.65,
       dashArray: "8 6",
-    }).addTo(map).bindPopup("<b>Rajmachi Fort Expedition Corridor</b>");
+    }).addTo(map).bindPopup(`<b>${tripName} route</b>`);
     markersRef.current.push(trailPoly);
 
-    const allMapPoints = [[RAJMACHI_ADMIN.lat, RAJMACHI_ADMIN.lon]];
+    const allMapPoints = [leaderCoordinates];
 
     points.forEach((p) => {
       const isSOS = p.status === "sos";
@@ -459,7 +457,7 @@ const LiveMap = ({ points = [], teams = [], height = 380, showPulse = true, rout
       const size = isSOS ? 14 : 10;
       const icon = makeDotIcon(L, color, size, pulse, isSOS ? "#ef4444" : "#3b82f6");
 
-      const distFromAdmin = calculateDistanceMeters(RAJMACHI_ADMIN.lat, RAJMACHI_ADMIN.lon, p.lat, p.lon);
+      const distFromAdmin = calculateDistanceMeters(leaderCoordinates[0], leaderCoordinates[1], p.lat, p.lon);
       const distStr = formatDistance(distFromAdmin);
 
       const popup = `<b>${p.name}</b> (${p.badge || "Trekker"})<br>` +
@@ -484,7 +482,7 @@ const LiveMap = ({ points = [], teams = [], height = 380, showPulse = true, rout
       const mk = L.marker([t.lat, t.lon], { icon }).addTo(map).bindPopup(popup);
       markersRef.current.push(mk);
     });
-  }, [ready, pointsKey, teamsKey, showPulse]);
+  }, [ready, pointsKey, teamsKey, showPulse, leaderCoordinates[0], leaderCoordinates[1], tripName]);
 
   const routeKey = JSON.stringify({ rf: routeFrom ? { lat: routeFrom.lat, lon: routeFrom.lon } : null, rt: routeTo ? { lat: routeTo.lat, lon: routeTo.lon } : null, rp: Array.isArray(routePath) ? routePath.slice(0, 8) : null });
 
@@ -2559,13 +2557,7 @@ const PageSafetyProtocol = ({ isEmbedded = false }) => {
 /* ════════════════════════════════════════════════
    PAGE: TRIP ROSTERS & EXPEDITION APPROVALS
 ════════════════════════════════════════════════ */
-const RAJMACHI_DEMO_MEMBERS = [
-  { id: "rajm-demo-1", name: "Rhea Kulkarni", email: "rhea.k@example.com", phone: "+91 98200 11221", blood: "O+", medical: "Mild asthma — carries inhaler", ec1Name: "Meera Kulkarni", ec1Rel: "Mother", ec1Ph: "+91 98200 11222", status: "approved", isDemo: true },
-  { id: "rajm-demo-2", name: "Aditya Rane", email: "aditya.rane@example.com", phone: "+91 99670 44112", blood: "B+", medical: "None", ec1Name: "Sunil Rane", ec1Rel: "Father", ec1Ph: "+91 99670 44113", status: "approved", isDemo: true },
-  { id: "rajm-demo-3", name: "Sanya Deshpande", email: "sanya.d@example.com", phone: "+91 90040 78231", blood: "A-", medical: "Knee brace — old sprain", ec1Name: "Vikram Deshpande", ec1Rel: "Brother", ec1Ph: "+91 90040 78232", status: "approved", isDemo: true },
-  { id: "rajm-demo-4", name: "Kabir Sheikh", email: "kabir.s@example.com", phone: "+91 98670 55109", blood: "AB+", medical: "None", ec1Name: "Farah Sheikh", ec1Rel: "Sister", ec1Ph: "+91 98670 55110", status: "approved", isDemo: true },
-  { id: "rajm-demo-5", name: "Ira Menon", email: "ira.menon@example.com", phone: "+91 98330 21004", blood: "O-", medical: "Carries EpiPen", ec1Name: "Deepa Menon", ec1Rel: "Mother", ec1Ph: "+91 98330 21005", status: "approved", isDemo: true },
-];
+const RAJMACHI_DEMO_MEMBERS = DEMO_EXPEDITION_MEMBERS;
 
 const FieldLabel = ({ children }) => (
   <div style={{ fontSize: 10.5, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 5 }}>
@@ -3615,7 +3607,7 @@ const PageTripRosters = ({
 /* ════════════════════════════════════════════════
    PAGE: DASHBOARD
 ════════════════════════════════════════════════ */
-const PageDashboard = ({ navigate, users = USERS, pendingAdmins = [], pendingTrekkers = [] }) => {
+const PageDashboard = ({ navigate, users = USERS, pendingAdmins = [], pendingTrekkers = [], assignedTrip }) => {
   const active = users.filter(u => u.status === "active").length;
   const sos = users.filter(u => u.status === "sos").length;
   const [trips, setTrips] = useState(TRIPS);
@@ -3750,10 +3742,10 @@ const PageDashboard = ({ navigate, users = USERS, pendingAdmins = [], pendingTre
 
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 14, marginBottom: 14 }}>
         <div>
-          <LiveMap points={users} teams={[]} height={380} />
+          <LiveMap points={users} teams={[]} height={380} leaderCoordinates={assignedTrip ? [Number(assignedTrip.lat ?? assignedTrip.geofence?.lat) || 20.5937, Number(assignedTrip.lon ?? assignedTrip.geofence?.lon) || 78.9629] : [20.5937, 78.9629]} tripName={assignedTrip?.name || "No assigned expedition"} />
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginTop: 12 }}>
             <StatCard label="GPS System Accuracy" value="±6m" sub="Field GNSS / NEO-6M" color={C.green} icon="🛰️" />
-            <StatCard label="Trail Corridor" value="829m ASL" sub="Rajmachi Fort Sector" color={C.teal} icon="🏔️" />
+            <StatCard label="Assigned Expedition" value={assignedTrip?.code || "None"} sub={assignedTrip?.location || assignedTrip?.name || "No trip assigned to this admin"} color={C.teal} icon="🏔️" />
             <StatCard label="LoRa Gateway Mesh" value="865 MHz" sub="IN865 License-Exempt" color={C.purple} icon="📡" />
           </div>
         </div>
@@ -5075,16 +5067,28 @@ const PageSOSTracking = PageSOSNavigation;
 /* ════════════════════════════════════════════════
    PAGE: LIVE TRACKING
 ════════════════════════════════════════════════ */
-const PageLiveTracking = ({ navigate, users = USERS, connectionState = "disconnected", error = null }) => {
+const PageLiveTracking = ({ navigate, users = USERS, connectionState = "disconnected", error = null, trip }) => {
   const [filter, setFilter] = useState("all");
   const [sel, setSel] = useState(null);
   const displayUsers = users && users.length > 0 ? users : USERS;
+  const [fieldNodes, setFieldNodes] = useState([]);
+  const [fieldClock, setFieldClock] = useState(Date.now());
+  useEffect(() => {
+    const unsubscribe = subscribeToFieldTelemetry((nodes) => setFieldNodes(Array.isArray(nodes) ? nodes : []));
+    const timer = setInterval(() => setFieldClock(Date.now()), 5000);
+    return () => { unsubscribe(); clearInterval(timer); };
+  }, []);
+  const fieldFix = fieldNodes.filter((node) => node.gps_fix === true && Number.isFinite(Number(node.lat)) && Number.isFinite(Number(node.lon)) && Number(node.lat) !== 0 && Number(node.lon) !== 0 && fieldClock - Number(node.received_at || node.timestamp || 0) < 90000).sort((a, b) => Number(b.received_at || b.timestamp || 0) - Number(a.received_at || a.timestamp || 0))[0];
+  const isDemoAdmin = (localStorage.getItem("margsutra_admin_session") || "").toLowerCase().includes(DEMO_ADMIN_EMAIL);
+  const isHarishchandragad = String(trip?.code || "").toUpperCase().startsWith("HAR") || /harishchandragad/i.test(trip?.name || "");
+  const assignedCenter = isHarishchandragad ? { lat: 19.391453, lon: 73.793874 } : { lat: 18.8296834, lon: 73.3974108 };
+  const tripUsers = isDemoAdmin && trip ? displayUsers.map((user, index) => ({ ...user, lat: assignedCenter.lat + index * 0.00035, lon: assignedCenter.lon + index * 0.00025, city: trip.location || trip.name })) : displayUsers;
   const filtered = filter === "all" ? displayUsers : displayUsers.filter(u => u.status === filter);
   const activeSOSUser = displayUsers.find((user) => user.status === "sos") || null;
   const activeTeam = SOS_TEAMS.find((team) => team.status === "deployed") || SOS_TEAMS[0];
 
   // Calculate distance from Admin (Ajay Saini) for each member
-  const memberDistances = displayUsers.map(u => calculateDistanceMeters(RAJMACHI_ADMIN.lat, RAJMACHI_ADMIN.lon, u.lat, u.lon));
+  const memberDistances = tripUsers.map(u => calculateDistanceMeters(fieldFix ? Number(fieldFix.lat) : assignedCenter.lat, fieldFix ? Number(fieldFix.lon) : assignedCenter.lon, u.lat, u.lon));
   const maxSpread = memberDistances.length > 0 ? Math.max(...memberDistances) : 0;
 
   return (
@@ -5103,7 +5107,7 @@ const PageLiveTracking = ({ navigate, users = USERS, connectionState = "disconne
         </span>
       </div>
 
-      <PageHeader title="Live Navigation & User Tracking" sub="Real-time positions, member proximity and trail formation"
+      <PageHeader title="Live Navigation & User Tracking" sub={`${trip?.name || "No expedition assigned to this admin"} · ${fieldFix ? `LoRa telemetry active · ${fieldFix.rssi ?? "—"} dBm` : isDemoAdmin ? "Assigned expedition tracking" : "Signal strength insufficient — please move to a different area"}`}
         right={<div style={{ display: "flex", gap: 6 }}>
           {["all", "active", "sos"].map(f => <button key={f} onClick={() => setFilter(f)} style={{ padding: "5px 12px", borderRadius: 7, border: `1px solid ${filter === f ? C.accent : C.border}`, background: filter === f ? "rgba(59,130,246,0.12)" : "transparent", color: filter === f ? C.accent : C.muted, fontSize: 11, cursor: "pointer", fontFamily: "inherit", textTransform: "capitalize" }}>{f}</button>)}
         </div>} />
@@ -5148,7 +5152,7 @@ const PageLiveTracking = ({ navigate, users = USERS, connectionState = "disconne
               <Pill color="green">● Leading Trail</Pill>
             </div>
             <div style={{ fontSize: 12, color: C.muted }}>
-              📍 Manoranjan Fort Ridge (18.8312°N, 73.4008°E · 842m ASL) · VHF Channel: 145.500 MHz
+              📍 {trip?.location || "Assigned expedition location unavailable"} · {trip?.vhfChannel || "Radio channel not set"}
             </div>
           </div>
         </div>
@@ -5167,11 +5171,13 @@ const PageLiveTracking = ({ navigate, users = USERS, connectionState = "disconne
       <div style={{ display: "grid", gridTemplateColumns: "1fr 310px", gap: 14 }}>
         <div>
           <LiveMap
-            points={filtered}
+            points={tripUsers.filter((user) => filter === "all" || user.status === filter)}
             teams={SOS_TEAMS.filter(t => t.status === "deployed")}
             routeFrom={activeTeam}
             routeTo={activeSOSUser}
             height={420}
+            leaderCoordinates={isDemoAdmin && trip ? [assignedCenter.lat, assignedCenter.lon] : fieldFix ? [Number(fieldFix.lat), Number(fieldFix.lon)] : [20.5937, 78.9629]}
+            tripName={trip?.name || "No assigned expedition"}
           />
           {activeSOSUser && (
             <div style={{ marginTop: 10, background: "rgba(239,68,68,0.08)", border: `1px solid rgba(239,68,68,0.25)`, borderRadius: 10, padding: "10px 12px", fontSize: 12, color: C.text }}>
@@ -5190,8 +5196,8 @@ const PageLiveTracking = ({ navigate, users = USERS, connectionState = "disconne
             <span>Trekker Group ({filtered.length})</span>
             <span style={{ color: "#60a5fa" }}>Distances from You</span>
           </div>
-          {filtered.map(u => {
-            const distFromAdmin = calculateDistanceMeters(RAJMACHI_ADMIN.lat, RAJMACHI_ADMIN.lon, u.lat, u.lon);
+          {tripUsers.filter((user) => filter === "all" || user.status === filter).map(u => {
+            const distFromAdmin = calculateDistanceMeters(fieldFix ? Number(fieldFix.lat) : assignedCenter.lat, fieldFix ? Number(fieldFix.lon) : assignedCenter.lon, u.lat, u.lon);
             const distStr = formatDistance(distFromAdmin);
             const isClose = distFromAdmin < 500;
             const isMedium = distFromAdmin >= 500 && distFromAdmin <= 1200;
@@ -5297,6 +5303,154 @@ const PageLiveTracking = ({ navigate, users = USERS, connectionState = "disconne
   );
 };
 
+const ExpeditionRadarMap = ({ center, route, waypoints, people, tripName }) => {
+  const element = useRef(null);
+  const mapRef = useRef(null);
+  const layersRef = useRef(null);
+  const [ready, setReady] = useState(!!window.L);
+  useEffect(() => { injectLeafletStyles(); ensureLeaflet(() => setReady(true)); }, []);
+  useEffect(() => {
+    if (!ready || !element.current || mapRef.current) return undefined;
+    const map = window.L.map(element.current).setView(center, 14);
+    window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap contributors", maxZoom: 19 }).addTo(map);
+    layersRef.current = window.L.layerGroup().addTo(map);
+    mapRef.current = map;
+    return () => { map.remove(); mapRef.current = null; layersRef.current = null; };
+  }, [ready]);
+  useEffect(() => {
+    if (!ready || !mapRef.current || !layersRef.current) return;
+    const L = window.L;
+    const map = mapRef.current;
+    const layerGroup = layersRef.current;
+    layerGroup.clearLayers();
+    if (route?.length > 1) L.polyline(route, { color: "#f59e0b", weight: 4, opacity: 0.85, dashArray: "9 7" }).addTo(layerGroup).bindPopup(`${tripName} trek route`);
+    waypoints.forEach((point) => L.circleMarker([point.lat, point.lon], { radius: 4, color: "#fff", weight: 1, fillColor: "#f59e0b", fillOpacity: 1 }).addTo(layerGroup).bindPopup(point.name));
+    const points = [];
+    people.forEach((person) => {
+      const lat = Number(person.lat), lon = Number(person.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon) || (!lat && !lon)) return;
+      points.push([lat, lon]);
+      const color = person.isGuide ? "#f59e0b" : person.status === "sos" ? "#ef4444" : person.isSelf ? "#3b82f6" : "#10b981";
+      const initials = person.isGuide ? "★" : person.isSelf ? "YOU" : (person.avatar || person.name?.split(/\s+/).map((part) => part[0]).join("").slice(0, 2) || "TR");
+      const size = person.isSelf ? 32 : 28;
+      const icon = L.divIcon({ className: "", html: `<div style="width:${size}px;height:${size}px;border-radius:50%;display:grid;place-items:center;background:${color};border:2px solid white;box-shadow:0 2px 10px #0009;color:white;font-size:${person.isSelf ? 8 : 11}px;font-weight:800">${initials}</div>`, iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
+      L.marker([lat, lon], { icon }).addTo(layerGroup).bindPopup(`<b>${person.name}</b><br>${person.role || "Trekker"}${person.altitude ? `<br>${Math.round(person.altitude)}m ASL` : ""}`);
+    });
+    const fit = points.length ? points : route || [];
+    if (fit.length > 1) map.fitBounds(fit, { padding: [38, 38], maxZoom: 15 });
+    else if (fit.length === 1) map.setView(fit[0], 15);
+    else map.setView(center, 12);
+  }, [ready, center[0], center[1], JSON.stringify(route), JSON.stringify(waypoints), JSON.stringify(people), tripName]);
+  return <div style={{ height: 410, borderRadius: 12, overflow: "hidden", border: `1px solid ${C.border}`, background: "#08101e", position: "relative" }}>
+    {!ready && <div style={{ display: "grid", height: "100%", placeItems: "center", color: C.muted }}>Loading trail map…</div>}
+    <div ref={element} style={{ display: ready ? "block" : "none", height: "100%" }} />
+    <div style={{ position: "absolute", left: 12, top: 12, zIndex: 500, background: "rgba(11,20,34,.94)", border: `1px solid ${C.border}`, borderRadius: 9, padding: "8px 10px", color: C.muted, fontSize: 10.5, lineHeight: 1.7 }}><div><b style={{ color: "#f59e0b" }}>★</b> Expedition guide</div><div><b style={{ color: "#60a5fa" }}>●</b> Trekker</div><div><b style={{ color: "#f59e0b" }}>┄</b> Trail route</div></div>
+  </div>;
+};
+
+const PageLiveTrackingRebuilt = ({ navigate, users = [], connectionState = "disconnected", error = null, trip, admin }) => {
+  const [roster, setRoster] = useState([]);
+  const [fieldNodes, setFieldNodes] = useState([]);
+  const [adminFix, setAdminFix] = useState(null);
+  const [clock, setClock] = useState(Date.now());
+  const [filter, setFilter] = useState("all");
+  const [selected, setSelected] = useState(null);
+  const isDemoAdmin = String(admin?.email || "").toLowerCase() === DEMO_ADMIN_EMAIL;
+  const demoUser = users.find((person) => String(person.email || "").toLowerCase() === "demouser@gmail.com") || { id: "demo-user", name: "Demo User", email: "demouser@gmail.com" };
+  const demoData = useMemo(() => isDemoAdmin ? getDemoTrackingData(trip, demoUser, admin) : null, [isDemoAdmin, trip?.id, trip?.code, trip?.name, demoUser.id, demoUser.name, admin?.id, admin?.name]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const tripId = trip?.id || trip?.tripId;
+    setRoster([]);
+    if (!tripId || isDemoAdmin) return undefined;
+    fetchTripRoster(tripId).then((members) => { if (!cancelled) setRoster((members || []).filter((member) => member.status === "approved")); });
+    return () => { cancelled = true; };
+  }, [trip?.id, trip?.tripId, isDemoAdmin]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToFieldTelemetry((nodes) => setFieldNodes(Array.isArray(nodes) ? nodes : []));
+    const timer = setInterval(() => setClock(Date.now()), 5000);
+    return () => { unsubscribe(); clearInterval(timer); };
+  }, []);
+
+  useEffect(() => {
+    if (isDemoAdmin || !navigator.geolocation || !window.isSecureContext) { setAdminFix(null); return undefined; }
+    const watchId = navigator.geolocation.watchPosition((position) => setAdminFix({ lat: position.coords.latitude, lon: position.coords.longitude, accuracy: position.coords.accuracy, timestamp: position.timestamp }), () => setAdminFix(null), { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [isDemoAdmin, trip?.id]);
+
+  const current = (member) => users.find((person) => String(person.id) === String(member.userId || member.id) || String(person.email || "").toLowerCase() === String(member.email || "").toLowerCase());
+  const memberFix = (member) => {
+    const record = fieldNodes.find((node) => [node.userId, node.user_id, node.memberId, node.member_id, node.ownerId].some((value) => value && String(value) === String(member.userId || member.id)) || (node.email && member.email && String(node.email).toLowerCase() === String(member.email).toLowerCase()));
+    return toFreshPosition(record, clock);
+  };
+  const people = useMemo(() => {
+    if (demoData) return [demoData.leader, ...demoData.participants];
+    const trekkers = roster.map((member) => {
+      const live = current(member);
+      const hardware = memberFix(member);
+      const socketFix = live && Number.isFinite(Number(live.lat)) && Number.isFinite(Number(live.lon)) && live.lastUpdate && clock - Number(live.lastUpdate) < 90_000 ? { lat: Number(live.lat), lon: Number(live.lon), altitude: live.altitude, accuracy: live.accuracy } : null;
+      const rosterStatus = member.status === "approved" ? "active" : member.status;
+      return { ...member, ...(live || {}), id: member.userId || member.id, name: member.name || live?.name || "Trekker", role: "Trekker", status: live?.status || rosterStatus || "inactive", ...(socketFix || hardware || {}) };
+    });
+    const adminNode = fieldNodes.find((node) => [node.userId, node.user_id, node.memberId, node.ownerId].some((value) => value && String(value) === String(admin?.id)) || (node.email && String(node.email).toLowerCase() === String(admin?.email || "").toLowerCase()));
+    const guideFix = toFreshPosition(adminNode, clock) || (adminFix && clock - adminFix.timestamp < 30_000 ? adminFix : null);
+    const guide = guideFix ? { id: admin?.id || "guide", name: admin?.name || "Expedition Guide", role: "Expedition Guide", isGuide: true, ...guideFix } : null;
+    return guide ? [guide, ...trekkers] : trekkers;
+  }, [demoData, roster, users, fieldNodes, clock, adminFix, admin?.id, admin?.name, admin?.email]);
+
+  const tripLat = Number(trip?.lat ?? trip?.geofence?.lat);
+  const tripLon = Number(trip?.lon ?? trip?.geofence?.lon);
+  const center = [Number.isFinite(tripLat) ? tripLat : 20.5937, Number.isFinite(tripLon) ? tripLon : 78.9629];
+  const route = demoData?.route || [];
+  const waypoints = demoData?.waypoints || [];
+  const plotted = people.filter((person) => Number.isFinite(Number(person.lat)) && Number.isFinite(Number(person.lon)));
+  const selfPerson = demoData?.participants.find((person) => person.isSelf) || null;
+  const liveGpsMember = roster.some((member) => {
+    const person = current(member);
+    return person && Number.isFinite(Number(person.lat)) && Number.isFinite(Number(person.lon)) && person.lastUpdate && clock - Number(person.lastUpdate) < 90_000;
+  });
+  const liveHardwareMember = roster.some((member) => !!memberFix(member));
+  const sourceLabel = isDemoAdmin ? "Expedition radar" : adminFix ? "Admin GPS · live" : liveGpsMember ? "Team GPS · live" : liveHardwareMember ? "ESP32 / LoRa telemetry" : "Signal strength insufficient — please move to a different area";
+  const visiblePeople = filter === "all" ? people : people.filter((person) => person.status === filter);
+  const ownLocation = selfPerson || (adminFix ? { ...adminFix, name: admin?.name || "You" } : null);
+  const spread = ownLocation ? Math.max(0, ...plotted.filter((person) => !person.isSelf).map((person) => calculateDistanceMeters(ownLocation.lat, ownLocation.lon, person.lat, person.lon))) : null;
+  const focus = (person) => { setSelected(person.id); };
+
+  return <div>
+    <PageHeader title="Live Navigation & Trail" sub={`${trip?.name || "No expedition assigned to this admin"} · Team locations and route`} right={<div style={{ display: "flex", gap: 6 }}>{["all", "active", "sos"].map((value) => <button key={value} onClick={() => setFilter(value)} style={{ padding: "5px 12px", borderRadius: 7, border: `1px solid ${filter === value ? C.accent : C.border}`, background: filter === value ? "rgba(59,130,246,.12)" : "transparent", color: filter === value ? C.accent : C.muted, fontSize: 11, cursor: "pointer", textTransform: "capitalize" }}>{value}</button>)}</div>} />
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 12, color: C.muted, fontSize: 11.5 }}>
+      <span><span style={{ color: connectionState === "connected" ? C.green : C.amber }}>● {connectionState === "connected" ? "Tracking server connected" : `Tracking server ${connectionState}`}</span>{error ? ` · ${error}` : ""} · {sourceLabel}</span>
+      <span>{trip?.location || "Location unavailable"} · {trip?.vhfChannel || "Radio channel not set"}</span>
+    </div>
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(290px,340px)", gap: 14, alignItems: "start" }}>
+      <div>
+        <ExpeditionRadarMap center={center} route={route} waypoints={waypoints} people={plotted} tripName={trip?.name || "Expedition"} />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 9, marginTop: 10 }}>
+          <StatCard label="Team on roster" value={demoData ? people.filter((person) => !person.isGuide).length : roster.length} sub="Approved trekkers" color={C.accent} icon="👥" />
+          <StatCard label="Positions on map" value={plotted.length} sub="Current locations" color={C.green} icon="📍" />
+          <StatCard label="Group spread" value={spread == null ? "—" : formatDistance(spread)} sub="From your location" color={C.teal} icon="🧭" />
+        </div>
+        {waypoints.length > 0 && <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.card, color: C.muted, fontSize: 11 }}>Route points: {waypoints.map((point) => point.name).join(" → ")}</div>}
+      </div>
+      <section style={{ display: "grid", gap: 8 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", color: C.muted, fontSize: 11, textTransform: "uppercase", letterSpacing: ".07em", padding: "2px 2px" }}><span>Expedition roster ({visiblePeople.filter((person) => !person.isGuide).length})</span><span>Proximity</span></div>
+        {visiblePeople.map((person) => {
+          const hasLocation = Number.isFinite(Number(person.lat)) && Number.isFinite(Number(person.lon));
+          const distance = hasLocation && ownLocation ? formatDistance(calculateDistanceMeters(ownLocation.lat, ownLocation.lon, person.lat, person.lon)) : "—";
+          return <div key={person.id} onClick={() => focus(person)} style={{ cursor: "pointer", padding: "10px 11px", borderRadius: 10, border: `1px solid ${selected === person.id ? C.border2 : C.border}`, background: selected === person.id ? "rgba(59,130,246,.08)" : C.card }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}><strong style={{ color: C.text, fontSize: 12 }}>{person.isGuide ? "★ " : ""}{person.name}{person.isSelf ? " · You" : ""}</strong><span style={{ color: person.status === "sos" ? C.red : hasLocation ? C.green : C.muted, fontSize: 10 }}>{person.status === "sos" ? "SOS" : hasLocation ? "● Located" : "No live fix"}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, color: C.muted, fontSize: 10.5, marginTop: 5 }}><span>{person.role || "Trekker"}{person.blood ? ` · ${person.blood}` : ""}</span><span>{distance}</span></div>
+            {hasLocation && <div style={{ color: C.muted2, fontSize: 10, marginTop: 4 }}>{Number(person.lat).toFixed(5)}, {Number(person.lon).toFixed(5)}{person.altitude ? ` · ${Math.round(person.altitude)}m` : ""}</div>}
+          </div>;
+        })}
+        {!visiblePeople.length && <div style={{ padding: 14, borderRadius: 10, border: `1px solid ${C.border}`, color: C.muted, fontSize: 12 }}>No approved trekkers are currently associated with this expedition.</div>}
+      </section>
+    </div>
+  </div>;
+};
+
 /* ════════════════════════════════════════════════
    LEAFLET MAP — no API key, free tiles, CDN loaded
 ════════════════════════════════════════════════ */
@@ -5306,7 +5460,7 @@ const TILE_LAYERS = {
   terrain: { url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", attr: "© OpenTopoMap contributors" },
 };
 
-const LeafletMap = ({ height = 480, tileType = "road", perspective = false, markers = [], center = [18.8286, 73.3986], zoom = 13 }) => {
+const LeafletMap = ({ height = 480, tileType = "road", perspective = false, markers = [], center = [20.5937, 78.9629], zoom = 13, placeName = "Assigned expedition" }) => {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const [leafletReady, setLeafletReady] = useState(!!window.L);
@@ -5327,14 +5481,14 @@ const LeafletMap = ({ height = 480, tileType = "road", perspective = false, mark
       iconSize: [14, 14], iconAnchor: [7, 7], popupAnchor: [0, -10]
     });
     const station = L.marker(center, { icon: mkIcon("#f59e0b") }).addTo(map);
-    station.bindPopup(`<b>🏔️ Rajmachi Weather Station</b><br><small>Manoranjan Ridge Observation Post<br>18.8286°N · 73.3986°E · 829m ASL</small>`);
+    station.bindPopup(`<b>🏔️ ${placeName}</b>`);
     markers.forEach(m => {
       const mk = L.marker([m.lat, m.lon], { icon: mkIcon(m.color || "#ef4444") }).addTo(map);
       if (m.popup) mk.bindPopup(m.popup);
     });
     mapRef.current = map;
     return () => { if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; } };
-  }, [leafletReady, tileType]);
+  }, [leafletReady, tileType, center[0], center[1], zoom, placeName, JSON.stringify(markers)]);
 
   return (
     <div style={{
@@ -5353,7 +5507,7 @@ const LeafletMap = ({ height = 480, tileType = "road", perspective = false, mark
 
 /* ════════════════════════════════════════════════
    PAGE: MOUNTAIN WEATHER & TRAIL HAZARD RADAR
-   (Unified live meteorological telemetry for Rajmachi Fort & Sahyadris)
+   (Live meteorological telemetry for the assigned expedition)
 ════════════════════════════════════════════════ */
 const WX_CODES = {
   0: ["☀️", "Clear sky"], 1: ["🌤️", "Mainly clear"], 2: ["⛅", "Partly cloudy"], 3: ["☁️", "Overcast"],
@@ -5365,7 +5519,7 @@ const WX_CODES = {
 const windDir = (deg) => ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(deg / 45) % 8];
 const feelsLike = (t, h) => +(t - 0.55 * (1 - h / 100) * (t - 14.5)).toFixed(1);
 
-const PageMountainWeather = () => {
+const PageMountainWeather = ({ trip }) => {
   const [tab, setTab] = useState("live");
   const [mapType, setMapType] = useState("terrain");
   const [mapPerspective, setMapPerspective] = useState(false);
@@ -5381,12 +5535,20 @@ const PageMountainWeather = () => {
     lastSync: new Date().toLocaleTimeString("en-IN")
   });
 
-  // ── Fetch real mountain weather from Open-Meteo for Rajmachi Fort (18.8286°N, 73.3986°E) ──────────────
+  const tripLat = Number(trip?.lat ?? trip?.geofence?.lat);
+  const tripLon = Number(trip?.lon ?? trip?.geofence?.lon);
+  const hasTripCoordinates = Number.isFinite(tripLat) && Number.isFinite(tripLon);
+  const weatherLat = hasTripCoordinates ? tripLat : 20.5937;
+  const weatherLon = hasTripCoordinates ? tripLon : 78.9629;
+
+  // Fetch weather at the expedition assigned to the signed-in admin.
   useEffect(() => {
+    if (!hasTripCoordinates) { setLoading(false); setWx(null); return undefined; }
+    let cancelled = false;
     const fetch_ = async () => {
       try {
         const r = await fetch(
-          "https://api.open-meteo.com/v1/forecast?latitude=18.8286&longitude=73.3986" +
+          `https://api.open-meteo.com/v1/forecast?latitude=${weatherLat}&longitude=${weatherLon}` +
           "&current=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m," +
           "wind_direction_10m,cloud_cover,pressure_msl,uv_index,weather_code" +
           "&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weather_code,wind_speed_10m_max" +
@@ -5394,7 +5556,8 @@ const PageMountainWeather = () => {
           "&timezone=Asia%2FKolkata&forecast_days=7"
         );
         const d = await r.json();
-        setWx(d);
+         if (cancelled) return;
+         setWx(d);
         if (d.current) {
           setSensor(prev => ({
             ...prev,
@@ -5413,8 +5576,8 @@ const PageMountainWeather = () => {
     };
     fetch_();
     const t = setInterval(fetch_, 300_000);
-    return () => clearInterval(t);
-  }, []);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [trip?.id, weatherLat, weatherLon, hasTripCoordinates]);
 
   // Sensor readings come only from Open-Meteo — no synthetic drift.
 
@@ -5452,7 +5615,7 @@ const PageMountainWeather = () => {
     <div>
       <PageHeader
         title="Mountain Weather & Trail Hazards Console"
-        sub={`Live Meteorological Telemetry · Rajmachi Fort (829m ASL) · Manoranjan Ridge · ${sensorOnline ? "🟢 Ridge Sensors Online" : "🔴 Sensors Offline"}`}
+        sub={`${trip?.name || "No expedition assigned"} · ${trip?.location || "Location unavailable"} · ${sensorOnline && hasTripCoordinates ? "🟢 Weather available" : "🔴 No assigned expedition coordinates"}`}
         right={
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             {loading && <Pill color="blue">Fetching Live Open-Meteo…</Pill>}
@@ -5480,7 +5643,7 @@ const PageMountainWeather = () => {
           <Card style={{ marginBottom: 14, background: "linear-gradient(135deg,rgba(16,40,90,0.65),rgba(11,20,34,0.95))", border: `1px solid rgba(80,140,220,0.3)` }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
               <div>
-                <div style={{ fontSize: 11, color: "#60a5fa", fontWeight: 600, marginBottom: 6 }}>📍 Rajmachi Fort · Manoranjan Bastion (18.8286°N, 73.3986°E · 829m ASL)</div>
+                 <div style={{ fontSize: 11, color: "#60a5fa", fontWeight: 600, marginBottom: 6 }}>📍 {trip?.name || "No expedition assigned"} · {trip?.location || "Location unavailable"} ({hasTripCoordinates ? `${weatherLat.toFixed(4)}°N, ${weatherLon.toFixed(4)}°E` : "coordinates unavailable"})</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                   <div style={{ fontSize: 68 }}>{wxIcon}</div>
                   <div>
@@ -5625,11 +5788,10 @@ const PageMountainWeather = () => {
               <Toggle on={mapPerspective} onChange={() => setMapPerspective(x => !x)} />
             </div>
           </div>
-          <LeafletMap height={500} tileType={mapType} perspective={mapPerspective}
-            markers={USERS.map(u => ({ lat: u.lat, lon: u.lon, color: u.status === "sos" ? "#ef4444" : u.status === "active" ? "#22c55e" : "#888", popup: `<b>${u.name}</b><br><small>${u.city} · ${u.status}</small>` }))} />
+          <LeafletMap height={500} tileType={mapType} perspective={mapPerspective} center={hasTripCoordinates ? [weatherLat, weatherLon] : [20.5937, 78.9629]} placeName={trip?.name || "Assigned expedition"} markers={hasTripCoordinates ? [{ lat: weatherLat, lon: weatherLon, color: "#22c55e", popup: `<b>${trip?.name}</b><br><small>${trip?.location || "Expedition"}</small>` }] : []} />
           <div style={{ marginTop: 10, display: "flex", gap: 16, fontSize: 11, color: C.muted2, flexWrap: "wrap" }}>
-            <span>📍 18.52°N, 73.85°E</span>
-            <span>🗺️ Mulshi Reservoir region · Western Ghats</span>
+            <span>📍 {hasTripCoordinates ? `${weatherLat.toFixed(4)}°N, ${weatherLon.toFixed(4)}°E` : "Assigned trip coordinates unavailable"}</span>
+            <span>🗺️ {trip?.location || "No assigned expedition"}</span>
             <span>🏔️ Alt: {sensor.altitude}m ASL</span>
             <span>🌐 OpenStreetMap / ESRI · No ads · No API key</span>
           </div>
@@ -5757,13 +5919,13 @@ const PageMountainWeather = () => {
         <div>
           <div style={{ display: "flex", gap: 10, marginBottom: 12, alignItems: "center", flexWrap: "wrap" }}>
             <Pill color="green">● 3D Navigation Active</Pill>
-            <Pill color="blue">📍 Rajmachi Fort, Maharashtra</Pill>
-            <Pill color="amber">🏔️ Western Ghats Terrain (829m ASL)</Pill>
+            <Pill color="blue">📍 {trip?.location || "No assigned expedition"}</Pill>
+            <Pill color="amber">🏔️ {trip?.elevation || "Elevation unavailable"}</Pill>
             <span style={{ fontSize: 11, color: C.muted }}>Perspective tilt · Satellite + Terrain relief</span>
           </div>
-          <LeafletMap height={520} tileType="satellite" perspective={true} zoom={13}
-            center={[18.8286, 73.3986]}
-            markers={SOS_TEAMS.map(t => ({ lat: t.lat, lon: t.lon, color: "#f59e0b", popup: `<b>${t.name}</b><br><small>${t.vehicle} · ETA ${t.eta}</small>` }))} />
+          <LeafletMap height={520} tileType="satellite" perspective={true} zoom={13} placeName={trip?.name || "Assigned expedition"}
+            center={hasTripCoordinates ? [weatherLat, weatherLon] : [20.5937, 78.9629]}
+            markers={hasTripCoordinates ? [{ lat: weatherLat, lon: weatherLon, color: "#f59e0b", popup: `<b>${trip?.name}</b><br><small>${trip?.location || "Expedition"}</small>` }] : []} />
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginTop: 14 }}>
             {[
               ["🧭", "Heading", `${windDir(sensor.windDir)} · ${sensor.windDir}°`, C.accent],
@@ -6147,13 +6309,9 @@ export default function AdminPanel() {
 
   // The group the console speaks for: the expeditions this admin is in charge
   // of, the busiest one first (that is the group with the trekkers).
-  const myTeam = useMemo(() => {
-    const mine = teamTrips.filter((t) => !t.adminInCharge || t.adminInCharge === activeAdmin?.id);
-    const pool = mine.length ? mine : teamTrips;
-    return (
-      [...pool].sort((a, b) => (Number(b.rosterCount) || 0) - (Number(a.rosterCount) || 0))[0] || null
-    );
-  }, [teamTrips, activeAdmin?.id]);
+  const myTeam = useMemo(() => teamTrips.find((trip) =>
+    String(trip.adminInCharge || "") === String(activeAdmin?.id || "")
+  ) || null, [teamTrips, activeAdmin?.id]);
 
   // Incidents that are still waiting for a human to acknowledge them.
   const unacknowledgedSOSCount = useMemo(
@@ -6358,7 +6516,7 @@ export default function AdminPanel() {
   if (!loggedIn) return <PageAdminAuth onLogin={handleLogin} />;
 
   const pages = {
-    dashboard: <PageDashboard navigate={navigate} users={displayUsers} pendingAdmins={pendingAdmins} pendingTrekkers={pendingTrekkers} />,
+    dashboard: <PageDashboard navigate={navigate} users={displayUsers} pendingAdmins={pendingAdmins} pendingTrekkers={pendingTrekkers} assignedTrip={myTeam} />,
     "all-users": <PageAllUsers users={displayUsers} navigate={navigate} />,
     "trip-rosters": <PageTripRosters
       defaultTab="expeditions"
@@ -6383,8 +6541,8 @@ export default function AdminPanel() {
       onReviewTrekkers={() => setPage("trip-rosters")}
     />,
     "device-tracking": <PageDeviceTracking users={displayUsers} connectionState={connectionState} />,
-    "weather-console": <PageMountainWeather />,
-    "live-tracking": <PageLiveTracking navigate={navigate} users={displayUsers} connectionState={connectionState} error={error} />,
+    "weather-console": <PageMountainWeather trip={myTeam} />,
+    "live-tracking": <PageLiveTrackingRebuilt navigate={navigate} users={displayUsers} connectionState={connectionState} error={error} trip={myTeam} admin={activeAdmin} />,
     "safety-protocol": <PageTripRosters
       defaultTab="protocols"
       pendingTrekkers={pendingTrekkers}
@@ -6412,8 +6570,8 @@ export default function AdminPanel() {
     ),
 
     // Backward-compatible fallbacks
-    "weather-admin": <PageMountainWeather />,
-    "weather-maps": <PageMountainWeather />,
+    "weather-admin": <PageMountainWeather trip={myTeam} />,
+    "weather-maps": <PageMountainWeather trip={myTeam} />,
   };
 
   return (

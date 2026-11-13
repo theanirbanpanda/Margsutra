@@ -23,6 +23,7 @@ import {
   triggerSOSEvent,
   cancelSOSEvent,
 } from "./services/firebase";
+import { DEMO_EXPEDITION_GUIDE, DEMO_EXPEDITION_MEMBERS, DEMO_USER_PROFILE } from "../../shared/demoExpeditionRoster";
 
 
 /* ════════════════════════════════════════════════
@@ -1610,8 +1611,9 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
   /* Fetch Open-Meteo weather */
   useEffect(()=>{
     if (!joinedTrip) return;
-    const lat = joinedTrip?.lat || 18.8286;
-    const lon = joinedTrip?.lon || 73.3986;
+    const lat = joinedTrip?.lat ?? joinedTrip?.geofence?.lat;
+    const lon = joinedTrip?.lon ?? joinedTrip?.geofence?.lon;
+    if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lon))) { setWx(null); setWxLoading(false); return; }
     const go = async () => {
       try {
         const r = await fetch(
@@ -1678,6 +1680,11 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
   const statusColor   = {safe:C.green, caution:C.amber, unsafe:C.red, unknown:C.muted};
   const statusLabel   = {safe:"Safe to Trek ✓", caution:"Use Caution ⚠️", unsafe:"Unsafe Conditions ✗"};
   const dashboardTeam = (() => {
+    const isDemoUser = String(user?.email || "").toLowerCase() === "demouser@gmail.com" || user?.id === "demo-user" || user?.id === "demo-user-001";
+    if (isDemoUser) {
+      const self = { ...DEMO_USER_PROFILE, ...user, id: user?.id || DEMO_USER_PROFILE.id, name: user?.name || DEMO_USER_PROFILE.name, phone: user?.phone || DEMO_USER_PROFILE.phone, blood: user?.blood || DEMO_USER_PROFILE.blood, sex: user?.sex || DEMO_USER_PROFILE.sex, occupation: user?.occupation || DEMO_USER_PROFILE.occupation, trekkingCapability: user?.trekkingCapability || DEMO_USER_PROFILE.trekkingCapability, isSelf: true };
+      return [...DEMO_EXPEDITION_MEMBERS, self];
+    }
     const members = [...teamRoster];
     const selfIndex = members.findIndex((member) => member.userId === user?.id || member.id === user?.id);
     const self = { ...user, ...(selfIndex >= 0 ? members[selfIndex] : {}), userId: user?.id };
@@ -1685,6 +1692,7 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
     else if (user?.id) members.unshift(self);
     return members;
   })();
+  const isDemoDashboard = String(user?.email || "").toLowerCase() === "demouser@gmail.com" || user?.id === "demo-user" || user?.id === "demo-user-001";
 
   const handleSOSTrigger = () => {
     onSOS(true);
@@ -2079,19 +2087,28 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
           </div>
           <Pill color="blue">👥 {dashboardTeam.length} {dashboardTeam.length === 1 ? "member" : "members"}</Pill>
         </div>
-        <div style={{ padding: "4px 18px 10px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 12, padding: "10px 8px", color: C.muted2, fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-            <span>Name</span><span>Age</span><span>Gender</span><span>Mobile</span><span>Trek experience</span>
+        <div style={{ padding: "12px 18px 18px" }}>
+          <div style={{ padding: 12, marginBottom: 11, borderRadius: 12, border: `1px solid ${C.border}`, background: "rgba(59,130,246,.06)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div><div style={{ color: C.muted2, fontSize: 9.5, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", marginBottom: 4 }}>Expedition guide</div><strong style={{ color: C.text, fontSize: 13 }}>{joinedTrip.adminInChargeName || joinedTrip.leader || (isDemoDashboard ? DEMO_EXPEDITION_GUIDE.name : "Expedition guide")}</strong>{isDemoDashboard && <span style={{ color: C.muted, fontSize: 11 }}> · {DEMO_EXPEDITION_GUIDE.occupation}</span>}</div>
+            {isDemoDashboard && <a href={`tel:${DEMO_EXPEDITION_GUIDE.phone}`} style={{ color: C.accent, textDecoration: "none", fontSize: 11.5, fontWeight: 700 }}>☎ {DEMO_EXPEDITION_GUIDE.phone}</a>}
           </div>
-          {dashboardTeam.map((member) => (
-            <div key={member.userId || member.id || member.email} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 12, alignItems: "center", padding: "12px 8px", borderTop: `1px solid ${C.border}`, fontSize: 12.5 }}>
-              <strong style={{ color: C.text }}>{member.name || member.displayName || "Trekker"}{(member.userId || member.id) === user?.id && <span style={{ color: C.accent, fontSize: 10, marginLeft: 7 }}>YOU</span>}</strong>
-              <span style={{ color: C.muted }}>{member.age ?? member.ageYears ?? "Not provided"}</span>
-              <span style={{ color: C.muted }}>{member.gender || "Not provided"}</span>
-              <span style={{ color: C.text }}>{member.phone || member.mobile || "Not provided"}</span>
-              <span style={{ color: C.muted }}>{member.experienceLevel || member.trekExperience || member.experience || "Not provided"}</span>
-            </div>
-          ))}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 270px), 1fr))", gap: 9 }}>
+          {dashboardTeam.map((member) => {
+            const sex = member.sex || member.gender || member.sexAtBirth;
+            const capability = member.trekkingCapability || member.experienceLevel || member.trekExperience || member.experience;
+            const isSelf = member.isSelf || (member.userId || member.id) === user?.id;
+            return <div key={member.userId || member.id || member.email} style={{ minWidth: 0, padding: "12px 13px", borderRadius: 12, border: `1px solid ${isSelf ? "rgba(59,130,246,.34)" : C.border}`, background: isSelf ? "rgba(59,130,246,.045)" : "rgba(255,255,255,.018)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}><strong style={{ color: C.text, fontSize: 12.5 }}>{member.name || member.displayName || "Trekker"}</strong>{isSelf && <span style={{ color: C.accent, fontSize: 9, fontWeight: 800, letterSpacing: ".06em" }}>YOU</span>}</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "7px 10px", fontSize: 10.5 }}>
+                <div><div style={{ color: C.muted2, fontSize: 9, textTransform: "uppercase", letterSpacing: ".06em" }}>Sex</div><div style={{ color: C.muted, marginTop: 2 }}>{sex || "Not provided"}</div></div>
+                <div><div style={{ color: C.muted2, fontSize: 9, textTransform: "uppercase", letterSpacing: ".06em" }}>Blood group</div><div style={{ color: C.text, marginTop: 2, fontWeight: 650 }}>{member.blood || member.bloodGroup || "Not provided"}</div></div>
+                <div><div style={{ color: C.muted2, fontSize: 9, textTransform: "uppercase", letterSpacing: ".06em" }}>Occupation</div><div style={{ color: C.muted, marginTop: 2 }}>{member.occupation || member.roleTitle || "Not provided"}</div></div>
+                <div><div style={{ color: C.muted2, fontSize: 9, textTransform: "uppercase", letterSpacing: ".06em" }}>Trek capability</div><div style={{ color: C.muted, marginTop: 2 }}>{capability || "Not provided"}</div></div>
+              </div>
+              <div style={{ marginTop: 9, paddingTop: 8, borderTop: `1px solid ${C.border}`, fontSize: 10.5 }}><a href={`tel:${member.phone || member.mobile || ""}`} style={{ color: C.accent, textDecoration: "none" }}>☎ {member.phone || member.mobile || "Contact not provided"}</a></div>
+            </div>;
+          })}
+          </div>
           {!teamRosterLoading && dashboardTeam.length === 0 && (
             <div style={{ padding: "16px 8px", borderTop: `1px solid ${C.border}`, color: C.muted, fontSize: 12 }}>No approved team member details are available yet.</div>
           )}
@@ -2252,11 +2269,11 @@ const FALLBACK_TRIPS = [
     rosterCount: 5,
     maxRoster: 25,
     elevation: "829m ASL",
-    lat: 18.8286,
-    lon: 73.3986,
+    lat: 18.8296834,
+    lon: 73.3974108,
     geofence: {
-      lat: 18.8286,
-      lon: 73.3986,
+      lat: 18.8296834,
+      lon: 73.3974108,
       radius: 2500,
       zoneName: "Rajmachi Safe Trek Corridor"
     },
@@ -2283,11 +2300,11 @@ const FALLBACK_TRIPS = [
     rosterCount: 0,
     maxRoster: 20,
     elevation: "1,424m ASL",
-    lat: 19.3853,
-    lon: 73.7786,
+    lat: 19.391453,
+    lon: 73.793874,
     geofence: {
-      lat: 19.3853,
-      lon: 73.7786,
+      lat: 19.391453,
+      lon: 73.793874,
       radius: 3000,
       zoneName: "Harishchandragad Plateau Safety Perimeter"
     },
@@ -2661,8 +2678,8 @@ const PageWeatherMaps = ({ joinedTrip, onNavigate }) => {
     lastSync:null,
   });
 
-  const tripLat = joinedTrip?.lat || 18.8286;
-  const tripLon = joinedTrip?.lon || 73.3986;
+  const tripLat = joinedTrip?.lat ?? joinedTrip?.geofence?.lat;
+  const tripLon = joinedTrip?.lon ?? joinedTrip?.geofence?.lon;
 
   useEffect(()=>{
     if (!joinedTrip) return;

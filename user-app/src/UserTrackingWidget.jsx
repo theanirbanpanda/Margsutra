@@ -1,793 +1,184 @@
-/**
- * UserTrackingWidget.jsx
- * ─────────────────────────────────────────────────────────────────────────────
- * Live Tracking & Expedition Radar component for User App.
- *
- * Provides:
- *   • Interactive Leaflet Map showing:
- *       - Current user's location ("You" pulsing marker)
- *       - Expedition Leader (Ajay Saini) with crown badge
- *       - All 4 other expedition team members (Rohan, Pooja, Tanmay, Kavita)
- *       - Connecting Rajmachi trail corridor path
- *   • Real-time distance calculations from YOU to the leader and each member
- *   • Location-only group roster and map focus controls
- *   • Automatic GPS sharing while this page is open
- */
-
-import React, { useState, useEffect, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocationTracking } from "./useLocationTracking";
-import {
-  calculateDistanceMeters,
-  formatDistance,
-  getRelativeTrailDirection,
-  RAJMACHI_ADMIN,
-  RAJMACHI_MEMBERS,
-} from "./services/expeditionTeam";
+import { subscribeToFieldTelemetry } from "./services/firebase";
+import { calculateDistanceMeters, formatDistance } from "./services/expeditionTeam";
+import { getDemoTrackingData, isDemoTrackingAccount, toFreshPosition } from "./services/trackingDemoData";
 
-/* ── Design tokens ───────────────────────────────────────────────────────── */
-const C = {
-  bg:"#080f1a", sidebar:"#0b1422",
-  card:"rgba(255,255,255,0.04)", border:"rgba(80,140,220,0.14)",
-  border2:"rgba(80,140,220,0.28)", accent:"#3b82f6",
-  green:"#22c55e", amber:"#f59e0b", red:"#ef4444", purple:"#a78bfa",
-  teal:"#14b8a6", text:"#e2e8f0", muted:"rgba(180,210,245,0.5)",
-  muted2:"rgba(180,210,245,0.28)",
-};
+const API = import.meta.env.VITE_AUTH_API_URL || "http://localhost:5050/api";
+const palette = { bg: "#080f1a", card: "rgba(255,255,255,.04)", line: "rgba(80,140,220,.16)", text: "#e2e8f0", muted: "#94a3b8", blue: "#60a5fa", green: "#34d399", amber: "#fbbf24" };
 
-/* ── Leaflet singleton loader ─────────────────────────────────────────────── */
-const LCSS = "leaflet-css-v194";
-const LJS  = "leaflet-js-v194";
-const ensureLeaflet = (cb) => {
-  if (window.L) { cb(); return; }
-  if (!document.getElementById(LCSS)) {
-    const css = document.createElement("link");
-    css.id = LCSS; css.rel = "stylesheet";
-    css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-    document.head.appendChild(css);
-  }
-  if (!document.getElementById(LJS)) {
-    const js = document.createElement("script");
-    js.id = LJS; js.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-    document.head.appendChild(js);
-  }
-  const poll = setInterval(() => { if (window.L) { clearInterval(poll); cb(); } }, 80);
-};
-
-/* ── Inject keyframes once ────────────────────────────────────────────────── */
-const injectStyles = (() => {
-  let done = false;
-  return () => {
-    if (done) return; done = true;
-    const s = document.createElement("style");
-    s.textContent = `
-      @keyframes utw-pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
-      @keyframes utw-ring  { 0%{transform:translate(-50%,-50%) scale(.3);opacity:.9} 100%{transform:translate(-50%,-50%) scale(2.4);opacity:0} }
-      @keyframes utw-spin  { to{transform:rotate(360deg)} }
-      .leaflet-container { background:#08101e !important; }
-      .leaflet-tile-pane { filter:saturate(.85) brightness(.9); }
-      .leaflet-popup-content-wrapper { background:#0b1422;color:#e2e8f0;border:1px solid rgba(80,140,220,0.3);border-radius:10px; }
-      .leaflet-popup-tip  { background:#0b1422; }
-      .leaflet-control-zoom { border:1px solid rgba(80,140,220,0.25)!important;border-radius:8px!important;overflow:hidden; }
-      .leaflet-control-zoom a { background:rgba(11,20,34,0.95)!important;color:#e2e8f0!important;border-bottom:1px solid rgba(80,140,220,0.2)!important; }
-      .leaflet-control-attribution { background:rgba(8,15,26,.7)!important;color:#64748b!important;font-size:9px!important; }
-    `;
-    document.head.appendChild(s);
-  };
-})();
-
-/* ── Shared UI atoms ─────────────────────────────────────────────────────── */
-const Card = ({ children, style, onClick }) => (
-  <div onClick={onClick} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px 18px",...style}}>
-    {children}
-  </div>
-);
-
-const Pill = ({ color, children }) => {
-  const m = {
-    green:{bg:"rgba(34,197,94,0.12)",t:"#86efac"},
-    red:{bg:"rgba(239,68,68,0.12)",t:"#fca5a5"},
-    amber:{bg:"rgba(245,158,11,0.14)",t:"#fbbf24"},
-    blue:{bg:"rgba(59,130,246,0.14)",t:"#93c5fd"},
-    gray:{bg:"rgba(255,255,255,0.07)",t:"rgba(180,210,245,0.6)"},
-    teal:{bg:"rgba(20,184,166,0.14)",t:"#5eead4"},
-    purple:{bg:"rgba(167,139,250,0.14)",t:"#c4b5fd"},
-  };
-  const s = m[color]||m.gray;
-  return <span style={{fontSize:11,padding:"2px 9px",borderRadius:20,fontWeight:600,background:s.bg,color:s.t}}>{children}</span>;
-};
-
-/* ── Interactive Expedition Radar Map ────────────────────────────────────── */
-const MiniMap = ({
-  position,
-  accuracy,
-  height = 360,
-  adminLeader = RAJMACHI_ADMIN,
-  teamMembers = RAJMACHI_MEMBERS,
-  user,
-  focusTarget,
-}) => {
-  const ref = useRef(null);
-  const mapRef = useRef(null);
-  const markersRef = useRef({});
-  const trailLineRef = useRef(null);
-  const [rdy, setRdy] = useState(!!window.L);
+function TrackingMap({ center, route, waypoints, people, focusId, tripName }) {
+  const element = useRef(null);
+  const map = useRef(null);
+  const markers = useRef([]);
+  const routeLayer = useRef(null);
+  const [ready, setReady] = useState(!!window.L);
 
   useEffect(() => {
-    injectStyles();
-    ensureLeaflet(() => setRdy(true));
+    if (window.L) { setReady(true); return undefined; }
+    const cssId = "expedition-radar-leaflet-css";
+    if (!document.getElementById(cssId)) {
+      const css = document.createElement("link"); css.id = cssId; css.rel = "stylesheet";
+      css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"; document.head.appendChild(css);
+    }
+    let poll;
+    if (!document.getElementById("expedition-radar-leaflet-js")) {
+      const script = document.createElement("script"); script.id = "expedition-radar-leaflet-js";
+      script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+      script.onload = () => setReady(true); document.body.appendChild(script);
+    } else poll = setInterval(() => { if (window.L) { clearInterval(poll); setReady(true); } }, 100);
+    return () => clearInterval(poll);
   }, []);
 
-  // Compute effective user position
-  const effectiveUserPos = {
-    lat: position?.lat ?? 18.8286,
-    lon: position?.lon ?? 73.3986,
-  };
-
-  // Initialize Map
   useEffect(() => {
-    if (!rdy || !ref.current || mapRef.current) return;
+    if (!ready || !element.current || map.current) return undefined;
+    const instance = window.L.map(element.current, { zoomControl: true }).setView(center, 14);
+    window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap contributors", maxZoom: 19 }).addTo(instance);
+    map.current = instance;
+    return () => { instance.remove(); map.current = null; };
+  }, [ready]);
+
+  useEffect(() => {
+    if (!ready || !map.current) return;
     const L = window.L;
-    const map = L.map(ref.current, {
-      center: [effectiveUserPos.lat, effectiveUserPos.lon],
-      zoom: 15,
-      zoomControl: true,
-    });
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "© OpenStreetMap contributors",
-      maxZoom: 19,
-    }).addTo(map);
+    const instance = map.current;
+    markers.current.forEach((marker) => instance.removeLayer(marker));
+    markers.current = [];
+    if (routeLayer.current) { instance.removeLayer(routeLayer.current); routeLayer.current = null; }
 
-    mapRef.current = map;
-    return () => {
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
-      }
-    };
-  }, [rdy]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Render & Update all 6 expedition participants on the map
-  useEffect(() => {
-    if (!rdy || !mapRef.current) return;
-    const L = window.L;
-    const map = mapRef.current;
-
-    // Clear old participant markers
-    Object.values(markersRef.current).forEach((m) => {
-      if (m && map.hasLayer(m)) map.removeLayer(m);
-    });
-    markersRef.current = {};
-
-    const allPoints = [];
-
-    // 1. Trail corridor dashed polyline
-    const trailCoords = [
-      [18.8229, 73.3932], // Kavita (Rear sweep)
-      [18.8242, 73.3945], // Tanmay
-      [18.8256, 73.3958], // Pooja
-      [18.8271, 73.3971], // Rohan
-      [effectiveUserPos.lat, effectiveUserPos.lon], // User (Anirban)
-      [adminLeader.lat, adminLeader.lon], // Leader Ajay Saini
-    ];
-
-    if (trailLineRef.current && map.hasLayer(trailLineRef.current)) {
-      map.removeLayer(trailLineRef.current);
+    if (route?.length > 1) {
+      routeLayer.current = L.polyline(route, { color: "#f59e0b", weight: 4, opacity: 0.85, dashArray: "9 7" }).addTo(instance);
+      routeLayer.current.bindPopup(`<strong>${tripName || "Expedition"}</strong> · trek route`);
     }
-    trailLineRef.current = L.polyline(trailCoords, {
-      color: "#f59e0b",
-      weight: 3.5,
-      opacity: 0.65,
-      dashArray: "8 6",
-    }).addTo(map).bindPopup("<b>Rajmachi Fort Expedition Corridor</b><br>Monsoon Trail Formation");
-
-    // 2. Leader Marker (Ajay Saini)
-    const leaderDist = calculateDistanceMeters(effectiveUserPos.lat, effectiveUserPos.lon, adminLeader.lat, adminLeader.lon);
-    const leaderDir = getRelativeTrailDirection(adminLeader.lat, effectiveUserPos.lat);
-    const leaderIcon = L.divIcon({
-      className: "",
-      html: `
-        <div style="position:relative;width:38px;height:38px;display:flex;align-items:center;justify-content:center;">
-          <div style="position:absolute;inset:0;border-radius:50%;background:#f59e0b;opacity:0.25;animation:utw-ring 2s ease-out infinite;"></div>
-          <div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg, #f59e0b, #d97706);border:2px solid #ffffff;box-shadow:0 0 12px rgba(245,158,11,0.7);display:flex;align-items:center;justify-content:center;font-size:15px;color:#fff;cursor:pointer;">
-            👑
-          </div>
-        </div>
-      `,
-      iconSize: [38, 38],
-      iconAnchor: [19, 19],
-      popupAnchor: [0, -18],
+    waypoints.forEach((point) => {
+      const icon = L.divIcon({ className: "", html: `<div style="width:10px;height:10px;border-radius:50%;background:#f59e0b;border:2px solid #fff;box-shadow:0 0 8px #f59e0b99"></div>`, iconSize: [10, 10], iconAnchor: [5, 5] });
+      const marker = L.marker([point.lat, point.lon], { icon }).addTo(instance).bindPopup(point.name);
+      markers.current.push(marker);
     });
-
-    const leaderMk = L.marker([adminLeader.lat, adminLeader.lon], { icon: leaderIcon }).addTo(map);
-    leaderMk.bindPopup(`
-      <div style="min-width:200px">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-          <span style="font-size:14px;font-weight:700;color:#fbbf24;">👑 ${adminLeader.name}</span>
-          <span style="font-size:10px;padding:1px 6px;border-radius:8px;background:rgba(245,158,11,0.2);color:#fbbf24;font-weight:700;">LEADER</span>
-        </div>
-        <div style="font-size:11.5px;color:#cbd5e1;margin-bottom:6px;">${adminLeader.badge}</div>
-        <div style="font-size:11px;background:rgba(245,158,11,0.12);padding:4px 8px;border-radius:6px;color:#fef08a;margin-bottom:6px;">
-          📍 <strong>${formatDistance(leaderDist)} ${leaderDir}</strong> from you
-        </div>
-        <div style="font-size:11px;color:#94a3b8;line-height:1.6;">
-          📍 Position: <strong>${adminLeader.lat.toFixed(5)}, ${adminLeader.lon.toFixed(5)}</strong><br/>
-          Status: <strong>${adminLeader.trailStatus}</strong><br/>
-          📞 <strong>${adminLeader.phone}</strong>
-        </div>
-      </div>
-    `);
-    markersRef.current["admin"] = leaderMk;
-    allPoints.push([adminLeader.lat, adminLeader.lon]);
-
-    // 3. Current User Marker ("You")
-    const userIcon = L.divIcon({
-      className: "",
-      html: `
-        <div style="position:relative;width:36px;height:36px;display:flex;align-items:center;justify-content:center;">
-          <div style="position:absolute;inset:0;border-radius:50%;border:2px solid #3b82f6;animation:utw-ring 1.8s ease-out infinite;"></div>
-          <div style="width:24px;height:24px;border-radius:50%;background:#3b82f6;border:2px solid #ffffff;box-shadow:0 0 10px rgba(59,130,246,0.6);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#ffffff;cursor:pointer;">
-            YOU
-          </div>
-        </div>
-      `,
-      iconSize: [36, 36],
-      iconAnchor: [18, 18],
-      popupAnchor: [0, -18],
+    people.forEach((person) => {
+      if (!Number.isFinite(Number(person.lat)) || !Number.isFinite(Number(person.lon))) return;
+      const hue = person.isGuide ? "#f59e0b" : person.isSelf ? "#3b82f6" : person.status === "sos" ? "#ef4444" : person.color || "#10b981";
+      const initials = person.isGuide ? "★" : person.isSelf ? "YOU" : (person.avatar || person.name?.split(/\s+/).map((x) => x[0]).join("").slice(0, 2) || "TR");
+      const width = person.isSelf ? 34 : 30;
+      const icon = L.divIcon({ className: "", html: `<div style="width:${width}px;height:${width}px;border-radius:50%;display:grid;place-items:center;background:${hue};border:2px solid white;box-shadow:0 2px 10px #0009;color:white;font-size:${person.isSelf ? 8 : 12}px;font-weight:800">${initials}</div>`, iconSize: [width, width], iconAnchor: [width / 2, width / 2] });
+      const marker = L.marker([person.lat, person.lon], { icon }).addTo(instance);
+      marker.bindPopup(`<strong>${person.name}</strong><br>${person.role || "Trekker"}${person.altitude ? `<br>${Math.round(person.altitude)}m ASL` : ""}`);
+      markers.current.push(marker);
+      if (focusId && person.id === focusId) marker.openPopup();
     });
+    const bounds = [];
+    people.forEach((person) => { if (Number.isFinite(Number(person.lat)) && Number.isFinite(Number(person.lon))) bounds.push([Number(person.lat), Number(person.lon)]); });
+    const focused = people.find((person) => person.id === focusId && Number.isFinite(Number(person.lat)) && Number.isFinite(Number(person.lon)));
+    if (focused) instance.setView([focused.lat, focused.lon], 16);
+    if (!focused && !bounds.length) route?.forEach((point) => bounds.push(point));
+    if (!focused && bounds.length) instance.fitBounds(bounds, { padding: [38, 38], maxZoom: 15 });
+    if (!focused && !bounds.length) instance.setView(center, 12);
+  }, [ready, center[0], center[1], JSON.stringify(route), JSON.stringify(waypoints), JSON.stringify(people), focusId, tripName]);
 
-    const userMk = L.marker([effectiveUserPos.lat, effectiveUserPos.lon], { icon: userIcon }).addTo(map);
-    userMk.bindPopup(`
-      <div style="min-width:180px">
-        <div style="font-size:13px;font-weight:700;color:#60a5fa;margin-bottom:2px;">📍 You (${user?.name || "Trekker"})</div>
-        <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">Elevation: 829m ASL${position?.altitude == null ? " · sample" : ""}</div>
-        <div style="font-size:11px;color:#cbd5e1;line-height:1.5;">
-          ${effectiveUserPos.lat.toFixed(5)}°N, ${effectiveUserPos.lon.toFixed(5)}°E<br/>
-          ${accuracy ? `GPS Accuracy: ±${accuracy.toFixed(0)}m` : "Sample position · waiting for live GPS"}
-        </div>
-      </div>
-    `);
-    markersRef.current["user"] = userMk;
-    allPoints.push([effectiveUserPos.lat, effectiveUserPos.lon]);
-
-    // 4. Other Team Members
-    const otherMembers = teamMembers.filter((m) => m.id !== user?.id && m.userId !== user?.id);
-    otherMembers.forEach((m) => {
-      const dist = calculateDistanceMeters(effectiveUserPos.lat, effectiveUserPos.lon, m.lat, m.lon);
-      const dir = getRelativeTrailDirection(m.lat, effectiveUserPos.lat);
-      const color = m.color ? m.color[0] : "#10b981";
-
-      const memberIcon = L.divIcon({
-        className: "",
-        html: `
-          <div style="width:28px;height:28px;border-radius:50%;background:${color};border:2px solid #ffffff;box-shadow:0 2px 8px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:700;color:#ffffff;cursor:pointer;">
-            ${m.avatar || "TR"}
-          </div>
-        `,
-        iconSize: [28, 28],
-        iconAnchor: [14, 14],
-        popupAnchor: [0, -14],
-      });
-
-      const mk = L.marker([m.lat, m.lon], { icon: memberIcon }).addTo(map);
-      mk.bindPopup(`
-        <div style="min-width:190px">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
-            <strong style="font-size:13px;color:#ffffff">${m.name}</strong>
-            <span style="font-size:9.5px;padding:1px 6px;border-radius:6px;background:rgba(255,255,255,0.1);color:#cbd5e1">${m.badge}</span>
-          </div>
-          <div style="font-size:11px;background:rgba(59,130,246,0.12);padding:3px 7px;border-radius:6px;color:#93c5fd;margin-bottom:6px;">
-            📍 <strong>${formatDistance(dist)} ${dir}</strong>
-          </div>
-          <div style="font-size:11px;color:#94a3b8;line-height:1.6;">
-            Position: <strong>${m.lat.toFixed(5)}, ${m.lon.toFixed(5)}</strong><br/>
-            Trail: <span style="color:#e2e8f0">${m.trailStatus}</span><br/>
-            📞 <strong>${m.phone}</strong>
-          </div>
-        </div>
-      `);
-      markersRef.current[m.id] = mk;
-      allPoints.push([m.lat, m.lon]);
-    });
-
-    // Fit map bounds on initial mount so all 6 are in view
-    if (allPoints.length > 0 && !focusTarget) {
-      map.fitBounds(allPoints, { padding: [40, 40], maxZoom: 16 });
-    }
-  }, [rdy, position?.lat, position?.lon, accuracy, user?.id, adminLeader, teamMembers]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Pan to focus target when selected from list
-  useEffect(() => {
-    if (!rdy || !mapRef.current || !focusTarget) return;
-    const map = mapRef.current;
-    const { lat, lon, id } = focusTarget;
-    if (lat && lon) {
-      map.flyTo([lat, lon], 16, { duration: 0.8 });
-      const mk = markersRef.current[id] || markersRef.current[id === "admin" ? "admin" : "user"];
-      if (mk) {
-        setTimeout(() => mk.openPopup(), 400);
-      }
-    }
-  }, [rdy, focusTarget]);
-
-  return (
-    <div style={{ position: "relative", borderRadius: 12, overflow: "hidden", border: `1px solid ${C.border}` }}>
-      {!rdy && (
-        <div style={{ height, background: "#08101e", display: "flex", alignItems: "center", justifyContent: "center", color: C.muted, fontSize: 13, gap: 8 }}>
-          <span style={{ animation: "utw-spin 1s linear infinite", display: "inline-block" }}>⟳</span>
-          Loading map engine…
-        </div>
-      )}
-      <div ref={ref} style={{ height, display: rdy ? "block" : "none" }} />
-
-      {/* Floating Map Legend Overlay */}
-      <div
-        style={{
-          position: "absolute",
-          top: 10,
-          left: 10,
-          zIndex: 900,
-          background: "rgba(11, 20, 34, 0.92)",
-          border: `1px solid ${C.border}`,
-          borderRadius: 8,
-          padding: "8px 12px",
-          pointerEvents: "none",
-          backdropFilter: "blur(4px)",
-          fontSize: 10.5,
-          color: C.muted,
-          display: "flex",
-          flexDirection: "column",
-          gap: 4,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span>👑</span> <strong style={{ color: "#fbbf24" }}>Leader Ajay Saini</strong>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#3b82f6", border: "1px solid #fff" }} />
-          <strong style={{ color: "#60a5fa" }}>You (Current Position)</strong>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#10b981", border: "1px solid #fff" }} />
-          <span>Team Members (4 nearby)</span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <div style={{ width: 14, borderTop: "2px dashed #f59e0b" }} />
-          <span>Rajmachi Trail Corridor</span>
-        </div>
-      </div>
+  return <div style={{ position: "relative", height: 400, borderRadius: 12, overflow: "hidden", border: `1px solid ${palette.line}`, background: "#08101e" }}>
+    {!ready && <div style={{ height: "100%", display: "grid", placeItems: "center", color: palette.muted }}>Loading trail map…</div>}
+    <div ref={element} style={{ height: "100%", display: ready ? "block" : "none" }} />
+    <div style={{ position: "absolute", left: 12, top: 12, zIndex: 500, background: "#0b1422eF", padding: "9px 11px", borderRadius: 9, border: `1px solid ${palette.line}`, fontSize: 11, lineHeight: 1.7, color: palette.muted }}>
+      <div><b style={{ color: "#fbbf24" }}>★</b> Expedition guide</div><div><b style={{ color: "#60a5fa" }}>YOU</b> Your location</div><div><b style={{ color: "#34d399" }}>●</b> Team members</div><div><b style={{ color: "#f59e0b" }}>┄</b> Trek route</div>
     </div>
-  );
-};
+  </div>;
+}
 
-/* ── Connection status dot ───────────────────────────────────────────────── */
-const ConnectionDot = ({ state }) => {
-  const cfg = {
-    connected:    { color:C.green,  label:"Connected"   },
-    connecting:   { color:C.amber,  label:"Connecting…" },
-    error:        { color:C.red,    label:"Error"       },
-    disconnected: { color:C.muted,  label:"Offline"     },
-  };
-  const { color, label } = cfg[state] || cfg.disconnected;
-  return (
-    <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11}}>
-      <div style={{width:7,height:7,borderRadius:"50%",background:color,
-        animation:state==="connected"?"utw-pulse 2s infinite":undefined}}/>
-      <span style={{color}}>{label}</span>
-    </div>
-  );
-};
+export default function UserTrackingWidget({ user, joinedTrip, serverUrl, token, onTokenExpired }) {
+  const [roster, setRoster] = useState([]);
+  const [fieldNodes, setFieldNodes] = useState([]);
+  const [clock, setClock] = useState(Date.now());
+  const [focusId, setFocusId] = useState(null);
+  const tracking = useLocationTracking({ userId: user?.id, name: user?.name, token, serverUrl, onTokenExpired });
+  const { isTracking, permissionState, position, accuracy, isHttps, startTracking, lastUpdateTs } = tracking;
+  const demo = isDemoTrackingAccount(user);
+  const demoData = useMemo(() => demo ? getDemoTrackingData(joinedTrip, user) : null, [demo, joinedTrip?.code, joinedTrip?.id, user?.id, user?.name]);
 
-/* ── Main UserTrackingWidget Component ───────────────────────────────────── */
-export default function UserTrackingWidget({
-  user,
-  joinedTrip,
-  serverUrl = "http://localhost:4000",
-  token     = "REPLACE_WITH_JWT",
-  onTokenExpired,
-}) {
-  const [focusTarget,     setFocusTarget]     = useState(null);
-
-  const tracking = useLocationTracking({
-    userId:    user?.id    || "U001",
-    name:      user?.name  || "Explorer",
-    token,
-    serverUrl,
-    onSOSAck:  (d) => console.log("[SOS ack]", d),
-    onTokenExpired,
-  });
-
-  const {
-    isTracking, permissionState, position, accuracy,
-    isHttps,
-    startTracking,
-  } = tracking;
-
-  // Location sharing starts automatically on this page; the user no longer
-  // needs to start a separate broadcast before the group can locate them.
   useEffect(() => {
-    if (isHttps && token && permissionState !== "denied" && permissionState !== "unsupported" && !isTracking) {
-      startTracking();
-    }
+    if (isHttps && token && permissionState !== "denied" && permissionState !== "unsupported" && !isTracking) startTracking();
   }, [isHttps, token, permissionState, isTracking, startTracking]);
 
-  const lastLoginAt = (() => {
-    try {
-      const session = JSON.parse(localStorage.getItem("margsutra_user_session") || "{}");
-      if (session.lastLoginAt) return session.lastLoginAt;
-      const fallback = new Date().toISOString();
-      localStorage.setItem("margsutra_user_session", JSON.stringify({ ...session, lastLoginAt: fallback }));
-      return fallback;
-    } catch {
-      return null;
-    }
-  })();
-  const fmtTs = (ts) => ts
-    ? new Date(ts).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })
-    : "This session";
+  useEffect(() => {
+    let cancelled = false;
+    const tripId = joinedTrip?.id || joinedTrip?.tripId;
+    setRoster([]);
+    if (!tripId || demo) return undefined;
+    fetch(`${API}/trips/${encodeURIComponent(tripId)}/roster`)
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => { if (!cancelled) setRoster((data?.roster || []).filter((member) => member.status === "approved")); })
+      .catch(() => { if (!cancelled) setRoster([]); });
+    return () => { cancelled = true; };
+  }, [joinedTrip?.id, joinedTrip?.tripId, demo]);
 
-  // Real position only — never place the trekker on the map at a guess.
-  const userLat = position?.lat != null && Number.isFinite(Number(position.lat)) ? position.lat : null;
-  const userLon = position?.lon != null && Number.isFinite(Number(position.lon)) ? position.lon : null;
-  const hasUserFix =
-    userLat !== null &&
-    userLon !== null &&
-    !(Math.abs(userLat) < 1e-6 && Math.abs(userLon) < 1e-6);
-  const displayLat = hasUserFix ? userLat : RAJMACHI_MEMBERS.find((m) => m.id === "demo-user")?.lat ?? 18.8286;
-  const displayLon = hasUserFix ? userLon : RAJMACHI_MEMBERS.find((m) => m.id === "demo-user")?.lon ?? 73.3986;
-  const displayElevation = Number.isFinite(Number(position?.altitude)) ? Math.round(position.altitude) : 829;
+  useEffect(() => {
+    const unsubscribe = subscribeToFieldTelemetry((nodes) => setFieldNodes(Array.isArray(nodes) ? nodes : []));
+    const timer = setInterval(() => setClock(Date.now()), 5000);
+    return () => { unsubscribe(); clearInterval(timer); };
+  }, []);
 
-  // Calculate distance from user to leader Ajay Saini
-  const distToLeader = calculateDistanceMeters(displayLat, displayLon, RAJMACHI_ADMIN.lat, RAJMACHI_ADMIN.lon);
-  const dirToLeader = getRelativeTrailDirection(RAJMACHI_ADMIN.lat, displayLat);
+  const lat = Number(position?.lat);
+  const lon = Number(position?.lon);
+  const phoneFix = Number.isFinite(lat) && Number.isFinite(lon) && (lat !== 0 || lon !== 0) && lastUpdateTs && clock - lastUpdateTs < 30000
+    ? { lat, lon, timestamp: lastUpdateTs, accuracy, altitude: position?.altitude }
+    : null;
+  const ownNode = fieldNodes.find((node) => [node.userId, node.user_id, node.memberId, node.member_id, node.ownerId].some((value) => value && String(value) === String(user?.id)) || (node.email && String(node.email).toLowerCase() === String(user?.email || "").toLowerCase()));
+  const loraFix = toFreshPosition(ownNode, clock);
+  const activePosition = demo ? null : phoneFix || loraFix;
+  const tripLat = Number(joinedTrip?.lat ?? joinedTrip?.geofence?.lat);
+  const tripLon = Number(joinedTrip?.lon ?? joinedTrip?.geofence?.lon);
+  const center = [Number.isFinite(tripLat) ? tripLat : 20.5937, Number.isFinite(tripLon) ? tripLon : 78.9629];
 
-  return (
-    <div style={{fontFamily:"system-ui,sans-serif",color:C.text}}>
+  const people = useMemo(() => {
+    if (demoData) return [demoData.leader, ...demoData.participants];
+    const at = (member) => fieldNodes.find((node) => [node.userId, node.user_id, node.memberId, node.member_id, node.ownerId].some((value) => value && String(value) === String(member.userId || member.id)) || (node.email && member.email && String(node.email).toLowerCase() === String(member.email).toLowerCase()));
+    const group = roster.map((member) => {
+      const fix = toFreshPosition(at(member), clock);
+      const self = String(member.userId || member.id) === String(user?.id);
+      return { ...member, id: member.userId || member.id, name: member.name || member.displayName || "Trekker", role: "Trekker", isSelf: self, ...(fix || (self ? activePosition : null) || {}) };
+    });
+    if (!group.some((member) => member.isSelf) && user?.id) group.unshift({ id: user.id, name: user.name || "You", role: "You", isSelf: true, ...(activePosition || {}) });
+    const guideNode = fieldNodes.find((node) => /guide|admin/i.test(`${node.role || ""} ${node.node_id || node.nodeId || ""}`));
+    const guideFix = toFreshPosition(guideNode, clock);
+    const leader = guideFix ? { id: guideNode.node_id || "guide", name: joinedTrip?.leader || joinedTrip?.adminInChargeName || "Expedition Guide", role: "Expedition Guide", isGuide: true, ...guideFix } : null;
+    return leader ? [leader, ...group] : group;
+  }, [demoData, roster, fieldNodes, clock, activePosition, user?.id, user?.name, joinedTrip?.leader, joinedTrip?.adminInChargeName]);
 
-      {/* ── HTTPS warning ──────────────────────────────────────────────────── */}
-      {!isHttps && (
-        <div style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.35)",
-          borderRadius:12,padding:"12px 16px",marginBottom:16,fontSize:12,color:"#fca5a5",
-          display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontSize:18}}>⚠️</span>
-          <span>
-            <strong>HTTPS required for hardware GPS:</strong> Geolocation API is restricted on insecure origins. Currently displaying calibrated trail positions.
-          </span>
-        </div>
-      )}
+  const own = people.find((person) => person.isSelf);
+  const located = people.filter((person) => Number.isFinite(Number(person.lat)) && Number.isFinite(Number(person.lon)));
+  const sourceLabel = demo ? "Expedition radar" : phoneFix ? "Phone GPS · live" : loraFix ? `ESP32 / LoRa · ${loraFix.rssi ?? "radio link"}` : "Signal strength insufficient — please move to a different area";
+  const sourceColor = demo || phoneFix || loraFix ? palette.green : palette.amber;
+  const route = demoData?.route || [];
+  const waypoints = demoData?.waypoints || [];
+  const focusPerson = (person) => setFocusId(person.id);
 
-      {/* ── Group Safety Proximity Banner ─────────────────────────────────── */}
-      <div
-        style={{
-          background: "linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(11, 20, 34, 0.95))",
-          border: "1px solid rgba(16, 185, 129, 0.35)",
-          borderRadius: 14,
-          padding: "14px 18px",
-          marginBottom: 16,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: 12,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 10,
-              background: "rgba(16, 185, 129, 0.2)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 20,
-            }}
-          >
-            🧭
-          </div>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
-              <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>
-                Rajmachi Team Formation · sample roster
-              </span>
-              <Pill color="amber">◐ Demo formation</Pill>
-            </div>
-            <div style={{ fontSize: 12, color: C.muted }}>
-              {hasUserFix ? (
-                <>
-                  Expedition Leader <strong style={{ color: "#fbbf24" }}>Ajay Saini</strong> is <strong>{formatDistance(distToLeader)} {dirToLeader}</strong> · 4 other trekkers within <strong>870m</strong>{" "}
-                </>
-              ) : (
-                <>Showing your sample trail position until a live GPS fix arrives. </>
-              )}
-              <span style={{ color: "#fcd34d" }}>(other group markers are sample locations)</span>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button
-            type="button"
-            onClick={() => setFocusTarget({ lat: RAJMACHI_ADMIN.lat, lon: RAJMACHI_ADMIN.lon, id: "admin" })}
-            style={{
-              background: "rgba(245, 158, 11, 0.15)",
-              border: "1px solid rgba(245, 158, 11, 0.4)",
-              borderRadius: 8,
-              color: "#fbbf24",
-              fontSize: 12,
-              fontWeight: 600,
-              padding: "7px 12px",
-              cursor: "pointer",
-              fontFamily: "inherit",
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            👑 Locate Leader Ajay Saini
-          </button>
-          <button
-            type="button"
-            onClick={() => setFocusTarget({ lat: displayLat, lon: displayLon, id: "user" })}
-            title={hasUserFix ? "Centre the map on your live position" : "Centre the map on your sample position"}
-            style={{
-              background: "rgba(59, 130, 246, 0.15)",
-              border: "1px solid rgba(59, 130, 246, 0.4)",
-              borderRadius: 8,
-              color: "#60a5fa",
-              fontSize: 12,
-              fontWeight: 600,
-              padding: "7px 12px",
-              cursor: "pointer",
-              fontFamily: "inherit",
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            📍 Center on You
-          </button>
-        </div>
+  return <div style={{ display: "grid", gap: 14, color: palette.text, fontFamily: "inherit" }}>
+    <section style={{ padding: 16, borderRadius: 14, border: `1px solid ${palette.line}`, background: palette.card }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+        <div><div style={{ fontSize: 16, fontWeight: 750 }}>{joinedTrip?.name || "Expedition Live Tracking"}</div><div style={{ color: palette.muted, fontSize: 12, marginTop: 3 }}>{joinedTrip?.location || "Assigned expedition"} · {joinedTrip?.code || ""}</div></div>
+        <div style={{ color: sourceColor, fontSize: 12, fontWeight: 700 }}>{sourceLabel}</div>
       </div>
-
-      {/* ── Main Tracking Grid ────────────────────────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 14, marginBottom: 20 }}>
-        {/* Left: Map */}
-        <div>
-          <MiniMap
-            position={position}
-            accuracy={accuracy}
-            height={380}
-            adminLeader={RAJMACHI_ADMIN}
-            teamMembers={RAJMACHI_MEMBERS}
-            user={user}
-            focusTarget={focusTarget}
-          />
-          {/* Coordinates and timestamp strip */}
-          <div style={{ display: "flex", gap: 16, marginTop: 8, fontSize: 11, color: C.muted2, flexWrap: "wrap", alignItems: "center" }}>
-            <span>
-              Your Coords:{" "}
-              <strong style={{ color: hasUserFix ? C.text : C.amber, fontFamily: "monospace" }}>
-                {displayLat.toFixed(5)}°N, {displayLon.toFixed(5)}°E{!hasUserFix ? " · sample" : ""}
-              </strong>
-            </span>
-            {accuracy && <span>Accuracy: ±<strong style={{ color: C.amber }}>{accuracy.toFixed(0)}m</strong></span>}
-            <span>Elevation: <strong style={{ color: "#34d399" }}>{displayElevation}m ASL{!Number.isFinite(Number(position?.altitude)) ? " · sample" : ""}</strong></span>
-            <span style={{ marginLeft: "auto" }}>Last sync: <strong style={{ color: C.text }}>{fmtTs(lastLoginAt)}</strong></span>
-          </div>
-        </div>
+      {!demo && !phoneFix && !loraFix && <div style={{ marginBottom: 12, fontSize: 12, color: palette.muted }}>Your location and team positions appear here as GPS or linked beacon fixes arrive.</div>}
+      <TrackingMap center={center} route={route} waypoints={waypoints} people={people} focusId={focusId} tripName={joinedTrip?.name} />
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", paddingTop: 10, color: palette.muted, fontSize: 11.5 }}>
+        {own && Number.isFinite(Number(own.lat)) && <span>You · {Number(own.lat).toFixed(5)}, {Number(own.lon).toFixed(5)}</span>}
+        {phoneFix && <span>GPS accuracy ±{Math.round(phoneFix.accuracy || 0)}m</span>}
+        {activePosition?.altitude != null && <span>{Math.round(activePosition.altitude)}m ASL</span>}
+        {demo && <span>{located.length} team locations</span>}
       </div>
+    </section>
 
-      {/* ── EXPEDITION TEAM MEMBERS & LEADER LIVE RADAR ────────────────────── */}
-      <div style={{ marginBottom: 28 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 18 }}>👥</span>
-            <span style={{ fontSize: 15, fontWeight: 700, color: C.text }}>
-              Expedition Group Live Radar (5 Members + 1 Guide)
-            </span>
-            <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 12, background: "rgba(59,130,246,0.15)", color: "#60a5fa", fontWeight: 600 }}>
-              Batch 12 · Rajmachi
-            </span>
-          </div>
-          <span style={{ fontSize: 12, color: C.muted }}>
-            Distances calculated relative to <strong>your current position</strong>
-          </span>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
-          {/* Card 1: Leader Ajay Saini */}
-          <Card
-            style={{
-              background: "linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(11, 20, 34, 0.95))",
-              borderColor: "rgba(245, 158, 11, 0.4)",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 10,
-                    background: "rgba(245, 158, 11, 0.2)",
-                    border: "1px solid rgba(245, 158, 11, 0.4)",
-                    color: "#fbbf24",
-                    fontSize: 16,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: 700,
-                  }}
-                >
-                  👑
-                </div>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>
-                    {RAJMACHI_ADMIN.name}
-                  </div>
-                  <div style={{ fontSize: 11, color: "#fbbf24", fontWeight: 600 }}>
-                    {RAJMACHI_ADMIN.badge}
-                  </div>
-                </div>
-              </div>
-              <Pill color="amber">{formatDistance(distToLeader)} {dirToLeader}</Pill>
-            </div>
-
-            <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 8, lineHeight: 1.5 }}>
-              Status: <strong style={{ color: "#fef08a" }}>{RAJMACHI_ADMIN.trailStatus}</strong><br/>
-              Position: <strong>{RAJMACHI_ADMIN.lat.toFixed(5)}, {RAJMACHI_ADMIN.lon.toFixed(5)}</strong>
-            </div>
-
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
-              <span style={{ fontSize: 11, color: C.muted2 }}>📞 {RAJMACHI_ADMIN.phone}</span>
-              <button
-                type="button"
-                onClick={() => setFocusTarget({ lat: RAJMACHI_ADMIN.lat, lon: RAJMACHI_ADMIN.lon, id: "admin" })}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "#60a5fa",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                🎯 Show on Map →
-              </button>
-            </div>
-          </Card>
-
-          {/* Card 2: Current User (You) */}
-          <Card
-            style={{
-              background: "linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(11, 20, 34, 0.95))",
-              borderColor: "rgba(59, 130, 246, 0.4)",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 10,
-                    background: "rgba(59, 130, 246, 0.2)",
-                    border: "1px solid rgba(59, 130, 246, 0.4)",
-                    color: "#60a5fa",
-                    fontSize: 12,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: 700,
-                  }}
-                >
-                  YOU
-                </div>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>
-                    {user?.name || "Anirban Panda"}
-                  </div>
-                  <div style={{ fontSize: 11, color: "#60a5fa", fontWeight: 600 }}>
-                    Active Trekker (Your Position)
-                  </div>
-                </div>
-              </div>
-              <Pill color={hasUserFix ? "blue" : "amber"}>{hasUserFix ? "● You are Here" : "◐ Sample position · GPS pending"}</Pill>
-            </div>
-
-            <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 8, lineHeight: 1.5 }}>
-              Status: <strong style={{ color: "#93c5fd" }}>{isTracking ? "Location sharing active" : "Waiting for location"}</strong><br/>
-              Position: <strong>{displayLat.toFixed(5)}, {displayLon.toFixed(5)}</strong>{!hasUserFix && <span style={{ color: C.amber }}> · sample</span>}<br />
-              Elevation: <strong>{displayElevation}m ASL</strong>{!Number.isFinite(Number(position?.altitude)) && <span style={{ color: C.amber }}> · sample</span>}
-            </div>
-
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
-              <span style={{ fontSize: 11, color: C.muted2 }}>📍 Your position</span>
-              <button
-                type="button"
-                onClick={() => setFocusTarget({ lat: displayLat, lon: displayLon, id: "user" })}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "#60a5fa",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                🎯 Show on Map →
-              </button>
-            </div>
-          </Card>
-
-          {/* Cards 3 to 6: The 4 other expedition members */}
-          {RAJMACHI_MEMBERS.filter((m) => m.id !== user?.id && m.userId !== user?.id).map((member) => {
-            const dist = calculateDistanceMeters(displayLat, displayLon, member.lat, member.lon);
-            const dir = getRelativeTrailDirection(member.lat, displayLat);
-            const color = member.color ? member.color[0] : "#10b981";
-
-            return (
-              <Card key={member.id} style={{ borderColor: C.border }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 10,
-                        background: `${color}20`,
-                        border: `1px solid ${color}60`,
-                        color: color,
-                        fontSize: 12,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontWeight: 700,
-                      }}
-                    >
-                      {member.avatar}
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>
-                        {member.name}
-                      </div>
-                      <div style={{ fontSize: 11, color: C.muted }}>
-                        {member.badge}
-                      </div>
-                    </div>
-                  </div>
-                  <Pill color="teal">{formatDistance(dist)} {dir}</Pill>
-                </div>
-
-                <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 8, lineHeight: 1.5 }}>
-                  Status: <strong style={{ color: C.text }}>{member.trailStatus}</strong><br/>
-                  Position: <strong>{member.lat.toFixed(5)}, {member.lon.toFixed(5)}</strong><br />
-                  Altitude: <strong>{member.altitude}m ASL</strong>
-                </div>
-
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
-                  <span style={{ fontSize: 11, color: C.muted2 }}>📞 {member.phone}</span>
-                  <button
-                    type="button"
-                    onClick={() => setFocusTarget({ lat: member.lat, lon: member.lon, id: member.id })}
-                    style={{
-                      background: "transparent",
-                      border: "none",
-                      color: "#60a5fa",
-                      fontSize: 11,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    🎯 Show on Map →
-                  </button>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
+    <section style={{ padding: 16, borderRadius: 14, border: `1px solid ${palette.line}`, background: palette.card }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 10 }}><div style={{ fontWeight: 750 }}>Expedition team</div><div style={{ color: palette.muted, fontSize: 11 }}>{located.length} with position · {people.filter((p) => !p.isGuide).length} trekkers</div></div>
+      {people.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 9 }}>
+        {people.map((person) => {
+          const hasPosition = Number.isFinite(Number(person.lat)) && Number.isFinite(Number(person.lon));
+          const distance = hasPosition && own && Number.isFinite(Number(own.lat)) ? formatDistance(calculateDistanceMeters(Number(own.lat), Number(own.lon), Number(person.lat), Number(person.lon))) : null;
+          return <button key={person.id} type="button" onClick={() => hasPosition && focusPerson(person)} style={{ textAlign: "left", cursor: hasPosition ? "pointer" : "default", padding: "11px 12px", borderRadius: 10, border: `1px solid ${person.isSelf ? "rgba(59,130,246,.42)" : palette.line}`, background: person.isSelf ? "rgba(59,130,246,.07)" : "rgba(255,255,255,.02)", color: palette.text, font: "inherit" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><span style={{ fontSize: 12.5, fontWeight: 700 }}>{person.isGuide ? "★ " : ""}{person.name}{person.isSelf ? " · You" : ""}</span><span style={{ fontSize: 10, color: person.status === "sos" ? "#fca5a5" : hasPosition ? palette.green : palette.muted }}>{person.status === "sos" ? "SOS" : hasPosition ? "● Located" : "No live fix"}</span></div>
+            <div style={{ color: palette.muted, fontSize: 11, marginTop: 5 }}>{person.role || "Trekker"}{distance ? ` · ${distance} away` : ""}{hasPosition ? ` · ${Number(person.altitude || 0)}m` : ""}</div>
+          </button>;
+        })}
+      </div> : <div style={{ color: palette.muted, fontSize: 12 }}>The approved roster will appear here when available.</div>}
+    </section>
+  </div>;
 }

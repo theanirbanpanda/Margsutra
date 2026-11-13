@@ -12,6 +12,25 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 
 export const db = getFirestore(app);
+export const subscribeToFieldTelemetry = (callback) => {
+  let active = true;
+  const databaseUrl = firebaseConfig.databaseURL?.replace(/\/$/, "");
+  const pull = async () => {
+    if (!active || !databaseUrl) return;
+    try {
+      const response = await fetch(`${databaseUrl}/weather_nodes.json`);
+      if (!response.ok) throw new Error(`RTDB HTTP ${response.status}`);
+      const data = await response.json();
+      if (active) callback(Object.entries(data || {}).map(([id, node]) => ({ id, ...node })));
+    } catch (error) {
+      console.warn("Field telemetry read failed:", error?.message || error);
+      if (active) callback(null);
+    }
+  };
+  pull();
+  const interval = setInterval(pull, 5000);
+  return () => { active = false; clearInterval(interval); };
+};
 if (import.meta.env.VITE_USE_FIRESTORE_EMULATOR === "true") {
   try {
     connectFirestoreEmulator(db, "127.0.0.1", 8080);

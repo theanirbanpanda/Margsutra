@@ -776,6 +776,12 @@ export const subscribeToWeatherData = (callback) => {
   });
 };
 
+export const subscribeToFieldTelemetry = (callback) => onValue(
+  ref(rtdb, "weather_nodes"),
+  (snapshot) => callback(Object.entries(snapshot.val() || {}).map(([id, data]) => ({ id, ...data }))),
+  (error) => { console.warn("Field telemetry subscription failed:", error?.message || error); callback(null); }
+);
+
 export const getWeatherHistory = async (nodeId, days = 7) => {
   try {
     const q = query(

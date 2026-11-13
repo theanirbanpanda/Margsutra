@@ -1198,9 +1198,9 @@ function demoTripsSnapshot() {
       demoRoster: true,
       leader: "Demo Admin",
       vhfChannel: "145.500 MHz (VHF Ch 1)",
-      lat: 18.8286,
-      lon: 73.3986,
-      geofence: { lat: 18.8286, lon: 73.3986, radius: 2500, zoneName: "Rajmachi Safe Trek Corridor" },
+      lat: 18.8296834,
+      lon: 73.3974108,
+      geofence: { lat: 18.8296834, lon: 73.3974108, radius: 2500, zoneName: "Rajmachi Safe Trek Corridor" },
     },
     {
       ...base,
@@ -1226,9 +1226,9 @@ function demoTripsSnapshot() {
       maxRoster: 20,
       baseRosterCount: 0,
       leader: "Demo Admin",
-      lat: 19.3888,
-      lon: 73.7761,
-      geofence: { lat: 19.3888, lon: 73.7761, radius: 3000, zoneName: "Harishchandragad Safe Corridor" },
+      lat: 19.391453,
+      lon: 73.793874,
+      geofence: { lat: 19.391453, lon: 73.793874, radius: 3000, zoneName: "Harishchandragad Safe Corridor" },
     },
   ];
 }
@@ -1281,9 +1281,9 @@ async function seedDemoTrip() {
       createdBy: adminProfile.id,
       adminInCharge: adminProfile.id,
       status: "upcoming",
-      lat: 18.8286,
-      lon: 73.3986,
-      geofence: { lat: 18.8286, lon: 73.3986, radius: 2500, zoneName: "Rajmachi Safe Trek Corridor" },
+       lat: 18.8296834,
+       lon: 73.3974108,
+       geofence: { lat: 18.8296834, lon: 73.3974108, radius: 2500, zoneName: "Rajmachi Safe Trek Corridor" },
     });
   } catch (error) {
     if (error instanceof HttpError && error.status === 409) {
