@@ -12,6 +12,7 @@ export default function SOSConfirmModal({
 }) {
   const [step, setStep] = useState(1);
   const [holdPct, setHoldPct] = useState(0);
+  const [reason, setReason] = useState("");
   const holdTimer = useRef(null);
   const holdStart = useRef(0);
   const firedRef = useRef(false);
@@ -76,7 +77,8 @@ export default function SOSConfirmModal({
   const handleFinalConfirm = () => {
     stopHold();
     setStep(1);
-    onConfirm();
+    onConfirm(reason.trim());
+    setReason("");
   };
 
   const startHold = (e) => {
@@ -378,6 +380,34 @@ export default function SOSConfirmModal({
                 If you can, move to open sky or enable location services before transmitting.
               </div>
             )}
+
+            <div style={{ marginBottom: 14 }}>
+              <label
+                htmlFor="sos-reason"
+                style={{
+                  display: "block", fontSize: 11, color: "rgba(226,232,240,0.75)",
+                  textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6, fontWeight: 700,
+                }}
+              >
+                What is happening? (optional)
+              </label>
+              <textarea
+                id="sos-reason"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                rows={2}
+                maxLength={240}
+                placeholder="e.g. Ankle fracture after a slip on the ridge — cannot walk."
+                style={{
+                  width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(239,68,68,0.3)",
+                  borderRadius: 10, padding: "10px 12px", color: "#e2e8f0", fontSize: 13,
+                  fontFamily: "inherit", resize: "vertical", outline: "none",
+                }}
+              />
+              <div style={{ fontSize: 10.5, color: "rgba(226,232,240,0.5)", marginTop: 5 }}>
+                {reason.length}/240 · this goes straight to SAR Command with your beacon
+              </div>
+            </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <button

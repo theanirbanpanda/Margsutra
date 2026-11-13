@@ -561,6 +561,8 @@ const PageSOSNavigation = ({
   sosFeedLoaded = false,
   onBroadcast,
   teamSize = 0,
+  teamName = "",
+  teamCode = "",
 }) => {
   /* ── Incoming beacons (a trekker asked for help) ─────────────────────── */
   const activeIncidents = useMemo(() => {
@@ -585,29 +587,39 @@ const PageSOSNavigation = ({
         time: formatClock(ev.timestamp, ev.time || "Just now"),
         acknowledged: Boolean(ev.acknowledged) || Boolean(acknowledgedMap[id]),
         acknowledgedBy: ev.acknowledgedBy || acknowledgedMap[id]?.by || "",
+        reason: ev.reason || ev.message || "",
         severity: ev.priority === "critical" ? "critical" : "high",
       });
     });
 
-    return list.sort((a, b) => Number(b.acknowledged) - Number(a.acknowledged));
+    // Acknowledged beacons are dismissed from the console — the trekker keeps
+    // control of their own beacon.
+    return list.filter((i) => !i.acknowledged);
   }, [sosEvents, users, acknowledgedMap]);
 
-  /* ── Resolved history ──────────────────────────────────────────────────── */
+  /* ── History: past beacons, greyed out once acknowledged ───────────────── */
   const resolvedIncidents = useMemo(() => {
     const list = [];
     sosEvents.forEach((ev) => {
       if (!ev) return;
-      if (ev.status !== "resolved" && !ev.resolution) return;
+      const id = ev.id || `sos-${ev.userId}`;
+      const acked = ev.status === "resolved" || ev.resolution || ev.acknowledged || acknowledgedMap[id];
+      if (!acked) return;
       list.push({
-        id: ev.id,
+        id,
         user: ev.userName || ev.name || "Trekker",
         tripName: ev.tripName || "Expedition",
-        at: formatClock(ev.resolvedAt, formatClock(ev.updatedAt, "Resolved")),
-        note: ev.resolution === "user_cancelled" ? "Cancelled by trekker" : "Stood down by command",
+        at: formatClock(ev.resolvedAt, formatClock(ev.timestamp, formatClock(ev.updatedAt, "Earlier"))),
+        note: ev.acknowledged || acknowledgedMap[id]
+          ? "Acknowledged by command"
+          : ev.resolution === "user_cancelled"
+            ? "Cancelled by trekker"
+            : "Stood down by command",
+        reason: ev.reason || ev.message || "",
       });
     });
-    return list.slice(0, 8);
-  }, [sosEvents]);
+    return list.slice(0, 10);
+  }, [sosEvents, acknowledgedMap]);
 
   const [actingId, setActingId] = useState(null);
   const [toast, setToast] = useState(null);
@@ -682,6 +694,18 @@ const PageSOSNavigation = ({
     }
   };
 
+  // The command team can take an alert back down (the same "exit" control a
+  // trekker has on their own beacon).
+  const handleDismissBroadcast = async (alert) => {
+    if (!alert) return;
+    setBroadcasts((prev) => prev.filter((b) => b.id !== alert.id));
+    try {
+      await onResolveSOS?.(alert.id, "", "Alert dismissed by command");
+    } catch (e) {
+      console.warn("Could not dismiss the alert:", e?.message || e);
+    }
+  };
+
   const handleSendBroadcast = async () => {
     const trimmed = message.trim();
     if (!trimmed) {
@@ -752,10 +776,10 @@ const PageSOSNavigation = ({
         </div>
         <div style={{ flex: 1, minWidth: 180 }}>
           <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text }}>
-            SOS is limited to this team
+            SOS stays inside {teamName || "your expedition"}{teamCode ? ` · ${teamCode}` : ""}
           </div>
           <div style={{ fontSize: 11.5, color: C.muted, marginTop: 1 }}>
-            Beacons and command alerts stay inside the expedition group ({members} member{members === 1 ? "" : "s"}) — they are never shared outside it.
+            Beacons and command alerts are only visible to this group ({members} member{members === 1 ? "" : "s"}).
           </div>
         </div>
       </div>
@@ -818,54 +842,26 @@ const PageSOSNavigation = ({
                       </div>
                       <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>
                         {incident.time}
-                        {incident.acknowledged && ` · acknowledged by ${incident.acknowledgedBy || "command"}`}
                       </div>
+                      {incident.reason && (
+                        <div style={{ fontSize: 11.5, color: "#fca5a5", marginTop: 4, lineHeight: 1.45 }}>
+                          “{incident.reason}”
+                        </div>
+                      )}
                     </div>
 
-                    {incident.acknowledged ? (
-                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <Pill color="amber">🔕 Acknowledged</Pill>
-                        <button
-                          type="button"
-                          disabled={actingId === incident.id}
-                          onClick={() => { setResolutionNote("Trekker is safe and escorted back to base camp"); setStandDownTarget(incident); }}
-                          style={{
-                            padding: "6px 12px", borderRadius: 7, border: "1px solid rgba(34,197,94,0.35)",
-                            background: "rgba(34,197,94,0.14)", color: "#86efac", fontSize: 11.5, fontWeight: 700,
-                            cursor: "pointer", fontFamily: "inherit",
-                          }}
-                        >
-                          Stand down
-                        </button>
-                      </div>
-                    ) : (
-                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <button
-                          type="button"
-                          disabled={actingId === incident.id}
-                          onClick={() => handleAcknowledge(incident)}
-                          style={{
-                            padding: "6px 12px", borderRadius: 7, border: "1px solid rgba(245,158,11,0.4)",
-                            background: "rgba(245,158,11,0.15)", color: "#fcd34d", fontSize: 11.5, fontWeight: 700,
-                            cursor: actingId === incident.id ? "not-allowed" : "pointer", fontFamily: "inherit",
-                          }}
-                        >
-                          {actingId === incident.id ? "…" : "Acknowledge"}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={actingId === incident.id}
-                          onClick={() => { setResolutionNote("Trekker is safe and escorted back to base camp"); setStandDownTarget(incident); }}
-                          style={{
-                            padding: "6px 12px", borderRadius: 7, border: `1px solid ${C.border}`,
-                            background: "transparent", color: "#fca5a5", fontSize: 11.5, fontWeight: 700,
-                            cursor: actingId === incident.id ? "not-allowed" : "pointer", fontFamily: "inherit",
-                          }}
-                        >
-                          Stand down
-                        </button>
-                      </div>
-                    )}
+                    <button
+                      type="button"
+                      disabled={actingId === incident.id}
+                      onClick={() => handleAcknowledge(incident)}
+                      style={{
+                        padding: "6px 12px", borderRadius: 7, border: "1px solid rgba(245,158,11,0.4)",
+                        background: "rgba(245,158,11,0.15)", color: "#fcd34d", fontSize: 11.5, fontWeight: 700,
+                        cursor: actingId === incident.id ? "not-allowed" : "pointer", fontFamily: "inherit",
+                      }}
+                    >
+                      {actingId === incident.id ? "…" : "✅ Acknowledge"}
+                    </button>
                   </div>
                 </Card>
               ))}
@@ -884,13 +880,16 @@ const PageSOSNavigation = ({
                     key={incident.id}
                     style={{
                       display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
-                      borderRadius: 9, background: "rgba(255,255,255,0.02)", border: `1px solid ${C.border}`,
-                      fontSize: 11.5, color: C.muted,
+                      borderRadius: 9, background: "rgba(255,255,255,0.015)", border: `1px solid ${C.border}`,
+                      fontSize: 11.5, color: C.muted2, opacity: 0.7,
                     }}
                   >
-                    <span style={{ color: C.green }}>✓</span>
-                    <span style={{ color: C.text, fontWeight: 600 }}>{incident.user}</span>
-                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{incident.tripName}</span>
+                    <span style={{ color: C.muted2 }}>✓</span>
+                    <span style={{ color: C.muted, fontWeight: 600 }}>{incident.user}</span>
+                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {incident.tripName}
+                      {incident.reason ? ` · “${incident.reason}”` : ""}
+                    </span>
                     <span>{incident.note}</span>
                     <span style={{ color: C.muted2 }}>{incident.at}</span>
                   </div>
@@ -959,11 +958,24 @@ const PageSOSNavigation = ({
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {broadcasts.slice(0, 6).map((b) => (
                   <div key={b.id} style={{ padding: "8px 10px", borderRadius: 8, background: "rgba(255,255,255,0.02)", border: `1px solid ${C.border}` }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
                       <Pill color={b.severity === "critical" ? "red" : b.severity === "urgent" ? "amber" : "blue"}>{b.severity}</Pill>
                       <span style={{ fontSize: 10.5, color: C.muted2, marginLeft: "auto" }}>{formatClock(b.timestamp, "Just now")}</span>
                     </div>
-                    <div style={{ fontSize: 11.5, color: C.text, lineHeight: 1.5 }}>{b.message}</div>
+                    <div style={{ fontSize: 11.5, color: C.text, lineHeight: 1.5, marginBottom: 7 }}>{b.message}</div>
+                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                      <button
+                        type="button"
+                        onClick={() => handleDismissBroadcast(b)}
+                        style={{
+                          padding: "4px 10px", borderRadius: 6, border: `1px solid ${C.border}`,
+                          background: "transparent", color: C.muted, fontSize: 10.5, fontWeight: 700,
+                          cursor: "pointer", fontFamily: "inherit",
+                        }}
+                      >
+                        ✕ Dismiss
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -5888,6 +5900,7 @@ export default function AdminPanel() {
   // flashing banner, but the incident stays live until stand-down.
   const [ackedSos, setAckedSos] = useState({});
   const ackedSosRef = useRef({});
+  const [teamTrips, setTeamTrips] = useState([]);
   useEffect(() => {
     ackedSosRef.current = ackedSos;
   }, [ackedSos]);
@@ -6009,6 +6022,33 @@ export default function AdminPanel() {
     };
   }, [stopAlarm]);
 
+  // The expeditions this console knows about — used to name the group that
+  // SOS is limited to.
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch(`${AUTH_API_URL}/trips`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && Array.isArray(data)) setTeamTrips(data);
+      } catch {
+        /* transient */
+      }
+    };
+    load();
+    const timer = setInterval(load, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
+
+  const myTeam = useMemo(() => {
+    const mine = teamTrips.find((t) => t.adminInCharge === activeAdmin?.id);
+    return mine || teamTrips[0] || null;
+  }, [teamTrips, activeAdmin?.id]);
+
   // Incidents that are still waiting for a human to acknowledge them.
   const unacknowledgedSOSCount = useMemo(
     () => liveIncidents.filter((i) => !i.acknowledged).length,
@@ -6033,12 +6073,13 @@ export default function AdminPanel() {
     prevUnackedRef.current = unacknowledgedSOSCount;
   }, [unacknowledgedSOSCount]);
 
-  // Auto-switch view to Realtime SOS Dispatch whenever an active distress incident is detected
+  // A beacon pulls the console to the SOS page from anywhere — the duty
+  // officer must never have to hunt for the alert.
   useEffect(() => {
-    if (activeSOS > 0 && page === "dashboard") {
+    if (unacknowledgedSOSCount > 0 && page !== "sos-navigation") {
       setPage("sos-navigation");
     }
-  }, [activeSOS, page]);
+  }, [unacknowledgedSOSCount, page]);
 
   const handleResolveSOS = async (eventId, userId, notes) => {
     return await resolveSOSEvent(eventId, userId, notes, activeAdmin?.name || "Lead Command Admin");
@@ -6259,6 +6300,8 @@ export default function AdminPanel() {
         acknowledgedMap={ackedSos}
         sosFeedLoaded={sosFeedLoaded}
         teamSize={Math.max(firestoreUsers.length, 1)}
+        teamName={myTeam?.name}
+        teamCode={myTeam?.code}
       />
     ),
 

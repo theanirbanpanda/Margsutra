@@ -13,7 +13,6 @@ import {
   alarmEngine,
 } from "./services/sosService";
 import {
-  subscribeToSafetyProtocols,
   getTripByCode,
   subscribeToTrips,
   updateUserProfileInFirestore,
@@ -191,28 +190,6 @@ const buildUserProfile = (form) => {
 };
 
 const TRACKING_SERVER_URL = import.meta.env.VITE_TRACKING_SERVER_URL || "http://localhost:4000";
-
-const FALLBACK_SAFETY_PROTOCOLS = [
-  {id:"P001",title:"Arrival & check-in protocol",   icon:"📋",status:"published",updated:"Apr 10, 2026",
-   body:"Upon arriving at the trek base, register at the check-in kiosk. Confirm your emergency contacts and ensure your device GPS is active. Admin will verify your profile before granting trail access."},
-  {id:"P002",title:"Daily check-in rules",           icon:"✅",status:"published",updated:"Apr 8, 2026",
-   body:"Send a live-status ping every 4 hours during active trekking. If no ping is received within 6 hours, the system triggers an automatic welfare check. Always acknowledge system check-in prompts."},
-  {id:"P003",title:"Offline & no-signal zones",      icon:"📵",status:"published",updated:"Apr 11, 2026",
-   body:"Carry a LoRa-enabled satellite communicator when entering zones marked orange on your map. Pre-download offline maps before departure. Inform admin 2 hrs prior to entering a no-signal zone."},
-  {id:"P004",title:"SOS trigger procedure",          icon:"🚨",status:"published",updated:"Mar 28, 2026",
-   body:"Press and hold the SOS button for 3 seconds to prevent accidental triggers. The system broadcasts your GPS coordinates and medical profile to the nearest rescue team. Stay in place unless immediate danger requires movement."},
-  {id:"P005",title:"Medical emergency guidelines",   icon:"⚕️",status:"published",updated:"Apr 9, 2026",
-   body:"Your blood group and medical conditions are auto-shared with any dispatched rescue team. In case of allergy or diabetic emergency, use the medical alert shortcut on your dashboard before triggering SOS."},
-];
-
-const deriveProtocolIcon = (title = "") => {
-  const normalized = title.toLowerCase();
-  if (normalized.includes("sos")) return "🚨";
-  if (normalized.includes("medical")) return "⚕️";
-  if (normalized.includes("offline") || normalized.includes("signal")) return "📵";
-  if (normalized.includes("check-in") || normalized.includes("check in")) return "📋";
-  return "🛡️";
-};
 
 const MY_DEVICES = [
   {id:"DEV001",name:"iPhone 15 Pro",      type:"phone",    battery:78,signal:"strong",gps:true, sos:true, connected:true, mac:"A4:C1:38:1F:22:B5",lat:18.52,lon:73.85},
@@ -2927,64 +2904,34 @@ const formatAlertTime = (value) => {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 };
 
-const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate, sosDelivery, sosAcknowledged }) => {
+const PageSOSNav = ({
+  user, activeSOS, onSOS, onNavigate, sosDelivery, sosAcknowledged, joinedTrip,
+  alerts = [], dismissedAlerts = {}, onAcknowledgeAlert,
+}) => {
   const [currentStep, setCurrentStep] = useState(0);
-  const [expandProtocol, setExpandProtocol] = useState(null);
-  const [safetyProtocols, setSafetyProtocols] = useState(FALLBACK_SAFETY_PROTOCOLS);
-  const [alerts, setAlerts] = useState([]);
+  const [alertBusy, setAlertBusy] = useState(null);
 
-  // Alerts sent by the command team to this group (two-way SOS).
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const res = await fetch("http://localhost:5050/api/sos/alerts");
-        if (!res.ok) return;
-        const data = await res.json();
-        if (cancelled) return;
-        setAlerts(Array.isArray(data?.alerts) ? data.alerts : []);
-      } catch {
-        /* transient — the next poll retries */
-      }
-    };
-    load();
-    const timer = setInterval(load, 15000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, []);
 
-  // Safety protocols live here — the dashboard no longer repeats them.
-  useEffect(() => {
-    const unsubscribe = subscribeToSafetyProtocols((protocols) => {
-      if (!protocols.length) return;
-      const publishedProtocols = protocols
-        .map((protocol) => ({
-          ...protocol,
-          icon: protocol.icon || deriveProtocolIcon(protocol.title),
-          status: protocol.status || "draft",
-          updated:
-            protocol.updated ||
-            (protocol.updatedAt
-              ? new Date(protocol.updatedAt).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })
-              : "Recently"),
-        }))
-        .filter((protocol) => protocol.status === "published");
+  // The trekker acknowledges (silences) a command alert for themselves.
+  const acknowledgeAlert = async (alert) => {
+    if (!alert) return;
+    setAlertBusy(alert.id);
+    onAcknowledgeAlert?.(alert);
+    alarmEngine.stop();
+    try {
+      await authFetch(`http://localhost:5050/api/sos/${alert.id}/acknowledge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note: "Acknowledged by trekker" }),
+      });
+    } catch (e) {
+      console.warn("Could not acknowledge the alert:", e?.message || e);
+    }
+    setAlertBusy(null);
+  };
 
-      if (publishedProtocols.length > 0) {
-        setSafetyProtocols(publishedProtocols);
-      }
-    });
-
-    return () => unsubscribe();
-  }, []);
-  const [elapsed, setElapsed]         = useState(0);
   const [teamPos, setTeamPos]         = useState({lat:RESCUE_TEAMS[0].lat,lon:RESCUE_TEAMS[0].lon});
+  const [elapsed, setElapsed]         = useState(0);
   const [navMode, setNavMode]         = useState(false);
   const [trackingToken, setTrackingToken] = useState(() => localStorage.getItem("margsutra_tracking_token") || "");
   const [tokenState, setTokenState] = useState(trackingToken ? "ready" : "loading");
@@ -3149,13 +3096,13 @@ const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate, sosDelivery, sosAcknow
         )}
       </div>
 
-      {alerts.length === 0 ? (
+      {alerts.filter((a) => !dismissedAlerts[a.id]).length === 0 ? (
         <div style={{padding:"12px 14px",borderRadius:10,background:"rgba(59,130,246,0.06)",border:"1px solid rgba(59,130,246,0.22)",fontSize:12,color:C.muted}}>
           No alerts right now. If the command team needs your attention, it appears here instantly.
         </div>
       ) : (
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {alerts.slice(0,5).map((a) => {
+          {alerts.filter((a) => !dismissedAlerts[a.id]).slice(0,5).map((a) => {
             const isCritical = a.severity === "critical";
             const isUrgent = a.severity === "urgent";
             const tone = isCritical ? { bg:"rgba(239,68,68,0.12)", border:"rgba(239,68,68,0.4)", color:"#fca5a5" }
@@ -3172,6 +3119,20 @@ const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate, sosDelivery, sosAcknow
                   </span>
                 </div>
                 <div style={{fontSize:12.5,color:C.text,lineHeight:1.55}}>{a.message}</div>
+                <div style={{display:"flex",justifyContent:"flex-end",marginTop:10}}>
+                  <button
+                    type="button"
+                    disabled={alertBusy === a.id}
+                    onClick={() => acknowledgeAlert(a)}
+                    style={{
+                      padding:"6px 12px",borderRadius:8,border:"1px solid rgba(245,158,11,0.4)",
+                      background:"rgba(245,158,11,0.14)",color:"#fcd34d",fontSize:11.5,fontWeight:700,
+                      cursor: alertBusy === a.id ? "not-allowed" : "pointer",fontFamily:"inherit",
+                    }}
+                  >
+                    {alertBusy === a.id ? "…" : "🔕 Acknowledge & silence"}
+                  </button>
+                </div>
               </div>
             );
           })}
@@ -3180,7 +3141,9 @@ const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate, sosDelivery, sosAcknow
     </div>
   );
 
-  // SOS is limited to this expedition group.
+  // SOS stays inside the expedition group the trekker joined.
+  const teamName = joinedTrip?.name || "your expedition";
+  const teamCode = joinedTrip?.code || "";
   const scopeBlock = (
     <div style={{
       display:"flex",alignItems:"center",gap:10,padding:"10px 14px",marginBottom:14,borderRadius:11,
@@ -3192,46 +3155,17 @@ const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate, sosDelivery, sosAcknow
         border:"1px solid rgba(59,130,246,0.35)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,
       }}>🛡️</div>
       <div style={{flex:1,minWidth:170}}>
-        <div style={{fontSize:12.5,fontWeight:700,color:C.text}}>SOS is limited to your team</div>
+        <div style={{fontSize:12.5,fontWeight:700,color:C.text}}>
+          SOS stays inside {teamName}{teamCode ? ` · ${teamCode}` : ""}
+        </div>
         <div style={{fontSize:11.5,color:C.muted,marginTop:1}}>
-          Your beacon and the command team's alerts stay inside this expedition group — nothing is shared outside it.
+          Your beacon and the command team's alerts are only visible to this group.
         </div>
       </div>
     </div>
   );
 
   // Safety protocols — the single home for them in the trekker app.
-  const protocolsBlock = (
-        <div style={{marginTop:16}}>
-          <div style={{fontSize:13,fontWeight:600,color:C.text,marginBottom:12}}>📋 Safety Protocols</div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(280px, 1fr))",gap:10}}>
-            {safetyProtocols.map(p=>(
-              <Card key={p.id} style={{cursor:"pointer",transition:"border-color 0.2s",
-                borderColor:expandProtocol===p.id?"rgba(59,130,246,0.4)":C.border}}
-                onClick={()=>setExpandProtocol(expandProtocol===p.id?null:p.id)}>
-                <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
-                  <div style={{fontSize:20,flexShrink:0,marginTop:2}}>{p.icon}</div>
-                  <div style={{flex:1}}>
-                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                      <div style={{fontSize:13,fontWeight:500,color:C.text}}>{p.title}</div>
-                      <span style={{fontSize:12,color:C.muted,transition:"transform 0.2s",
-                        display:"inline-block",transform:expandProtocol===p.id?"rotate(180deg)":"none"}}>▾</span>
-                    </div>
-                    <div style={{fontSize:10,color:C.muted2,marginTop:2}}>Updated {p.updated}</div>
-                    {expandProtocol===p.id&&(
-                      <div style={{fontSize:12,color:C.muted,marginTop:10,lineHeight:1.7,
-                        paddingTop:10,borderTop:`1px solid ${C.border}`}}>
-                        {p.body}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </div>
-  );
-
   if (!activeSOS) return (
     <div>
       <PageHeader title="SOS Navigation" sub="Real-time routing when an emergency is active"/>
@@ -3247,7 +3181,6 @@ const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate, sosDelivery, sosAcknow
 
       {scopeBlock}
       {alertsBlock}
-      {protocolsBlock}
     </div>
   );
 
@@ -3443,7 +3376,6 @@ const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate, sosDelivery, sosAcknow
 
       {scopeBlock}
       {alertsBlock}
-      {protocolsBlock}
     </div>
   );
 };
@@ -4494,6 +4426,52 @@ export default function UserDashboard() {
   const liveFix = useLivePosition();
   const [sosDelivery, setSosDelivery] = useState(null);
   const [outboxCount, setOutboxCount] = useState(() => getSOSOutboxCount());
+
+  // ── Command alerts (two-way SOS) ────────────────────────────────────────
+  // Watched from the app root so an alert reaches the trekker whatever screen
+  // is open: it sounds the same siren as their own beacon and pulls the app
+  // to the SOS page.
+  const [commandAlerts, setCommandAlerts] = useState([]);
+  const [dismissedAlerts, setDismissedAlerts] = useState({});
+  const seenAlertRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const res = await fetch("http://localhost:5050/api/sos/alerts");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        const list = Array.isArray(data?.alerts) ? data.alerts : [];
+        setCommandAlerts(list);
+
+        // A new alert (or one still waiting when the app starts) sounds the
+        // siren and takes the trekker to the SOS page.
+        const latestId = list[0]?.id || null;
+        if (latestId && latestId !== seenAlertRef.current) {
+          seenAlertRef.current = latestId;
+          alarmEngine.start();
+          setPage("sos-nav");
+        }
+      } catch {
+        /* transient — the next poll retries */
+      }
+    };
+
+    load();
+    const timer = setInterval(load, 8000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
+
+  const acknowledgeCommandAlert = (alert) => {
+    if (!alert) return;
+    setDismissedAlerts((prev) => ({ ...prev, [alert.id]: true }));
+  };
   const [sosAcknowledged, setSosAcknowledged] = useState(null);
 
   // Subscribe to remote stand-down (e.g. if Admin stands down SOS from command console)
@@ -4599,13 +4577,14 @@ export default function UserDashboard() {
     }
   };
 
-  const handleConfirmedSOSBroadcast = async () => {
+  const handleConfirmedSOSBroadcast = async (reason = "") => {
     setShowSOSConfirmModal(false);
     setActiveSOS(true);
     setPage("sos-nav");
     setSosDelivery({ pending: true, delivered: false, channels: {}, queued: 0 });
     try {
       const res = await broadcastSOSBeacon(user, joinedTrip, {
+        reason,
         lat: liveFix.meta.lat,
         lon: liveFix.meta.lon,
         altitude: liveFix.meta.altitude,
@@ -4795,7 +4774,7 @@ export default function UserDashboard() {
 
   const PAGES = {
     "dashboard": <PageDashboard user={user} onNavigate={navigate} activeSOS={activeSOS} joinedTrip={joinedTrip} onSOS={handleSOSToggle}/>,
-    "sos-nav":   <PageSOSNav user={user} activeSOS={activeSOS} onSOS={handleSOSToggle} onNavigate={navigate} sosDelivery={sosDelivery} sosAcknowledged={sosAcknowledged}/>,
+    "sos-nav":   <PageSOSNav user={user} activeSOS={activeSOS} onSOS={handleSOSToggle} onNavigate={navigate} sosDelivery={sosDelivery} sosAcknowledged={sosAcknowledged} joinedTrip={joinedTrip} alerts={commandAlerts} dismissedAlerts={dismissedAlerts} onAcknowledgeAlert={acknowledgeCommandAlert}/>,
     "geofencing":<PageGeofencing user={user} joinedTrip={joinedTrip} onNavigate={navigate}/>,
     "live-tracking": <PageLiveTracking user={user} joinedTrip={joinedTrip} onNavigate={navigate} activeSOS={activeSOS} onSOS={handleSOSToggle}/>,
     "weather":   <PageWeatherMaps joinedTrip={joinedTrip} onNavigate={navigate}/>,

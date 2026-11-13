@@ -810,6 +810,7 @@ async function createSOSEvent(sosData = {}) {
     type: sosData.type || "Manual SOS Beacon",
     priority: sosData.priority || "critical",
     message: sosData.message || "Emergency SOS broadcast activated",
+    reason: sosData.reason || (sosData.message || ""),
     timestamp: now,
     createdAt: now,
     updatedAt: now,
@@ -901,14 +902,20 @@ async function createSOSBroadcast({ message = "", severity = "advisory", title =
 }
 
 // Broadcast alerts only (never beacons) — what the trekker app shows.
-async function listSOSBroadcasts(limitCount = 20) {
+async function listSOSBroadcasts(limitCount = 20, onlyActive = true) {
   const limit = Math.max(1, Math.min(Number(limitCount) || 20, 50));
   try {
     const snapshot = await db.collection("sos_events")
       .where("kind", "==", "broadcast")
       .limit(limit)
       .get();
-    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const all = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const list = onlyActive ? all.filter((e) => e.status !== "resolved") : all;
+    return list.sort((a, b) => {
+      const ta = a.timestamp?.toDate ? a.timestamp.toDate().getTime() : new Date(a.timestamp || 0).getTime();
+      const tb = b.timestamp?.toDate ? b.timestamp.toDate().getTime() : new Date(b.timestamp || 0).getTime();
+      return tb - ta;
+    });
   } catch (error) {
     console.warn("listSOSBroadcasts failed:", error?.message || error);
     return [];

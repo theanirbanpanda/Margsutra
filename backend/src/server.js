@@ -458,9 +458,11 @@ app.post("/api/sos/broadcast", requireAuth, async (req, res) => {
 });
 
 // Alerts sent by the command team to the whole group.
-app.get("/api/sos/alerts", async (_req, res) => {
+// `?all=1` also returns dismissed ones (the console keeps a history).
+app.get("/api/sos/alerts", async (req, res) => {
   try {
-    const alerts = await withTimeout(listSOSBroadcasts(20), 6000, "List SOS alerts");
+    const includeAll = req.query.all === "1" || req.query.all === "true";
+    const alerts = await withTimeout(listSOSBroadcasts(20, !includeAll), 6000, "List SOS alerts");
     res.json({ success: true, alerts });
   } catch (error) {
     console.error("List SOS alerts error:", error);
@@ -480,7 +482,8 @@ app.post("/api/sos/:id/acknowledge", optionalAuth, async (req, res) => {
     const result = await acknowledgeSOSEvent(
       req.params.id,
       acknowledgedBy || DEMO_ADMIN_EMAIL,
-      req.body?.note || ""
+      req.body?.note || "",
+      req.userId || ""
     );
     if (result.error) return res.status(404).json({ error: result.error });
     sosEventsCache = { at: 0, key: "", data: null };
