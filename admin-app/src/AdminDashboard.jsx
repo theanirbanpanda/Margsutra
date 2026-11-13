@@ -2737,6 +2737,7 @@ const PageTripRosters = ({
   const [geofenceZone, setGeofenceZone] = useState("");
   const [savingGeofence, setSavingGeofence] = useState(false);
   const [geofenceToast, setGeofenceToast] = useState("");
+  const isDemoAdmin = String(currentAdmin?.email || "").toLowerCase() === DEMO_ADMIN_EMAIL;
 
   // Create / delete
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -2744,8 +2745,8 @@ const PageTripRosters = ({
   const [deleteModalTrip, setDeleteModalTrip] = useState(null);
   const [deletingTrip, setDeletingTrip] = useState(false);
 
-  // Rajmachi demo roster is local-only: it is rebuilt on every admin sign-in,
-  // so removals/edits survive this session but reset after sign-out.
+  // Demo members are shown on every expedition for the demo admin only. Edits
+  // and removals are local to this console session and reset after sign-out.
   const [demoMembers, setDemoMembers] = useState(() => RAJMACHI_DEMO_MEMBERS.map((m) => ({ ...m })));
   const [removedDemo, setRemovedDemo] = useState({});
   const [demoEditId, setDemoEditId] = useState(null);
@@ -3083,8 +3084,13 @@ const PageTripRosters = ({
     });
   };
 
+  const isSharedDemoMember = (member) => isDemoAdmin && DEMO_EXPEDITION_MEMBERS.some((demoMember) =>
+    String(member?.userId || member?.id || "") === String(demoMember.id) ||
+    String(member?.email || "").toLowerCase() === demoMember.email.toLowerCase()
+  );
+
   const demoForTrip = (trip) => {
-    if (!trip?.demoRoster) return [];
+    if (!isDemoAdmin || !trip) return [];
     const removed = removedDemo[trip.id || trip.tripId] || [];
     return demoMembers.filter((m) => !removed.includes(m.id));
   };
@@ -3171,8 +3177,8 @@ const PageTripRosters = ({
                 const tripId = trip.id || trip.tripId;
                 const demoList = demoForTrip(trip);
                 const liveMembers = rosters[tripId] || [];
-                const approvedLive = liveMembers.filter((m) => (m.status || "approved") === "approved").length;
-                const displayFilled = trip.demoRoster ? Math.max(demoList.length, 0) + approvedLive : (Number(trip.rosterCount) || approvedLive);
+                const approvedLive = liveMembers.filter((m) => (m.status || "approved") === "approved" && !isSharedDemoMember(m)).length;
+                const displayFilled = demoList.length > 0 ? demoList.length + approvedLive : (Number(trip.rosterCount) || approvedLive);
                 const max = Number(trip.maxRoster) || 25;
                 const isInCharge = trip.adminInCharge === currentAdmin?.id;
                 const inChargeName = trip.adminInChargeName || (adminOptions.find((a) => a.id === trip.adminInCharge) || {}).name || trip.leader || "—";
@@ -3188,7 +3194,7 @@ const PageTripRosters = ({
                         <span style={{ fontSize: 10, color: C.muted2, fontFamily: "monospace", letterSpacing: "0.08em" }}>· {trip.code}</span>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                        {trip.demoRoster && <Pill color="purple">demo</Pill>}
+                        {demoList.length > 0 && <Pill color="purple">demo team</Pill>}
                         <button
                           type="button"
                           onClick={() => setDeleteModalTrip(trip)}
@@ -3272,7 +3278,7 @@ const PageTripRosters = ({
             const tripId = selectedTrip.id || selectedTrip.tripId;
             const demoList = demoForTrip(selectedTrip);
             const liveMembers = rosters[tripId] || [];
-            const approved = liveMembers.filter((m) => (m.status || "approved") === "approved");
+            const approved = liveMembers.filter((m) => (m.status || "approved") === "approved" && !isSharedDemoMember(m));
             const memberCount = demoList.length + approved.length;
             const max = Number(selectedTrip.maxRoster) || 25;
             return (
@@ -3368,9 +3374,9 @@ const PageTripRosters = ({
                   </div>
                 )}
 
-                {selectedTrip.demoRoster && (
+                {demoList.length > 0 && (
                   <div style={{ marginTop: 14, padding: "10px 12px", borderRadius: 9, background: "rgba(167,139,250,0.07)", border: "1px solid rgba(167,139,250,0.22)", fontSize: 10.5, color: "rgba(196,181,253,0.85)", lineHeight: 1.5 }}>
-                    Rajmachi demo roster is local to this console. Changes reset the next time an admin signs out.
+                    Demo team members are included on this expedition for demo accounts. Changes are local to this console and reset after sign-out.
                     {(removedDemo[tripId] || []).length > 0 && (
                       <button type="button" onClick={() => restoreDemoRoster(tripId)} style={{ display: "block", marginTop: 6, background: "transparent", border: "none", color: "#c4b5fd", fontSize: 10.5, fontWeight: 700, textDecoration: "underline", cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
                         Restore demo roster
@@ -3639,10 +3645,22 @@ const PageDashboard = ({ navigate, users = USERS, assignedTrip, admin }) => {
 
   const displayedRoster = useMemo(() => {
     let list = roster;
-    // Demo trips remain populated for walkthroughs even when the local emulator
-    // has no roster documents. Never use this fallback for real admin accounts.
-    if (isDemo && list.length === 0 && assignedTrip) {
-      list = DEMO_EXPEDITION_MEMBERS.map((member) => ({ ...member, userId: member.id }));
+    // For the demo administrator, show the shared demo cohort on every
+    // assigned expedition and merge any real roster documents without dupes.
+    if (isDemo && assignedTrip) {
+      const demoMembers = DEMO_EXPEDITION_MEMBERS.map((demoMember) => {
+        const matching = roster.find((member) =>
+          String(member.userId || member.id) === String(demoMember.id) ||
+          String(member.email || "").toLowerCase() === String(demoMember.email).toLowerCase()
+        );
+        return { ...demoMember, ...(matching || {}), userId: matching?.userId || matching?.id || demoMember.id };
+      });
+      const demoIds = new Set(demoMembers.map((member) => String(member.userId || member.id)));
+      const demoEmails = new Set(demoMembers.map((member) => String(member.email || "").toLowerCase()));
+      list = [...demoMembers, ...roster.filter((member) =>
+        !demoIds.has(String(member.userId || member.id)) &&
+        !demoEmails.has(String(member.email || "").toLowerCase())
+      )];
     }
     return list.map((member, index) => {
       const profile = users.find((user) => String(user.id || user.userId) === String(member.userId || member.id) || (member.email && String(user.email || "").toLowerCase() === String(member.email).toLowerCase()));
@@ -3651,14 +3669,23 @@ const PageDashboard = ({ navigate, users = USERS, assignedTrip, admin }) => {
     }).filter((member) => !locallyRemovedDemo.includes(member.userId || member.id) && `${member.name} ${member.email} ${member.phone}`.toLowerCase().includes(query.trim().toLowerCase()));
   }, [roster, isDemo, assignedTrip, users, query, locallyRemovedDemo]);
 
-  const approvedCount = roster.filter((member) => member.status === "approved").length || (isDemo && assignedTrip ? DEMO_EXPEDITION_MEMBERS.length - locallyRemovedDemo.length : 0);
-  const teamWithContacts = roster.length ? roster.filter((member) => member.phone || member.mobile).length : (isDemo && assignedTrip ? DEMO_EXPEDITION_MEMBERS.filter((member) => !locallyRemovedDemo.includes(member.id) && member.phone).length : 0);
+  const demoRosterIds = new Set(DEMO_EXPEDITION_MEMBERS.map((member) => String(member.id)));
+  const extraApprovedRoster = roster.filter((member) =>
+    !demoRosterIds.has(String(member.userId || member.id)) &&
+    !DEMO_EXPEDITION_MEMBERS.some((demoMember) => String(member.email || "").toLowerCase() === demoMember.email.toLowerCase())
+  );
+  const approvedCount = isDemo && assignedTrip
+    ? DEMO_EXPEDITION_MEMBERS.filter((member) => !locallyRemovedDemo.includes(member.id)).length + extraApprovedRoster.length
+    : roster.filter((member) => member.status === "approved").length;
+  const teamWithContacts = isDemo && assignedTrip
+    ? DEMO_EXPEDITION_MEMBERS.filter((member) => !locallyRemovedDemo.includes(member.id) && member.phone).length + extraApprovedRoster.filter((member) => member.phone || member.mobile).length
+    : roster.filter((member) => member.phone || member.mobile).length;
   const capacity = Number(assignedTrip?.maxRoster) || null;
   const removeMember = async () => {
     if (!removeTarget || !tripId) return;
     setRemoving(true);
     try {
-      if (isDemo && roster.length === 0) {
+      if (isDemo && DEMO_EXPEDITION_MEMBERS.some((member) => String(member.id) === String(removeTarget.userId || removeTarget.id))) {
         setLocallyRemovedDemo((previous) => [...previous, removeTarget.userId || removeTarget.id]);
         setRemoveTarget(null);
         setSelectedMember(null);
@@ -3822,12 +3849,31 @@ const PageAdminProfile = ({ admin, onUpdate }) => {
 /* ════════════════════════════════════════════════
    PAGE: ALL USERS
 ════════════════════════════════════════════════ */
-const PageAllUsers = ({ users = [], navigate }) => {
+const PageAllUsers = ({ users = [], navigate, includeDemoGroupMembers = false }) => {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [selectedUser, setSelectedUser] = useState(null);
 
-  const allUsers = users && users.length > 0 ? users : USERS;
+  const allUsers = useMemo(() => {
+    const registeredUsers = users && users.length > 0 ? users : USERS;
+    if (!includeDemoGroupMembers) return registeredUsers;
+    const combined = [...registeredUsers];
+    const knownIds = new Set(combined.map((user) => String(user.id || user.uid || "")).filter(Boolean));
+    const knownEmails = new Set(combined.map((user) => String(user.email || "").toLowerCase()).filter(Boolean));
+    for (const member of DEMO_EXPEDITION_MEMBERS) {
+      if (knownIds.has(String(member.id)) || knownEmails.has(String(member.email).toLowerCase())) continue;
+      combined.push({
+        ...member,
+        role: "Trekker",
+        status: member.status === "approved" ? "active" : member.status,
+        avatar: member.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase(),
+        color: ["#E6F1FB", "#0C447C"],
+      });
+      knownIds.add(String(member.id));
+      knownEmails.add(String(member.email).toLowerCase());
+    }
+    return combined;
+  }, [users, includeDemoGroupMembers]);
   const filtered = allUsers.filter(u =>
     (filter === "all" || u.status === filter) &&
     ((u.name || "").toLowerCase().includes(search.toLowerCase()) ||
@@ -6513,7 +6559,7 @@ export default function AdminPanel() {
   const pages = {
     dashboard: <PageDashboard navigate={navigate} users={displayUsers} assignedTrip={myTeam} admin={activeAdmin} />,
     "admin-profile": <PageAdminProfile admin={activeAdmin} onUpdate={setActiveAdmin} />,
-    "all-users": <PageAllUsers users={displayUsers} navigate={navigate} />,
+    "all-users": <PageAllUsers users={displayUsers} navigate={navigate} includeDemoGroupMembers={String(activeAdmin?.email || "").toLowerCase() === DEMO_ADMIN_EMAIL} />,
     "trip-rosters": <PageTripRosters
       defaultTab="expeditions"
       pendingTrekkers={pendingTrekkers}
