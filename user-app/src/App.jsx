@@ -1858,9 +1858,11 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
       <PageHeader title="My Dashboard"
         sub={`${joinedTrip.name} · ${joinedTrip.date}`}
         right={<div style={{display:"flex",gap:8}}>
-          <Pill color={safetyStatus==="safe"?"green":safetyStatus==="caution"?"amber":"red"}>
-            {statusLabel[safetyStatus]}
-          </Pill>
+          {safetyStatus !== "unknown" && (
+            <Pill color={safetyStatus==="safe"?"green":safetyStatus==="caution"?"amber":"red"}>
+              {statusLabel[safetyStatus]}
+            </Pill>
+          )}
           <Pill color="green">● Live</Pill>
         </div>}/>
 
@@ -1983,9 +1985,11 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
                 <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
                   Mountain Weather &amp; Barometer
                 </div>
-                <Pill color={safetyStatus === "safe" ? "green" : safetyStatus === "caution" ? "amber" : "red"}>
-                  {statusLabel[safetyStatus]}
-                </Pill>
+                {safetyStatus !== "unknown" && (
+                  <Pill color={safetyStatus === "safe" ? "green" : safetyStatus === "caution" ? "amber" : "red"}>
+                    {statusLabel[safetyStatus]}
+                  </Pill>
+                )}
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16 }}>

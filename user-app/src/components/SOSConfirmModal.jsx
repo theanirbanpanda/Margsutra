@@ -323,8 +323,7 @@ export default function SOSConfirmModal({
                       {profileCoords.lat.toFixed(5)}, {profileCoords.lon.toFixed(5)}
                     </strong>
                     <div style={{ color: "#fbbf24", fontSize: 10, marginTop: 2 }}>
-                      ◐ No live fix — sending your registered profile position. This may be the trailhead,
-                      not where you are now.
+                      ◐ Registered profile position
                     </div>
                   </>
                 ) : (
@@ -360,26 +359,6 @@ export default function SOSConfirmModal({
               📢 <strong>Immediate Actions on Confirm:</strong> Your phone will sound a continuous high-decibel mountain siren, vibrate violently, and transmit this beacon to SAR Command & Field Guide Ajay Saini.
             </div>
 
-            {!hasFix && (
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "#fca5a5",
-                  lineHeight: 1.45,
-                  background: "rgba(239, 68, 68, 0.15)",
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  border: "1px solid rgba(239, 68, 68, 0.4)",
-                  marginBottom: 14,
-                }}
-              >
-                ⚠️ <strong>No live GPS fix.</strong>{" "}
-                {profileCoords
-                  ? "Your registered profile position and medical details will be sent, but that position may not be where you are right now."
-                  : "Your medical profile will still be transmitted, but SAR will not know where you are."}{" "}
-                If you can, move to open sky or enable location services before transmitting.
-              </div>
-            )}
 
             <div style={{ marginBottom: 14 }}>
               <label
