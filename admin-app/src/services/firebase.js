@@ -869,6 +869,24 @@ export const resolveSOSEvent = async (eventId, userId = null, notes = "Incident 
 };
 
 /**
+ * Two-way SOS: the command team sends one alert to every member of the group.
+ */
+export const broadcastSOSAlert = async ({ message = "", severity = "advisory", title = "" } = {}) => {
+  try {
+    const res = await api(`/sos/broadcast`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, severity, title }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { success: false, error: data.error || `HTTP ${res.status}` };
+    return { success: true, event: data.event };
+  } catch (err) {
+    return { success: false, error: err?.message || "Could not send the alert" };
+  }
+};
+
+/**
  * Acknowledge a distress beacon: a duty officer has seen it and is acting.
  * The incident stays active — only a stand-down clears it — but the console
  * stops the alarm and the trekker sees that command is on it.

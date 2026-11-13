@@ -790,6 +790,7 @@ async function createSOSEvent(sosData = {}) {
 
   const payload = {
     id: eventId,
+    kind: "beacon",
     userId: sosData.userId || "",
     name: sosData.name || "Trekker",
     email: sosData.email || "",
@@ -865,6 +866,53 @@ async function acknowledgeSOSEvent(eventId, acknowledgedBy = DEMO_ADMIN_EMAIL, n
     acknowledgedBy: acknowledgedBy || DEMO_ADMIN_EMAIL,
     acknowledgedAt: now,
   };
+}
+
+/**
+ * An alert sent by the command team to every member of the expedition.
+ * Two-way SOS: the admin can call the whole team in one action.
+ */
+async function createSOSBroadcast({ message = "", severity = "advisory", title = "", createdBy = "", createdByName = "" } = {}) {
+  const now = new Date();
+  const eventId = `broadcast_${Date.now()}`;
+  const docRef = db.collection("sos_events").doc(eventId);
+
+  const payload = {
+    id: eventId,
+    kind: "broadcast",
+    userId: "",
+    name: createdByName || "SAR Command",
+    title: title || (severity === "critical" ? "Critical alert from SAR Command" : "Alert from SAR Command"),
+    message: String(message || "").trim(),
+    severity: ["advisory", "urgent", "critical"].includes(severity) ? severity : "advisory",
+    audience: "all",
+    status: "active",
+    type: "Command Broadcast",
+    priority: severity === "critical" ? "critical" : "high",
+    createdBy,
+    createdByName: createdByName || "",
+    timestamp: now,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await docRef.set(payload, { merge: true });
+  return { success: true, event: payload };
+}
+
+// Broadcast alerts only (never beacons) — what the trekker app shows.
+async function listSOSBroadcasts(limitCount = 20) {
+  const limit = Math.max(1, Math.min(Number(limitCount) || 20, 50));
+  try {
+    const snapshot = await db.collection("sos_events")
+      .where("kind", "==", "broadcast")
+      .limit(limit)
+      .get();
+    return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (error) {
+    console.warn("listSOSBroadcasts failed:", error?.message || error);
+    return [];
+  }
 }
 
 async function resolveSOSEvent(eventId, notes = "Resolved by SAR Commander", resolvedBy = DEMO_ADMIN_EMAIL) {
@@ -1269,6 +1317,8 @@ module.exports = {
   removeTripUser,
   getUserActiveTrip,
   createSOSEvent,
+  createSOSBroadcast,
+  listSOSBroadcasts,
   resolveSOSEvent,
   acknowledgeSOSEvent,
   DEMO_ACCOUNTS,

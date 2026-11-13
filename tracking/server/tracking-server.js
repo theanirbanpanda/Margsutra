@@ -160,6 +160,10 @@ app.post("/api/sos/broadcast", (req, res) => {
     if (user) { user.sosActive = false; }
     broadcastToAdmins("sos-event", event);
     console.log(`[SOS Broadcast HTTP] 🟢 Broadcasted SOS cancel for ${event.userId}`);
+  } else if (event.type === "command-broadcast") {
+    // Command team → every connected member of the group.
+    io.emit("command-alert", event);
+    console.log(`[SOS Broadcast HTTP] 📣 Command alert pushed to all members: ${event.message || ""}`);
   }
   return res.json({ success: true });
 });

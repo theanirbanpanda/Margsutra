@@ -24,6 +24,7 @@ import {
   subscribeToSOSEvents,
   resolveSOSEvent,
   acknowledgeSOSEvent,
+  broadcastSOSAlert,
   triggerDemoSOSEvent,
   DEMO_ADMIN_EMAIL,
   DEMO_PASSWORD,
@@ -555,1073 +556,453 @@ const PageSOSNavigation = ({
   users = USERS,
   sosEvents = [],
   onResolveSOS,
-  onTriggerDemo,
   onAcknowledge,
   acknowledgedMap = {},
   sosFeedLoaded = false,
+  onBroadcast,
+  teamSize = 0,
 }) => {
-  // 1. Separate Active Distress Incidents from Resolved Incidents
+  /* ── Incoming beacons (a trekker asked for help) ─────────────────────── */
   const activeIncidents = useMemo(() => {
     const list = [];
     const seenUserIds = new Set();
-    const activeEventUserIds = new Set();
+
     sosEvents.forEach((ev) => {
-      if (ev?.status === "active" && ev.userId) activeEventUserIds.add(ev.userId);
+      if (!ev || ev.status !== "active") return;
+      if (ev.kind === "broadcast") return; // command alerts are not beacons
+      const u = users.find((item) => item.id === ev.userId || item.name === ev.userName || item.name === ev.name);
+      const userId = ev.userId || u?.id || ev.id;
+      if (seenUserIds.has(userId)) return; // the same beacon can arrive twice
+      seenUserIds.add(userId);
+
+      const id = ev.id || `sos-${userId}`;
+      list.push({
+        id,
+        eventId: ev.id,
+        userId,
+        user: ev.userName || ev.name || u?.name || "Trekker",
+        tripName: ev.tripName || "Expedition",
+        time: formatClock(ev.timestamp, ev.time || "Just now"),
+        acknowledged: Boolean(ev.acknowledged) || Boolean(acknowledgedMap[id]),
+        acknowledgedBy: ev.acknowledgedBy || acknowledgedMap[id]?.by || "",
+        severity: ev.priority === "critical" ? "critical" : "high",
+      });
     });
 
-    // From sosEvents where status === 'active'
-    sosEvents.forEach((ev) => {
-      if (!ev) return;
-      if (ev.status === "active") {
-        const u = users.find((item) => item.id === ev.userId || item.name === ev.userName || item.name === ev.name);
-        const userId = ev.userId || u?.id || ev.id;
-        // One incident per trekker: the same beacon can arrive over the
-        // socket and over the dispatch feed.
-        if (seenUserIds.has(userId)) return;
-        seenUserIds.add(userId);
+    return list.sort((a, b) => Number(b.acknowledged) - Number(a.acknowledged));
+  }, [sosEvents, users, acknowledgedMap]);
 
-        list.push({
-          id: ev.id || `sos-${userId}`,
-          eventId: ev.id,
-          userId: userId,
-          user: ev.userName || ev.name || u?.name || "Trekker in Distress",
-          city: ev.city || (u?.city ? `${u.city} (Trail)` : "Rajmachi Fort Trail (Stream Crossing)"),
-          tripName: ev.tripName || "Rajmachi Fort Expedition",
-          tripCode: ev.tripCode || "RAJM26",
-          lat: typeof ev.lat === "number" ? ev.lat : (u?.lat ?? 18.8286),
-          lon: typeof ev.lon === "number" ? ev.lon : (u?.lon ?? 73.3986),
-          altitude: ev.altitude || u?.altitude || 829,
-          blood: ev.blood || u?.blood || "B+",
-          medical: ev.medical || u?.medical || "None reported",
-          phone: ev.phone || u?.phone || "+91 86375 40813",
-          ec: ev.ec || u?.ec || "Deepak Panda (Brother) · +91 91531 91902",
-          time: formatClock(ev.timestamp, ev.time || "Just now"),
-          status: "active",
-          type: ev.type || "Manual SOS Beacon",
-          priority: ev.priority || "critical",
-          vitals: ev.vitals || { hr: 114, spo2: 96, alt: 829, battery: 88 },
-          acknowledged: Boolean(ev.acknowledged) || Boolean(acknowledgedMap[ev.id || `sos-${userId}`]),
-          acknowledgedBy: ev.acknowledgedBy || acknowledgedMap[ev.id || `sos-${userId}`]?.by || "",
-          acknowledgedAt: ev.acknowledgedAt || acknowledgedMap[ev.id || `sos-${userId}`]?.at || null,
-        });
-      }
-    });
-
-    // Also check live users with status === 'sos'
-    users.forEach((u) => {
-      if (u.status === "sos" && !seenUserIds.has(u.id)) {
-        // The dispatch feed is authoritative: if it is loaded and has no live
-        // beacon for this trekker, the socket flag is stale (the beacon was
-        // already resolved) and must not raise a phantom incident.
-        if (sosFeedLoaded && !activeEventUserIds.has(u.id)) return;
-        seenUserIds.add(u.id);
-        list.push({
-          id: u.activeSosId || `sos-${u.id}`,
-          eventId: u.activeSosId,
-          userId: u.id,
-          user: u.name,
-          city: u.city ? `${u.city} (Trail)` : "Rajmachi Fort Trail (Sector 3)",
-          tripName: u.tripName || "Rajmachi Fort Expedition",
-          tripCode: u.tripCode || "RAJM26",
-          lat: typeof u.lat === "number" ? u.lat : 18.8286,
-          lon: typeof u.lon === "number" ? u.lon : 73.3986,
-          altitude: u.altitude || 829,
-          blood: u.blood || "B+",
-          medical: u.medical || "None reported",
-          phone: u.phone || "+91 86375 40813",
-          ec: u.ec || "Emergency Contact · +91 91531 91902",
-          time: u.lastSosAt ? new Date(u.lastSosAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Just now",
-          status: "active",
-          type: "Manual SOS Beacon",
-          priority: "critical",
-          vitals: { hr: 114, spo2: 96, alt: u.altitude || 829, battery: 88 },
-          acknowledged: Boolean(acknowledgedMap[u.activeSosId || `sos-${u.id}`]),
-          acknowledgedBy: acknowledgedMap[u.activeSosId || `sos-${u.id}`]?.by || "",
-          acknowledgedAt: acknowledgedMap[u.activeSosId || `sos-${u.id}`]?.at || null,
-        });
-      }
-    });
-
-    return list;
-  }, [sosEvents, users, acknowledgedMap, sosFeedLoaded]);
-
-  // 2. Resolved & Stand-down Historical Incidents Archive
+  /* ── Resolved history ──────────────────────────────────────────────────── */
   const resolvedIncidents = useMemo(() => {
     const list = [];
     sosEvents.forEach((ev) => {
       if (!ev) return;
-      if (ev.status === "resolved" || ev.resolution) {
-        const u = users.find((item) => item.id === ev.userId || item.name === ev.userName || item.name === ev.name);
-        list.push({
-          id: ev.id,
-          userId: ev.userId || u?.id,
-          user: ev.userName || ev.name || u?.name || "Trekker",
-          tripName: ev.tripName || "Rajmachi Fort Expedition",
-          city: ev.city || "Rajmachi Fort Trail",
-          lat: ev.lat,
-          lon: ev.lon,
-          resolvedAt: formatClock(ev.resolvedAt, formatClock(ev.updatedAt, "Resolved")),
-          resolution: ev.resolution === "user_cancelled" ? "Cancelled by Trekker (Self-Resolved)" : (ev.resolutionNotes || "SAR Stand Down Executed"),
-          resolvedBy: ev.resolvedBy || (ev.resolution === "user_cancelled" ? "Trekker (App Button)" : "SAR Command Admin"),
-          time: formatClock(ev.timestamp, ev.time || "Logged"),
-          status: "resolved",
-          type: ev.type || "SOS Beacon",
-        });
-      }
-    });
-
-    if (list.length === 0) {
-      return SOS_EVENTS;
-    }
-    return list;
-  }, [sosEvents, users]);
-
-  // Selected active incident
-  const [selectedId, setSelectedId] = useState(null);
-  const selectedSOS = useMemo(() => {
-    if (activeIncidents.length === 0) return null;
-    if (selectedId) {
-      const found = activeIncidents.find((i) => i.id === selectedId || i.userId === selectedId);
-      if (found) return found;
-    }
-    return activeIncidents[0];
-  }, [activeIncidents, selectedId]);
-
-  // Team Assignment State
-  const [teamsState, setTeamsState] = useState(SOS_TEAMS);
-  const [navMode, setNavMode] = useState(false);
-  const [currentStep, setCurrentStep] = useState(0);
-  const [teamPos, setTeamPos] = useState(null);
-  const [elapsed, setElapsed] = useState(0);
-  const [zoom, setZoom] = useState(1);
-  const [voiceOn, setVoiceOn] = useState(true);
-  const [calloutMsg, setCalloutMsg] = useState("");
-  const [resolvingModal, setResolvingModal] = useState(false);
-  const [resolutionNote, setResolutionNote] = useState("Victim safely assisted by Lead Guide Ajay Saini; safe and escorted back to base camp");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Sync teams when activeSOS changes
-  useEffect(() => {
-    if (!selectedSOS) {
-      setTeamsState((prev) =>
-        prev.map((t) => ({ ...t, status: "standby", speed: "0 km/h", assignedTo: null }))
-      );
-    } else {
-      setTeamsState((prev) =>
-        prev.map((t, idx) =>
-          idx === 0
-            ? { ...t, status: "deployed", speed: "35 km/h", assignedTo: selectedSOS.id }
-            : { ...t, status: "standby", speed: "0 km/h", assignedTo: null }
-        )
-      );
-    }
-  }, [selectedSOS]);
-
-  const assignedTeam = selectedSOS ? teamsState.find((t) => t.assignedTo === selectedSOS.id) || teamsState[0] : null;
-  const steps = selectedSOS ? buildFallbackRoute(selectedSOS) : [];
-  const etaVal = assignedTeam ? parseInt(assignedTeam.eta) || 14 : 14;
-  const remainingEta = Math.max(0, etaVal - Math.floor(elapsed / 60));
-
-  // Animate team position toward SOS target
-  useEffect(() => {
-    if (!selectedSOS || !assignedTeam || assignedTeam.status !== "deployed") return;
-    setTeamPos({ lat: assignedTeam.lat, lon: assignedTeam.lon });
-    const t = setInterval(() => {
-      setTeamPos((prev) => {
-        if (!prev) return prev;
-        const dlat = (selectedSOS.lat - prev.lat) * 0.015;
-        const dlon = (selectedSOS.lon - prev.lon) * 0.015;
-        return { lat: prev.lat + dlat, lon: prev.lon + dlon };
+      if (ev.status !== "resolved" && !ev.resolution) return;
+      list.push({
+        id: ev.id,
+        user: ev.userName || ev.name || "Trekker",
+        tripName: ev.tripName || "Expedition",
+        at: formatClock(ev.resolvedAt, formatClock(ev.updatedAt, "Resolved")),
+        note: ev.resolution === "user_cancelled" ? "Cancelled by trekker" : "Stood down by command",
       });
-      setElapsed((e) => e + 4);
-    }, 1000);
-    return () => clearInterval(t);
-  }, [selectedSOS, assignedTeam]);
+    });
+    return list.slice(0, 8);
+  }, [sosEvents]);
 
-  // Turn-by-turn auto-advance
+  const [actingId, setActingId] = useState(null);
+  const [toast, setToast] = useState(null);
+  const [standDownTarget, setStandDownTarget] = useState(null);
+  const [resolutionNote, setResolutionNote] = useState("Trekker is safe and escorted back to base camp");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loadingBroadcasts, setLoadingBroadcasts] = useState(false);
+
+  // Broadcast composer (command team → every member of the group)
+  const [severity, setSeverity] = useState("advisory");
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const [broadcasts, setBroadcasts] = useState([]);
+
+  const loadBroadcasts = useCallback(async () => {
+    setLoadingBroadcasts(true);
+    try {
+      const res = await fetch(`${AUTH_API_URL}/sos/alerts`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setBroadcasts(Array.isArray(data?.alerts) ? data.alerts : []);
+    } catch {
+      /* transient — the next poll retries */
+    } finally {
+      setLoadingBroadcasts(false);
+    }
+  }, []);
+
   useEffect(() => {
-    if (!navMode) return;
-    const t = setInterval(() => setCurrentStep((s) => Math.min(s + 1, steps.length - 1)), 8000);
-    return () => clearInterval(t);
-  }, [navMode, steps.length]);
+    loadBroadcasts();
+    const timer = setInterval(loadBroadcasts, 30000);
+    return () => clearInterval(timer);
+  }, [loadBroadcasts]);
 
-  const distToTarget = selectedSOS && teamPos ? (
-    Math.sqrt(Math.pow((selectedSOS.lat - teamPos.lat) * 111, 2) + Math.pow((selectedSOS.lon - teamPos.lon) * 111, 2)).toFixed(1)
-  ) : selectedSOS ? (
-    (calculateDistanceMeters(RAJMACHI_ADMIN.lat, RAJMACHI_ADMIN.lon, selectedSOS.lat, selectedSOS.lon) / 1000).toFixed(1)
-  ) : "—";
-
-  const speedKmh = assignedTeam && assignedTeam.status === "deployed" ? parseInt(assignedTeam.speed) || 35 : 0;
-  const compass = assignedTeam?.heading || 32;
-
-  const handleDispatch = (teamId, sosId) => {
-    setTeamsState((prev) =>
-      prev.map((t) => (t.id === teamId ? { ...t, status: "deployed", speed: "35 km/h", assignedTo: sosId } : t))
-    );
-    setCalloutMsg("🚑 Rescue Unit assigned and en route to coordinates.");
-    setTimeout(() => setCalloutMsg(""), 3500);
+  const showToast = (type, text) => {
+    setToast({ type, text });
+    setTimeout(() => setToast(null), 4000);
   };
 
-  const handleStandDown = async () => {
-    if (!selectedSOS) return;
+  const handleAcknowledge = async (incident) => {
+    if (!incident) return;
+    setActingId(incident.id);
+    const res = await onAcknowledge?.(incident.eventId || incident.id, incident.userId);
+    setActingId(null);
+    if (res && res.success === false) {
+      showToast("error", `Could not acknowledge ${incident.user}: ${res?.errors?.[0] || "try again"}`);
+      return;
+    }
+    showToast("success", `Acknowledged ${incident.user}'s beacon — the alarm is silenced.`);
+  };
+
+  const handleStandDown = async (incident) => {
+    if (!incident) return;
+    setActingId(incident.id);
     setIsSubmitting(true);
     try {
       const result = onResolveSOS
-        ? await onResolveSOS(selectedSOS.eventId || selectedSOS.id, selectedSOS.userId, resolutionNote)
+        ? await onResolveSOS(incident.eventId || incident.id, incident.userId, resolutionNote)
         : { success: false };
-      if (!result?.success) {
-        setCalloutMsg(
-          `❌ Stand-down NOT confirmed for ${selectedSOS.user}. ${result?.errors?.[0] || "No channel accepted the stand-down."} Retry before leaving the incident.`
-        );
-        setTimeout(() => setCalloutMsg(""), 8000);
+      setIsSubmitting(false);
+      setActingId(null);
+      if (result?.success === false) {
+        showToast("error", `Stand-down failed: ${result?.errors?.[0] || "no channel accepted the request"}`);
         return;
       }
       setResolvingModal(false);
-      setNavMode(false);
-      setCalloutMsg(`✅ SAR Stand-down confirmed for ${selectedSOS.user}. Beacon cleared, user reset to active.`);
-      setTimeout(() => setCalloutMsg(""), 5000);
+      showToast("success", `Stood down — ${incident.user} is safe.`);
     } catch (err) {
-      console.error("Stand-down error:", err);
-      setCalloutMsg(`❌ Stand-down failed: ${err?.message || "unknown error"}. Incident remains active.`);
-    } finally {
       setIsSubmitting(false);
+      setActingId(null);
+      showToast("error", `Stand-down failed: ${err?.message || "unknown error"}`);
     }
   };
 
-  const handleTriggerDrill = async () => {
-    setIsSubmitting(true);
+  const handleSendBroadcast = async () => {
+    const trimmed = message.trim();
+    if (!trimmed) {
+      showToast("error", "Write a short alert message before sending.");
+      return;
+    }
+    setSending(true);
     try {
-      if (onTriggerDemo) {
-        await onTriggerDemo();
-      }
-      setCalloutMsg("⚠️ Simulated SAR Emergency Drill activated! Dispatch radar locked on beacon.");
-      setTimeout(() => setCalloutMsg(""), 4500);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleVhfCheck = () => {
-    setCalloutMsg("📻 VHF Tactical Link (156.800 MHz): Field Guide Ajay Saini reports signal 5x5. All trekkers safe in line-of-sight.");
-    setTimeout(() => setCalloutMsg(""), 5000);
-  };
-
-  // Acknowledge = "a human has seen this and is acting". The alarm stops
-  // but the incident stays open until the team stands it down.
-  const handleAcknowledge = async (incident) => {
-    if (!incident) return;
-    if (onAcknowledge) {
-      const res = await onAcknowledge(incident.eventId || incident.id, incident.userId);
+      const res = await onBroadcast?.({ message: trimmed, severity });
+      setSending(false);
       if (res && res.success === false) {
-        setCalloutMsg(`❌ Could not acknowledge ${incident.user}: ${res?.errors?.[0] || "the incident was not updated."}`);
-        setTimeout(() => setCalloutMsg(""), 7000);
+        showToast("error", res.error || "The alert could not be sent.");
         return;
       }
+      setMessage("");
+      setSeverity("advisory");
+      showToast("success", "Alert sent to every team member.");
+      loadBroadcasts();
+    } catch (err) {
+      setSending(false);
+      showToast("error", `Could not send the alert: ${err?.message || "unknown error"}`);
     }
-    setCalloutMsg(`✅ Beacon acknowledged for ${incident.user}. Alarm silenced — dispatch a unit and stand down when the trekker is safe.`);
-    setTimeout(() => setCalloutMsg(""), 6000);
   };
 
-  // ── Navigation Mode (fullscreen overlay) ──
-  if (navMode && selectedSOS) {
-    const step = steps[currentStep] || steps[0];
-    const pct = ((currentStep) / (steps.length - 1)) * 100;
-    return (
-      <div style={{ position: "fixed", inset: 0, background: "#0a0f1e", zIndex: 200, display: "flex", flexDirection: "column", fontFamily: "inherit", color: C.text }}>
-        {/* Top bar */}
-        <div style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)", padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: `1px solid ${C.border}` }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ width: 10, height: 10, borderRadius: "50%", background: C.red, boxShadow: `0 0 8px ${C.red}`, animation: "ping 1s infinite" }} />
-            <span style={{ fontSize: 14, fontWeight: 700 }}>TACTICAL TURN-BY-TURN RESCUE NAVIGATION</span>
-            <Pill color="red">TARGET: {selectedSOS.user}</Pill>
-          </div>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <button onClick={() => setVoiceOn((v) => !v)} style={{ background: voiceOn ? "rgba(59,130,246,0.2)" : "rgba(255,255,255,0.05)", border: `1px solid ${voiceOn ? C.accent : C.border}`, borderRadius: 8, padding: "6px 12px", color: voiceOn ? C.accent : C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
-              {voiceOn ? "🔊 Voice Guidance On" : "🔇 Voice Off"}
-            </button>
-            <button onClick={() => setResolvingModal(true)} style={{ background: "rgba(34,197,94,0.2)", border: `1px solid ${C.green}`, borderRadius: 8, padding: "6px 14px", color: C.green, fontSize: 12, cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>
-              ✓ Stand Down SAR
-            </button>
-            <button onClick={() => { setNavMode(false); setCurrentStep(0); }} style={{ background: "rgba(239,68,68,0.15)", border: `1px solid rgba(239,68,68,0.3)`, borderRadius: 8, padding: "6px 14px", color: C.red, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
-              ✕ Exit Navigation
-            </button>
-          </div>
-        </div>
+  const members = Math.max(teamSize, users.length, 1);
 
-        {/* Main nav area */}
-        <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 380px", overflow: "hidden" }}>
-          {/* Simulated map view */}
-          <div style={{ position: "relative", overflow: "hidden", background: "#0d1b2e" }}>
-            <LiveMap
-              points={users}
-              teams={assignedTeam ? [{ ...assignedTeam, lat: teamPos?.lat || assignedTeam.lat, lon: teamPos?.lon || assignedTeam.lon }] : []}
-              routeFrom={teamPos || assignedTeam}
-              routeTo={selectedSOS}
-              height={460}
-            />
-
-            {/* Compass */}
-            <div style={{ position: "absolute", bottom: 24, right: 24, width: 68, height: 68, borderRadius: "50%", background: "rgba(8,15,26,0.92)", border: `2px solid ${C.border2}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <svg width="54" height="54" viewBox="0 0 50 50">
-                <circle cx="25" cy="25" r="23" fill="none" stroke="rgba(80,140,220,0.2)" strokeWidth="1" />
-                <g transform={`rotate(${compass},25,25)`}>
-                  <polygon points="25,6 28,25 25,22 22,25" fill={C.red} />
-                  <polygon points="25,44 28,25 25,28 22,25" fill="rgba(255,255,255,0.4)" />
-                </g>
-                <text x="25" y="13" textAnchor="middle" fontSize="7" fill={C.red} fontFamily="monospace" fontWeight="700">N</text>
-                <text x="25" y="40" textAnchor="middle" fontSize="7" fill={C.muted} fontFamily="monospace">S</text>
-                <text x="40" y="28" textAnchor="middle" fontSize="7" fill={C.muted} fontFamily="monospace">E</text>
-                <text x="10" y="28" textAnchor="middle" fontSize="7" fill={C.muted} fontFamily="monospace">W</text>
-              </svg>
-            </div>
-
-            {/* Speed indicator */}
-            <div style={{ position: "absolute", bottom: 24, left: 24, background: "rgba(8,15,26,0.92)", border: `1px solid ${C.border}`, borderRadius: 12, padding: "10px 18px", textAlign: "center" }}>
-              <div style={{ fontSize: 28, fontWeight: 800, color: C.text, lineHeight: 1 }}>{speedKmh}</div>
-              <div style={{ fontSize: 10, color: C.muted, letterSpacing: "0.1em" }}>KM/H</div>
-            </div>
-          </div>
-
-          {/* Navigation panel */}
-          <div style={{ background: "#0b1422", borderLeft: `1px solid ${C.border}`, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-            {/* Current instruction */}
-            <div style={{ background: `linear-gradient(135deg,rgba(59,130,246,0.15),rgba(59,130,246,0.05))`, borderBottom: `1px solid ${C.border}`, padding: "20px 18px" }}>
-              <div style={{ fontSize: 44, textAlign: "center", marginBottom: 10, lineHeight: 1 }}>{step?.icon}</div>
-              <div style={{ fontSize: 15, fontWeight: 700, textAlign: "center", marginBottom: 4, color: C.text }}>{step?.instr}</div>
-              {step?.road && <div style={{ fontSize: 12, color: C.muted, textAlign: "center" }}>{step.road}</div>}
-            </div>
-
-            {/* ETA / Distance */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: C.border }}>
-              {[["ETA TO SCENE", `${remainingEta} min`, C.green], ["DISTANCE", `${distToTarget} km`, C.accent]].map(([l, v, col]) => (
-                <div key={l} style={{ background: "#0b1422", padding: "14px 18px", textAlign: "center" }}>
-                  <div style={{ fontSize: 24, fontWeight: 800, color: col }}>{v}</div>
-                  <div style={{ fontSize: 10, color: C.muted, letterSpacing: "0.1em", marginTop: 2 }}>{l}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Progress bar */}
-            <div style={{ padding: "10px 18px", borderBottom: `1px solid ${C.border}` }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: C.muted, marginBottom: 5 }}>
-                <span>Step {currentStep + 1} of {steps.length}</span>
-                <span>{Math.round(pct)}% complete</span>
-              </div>
-              <div style={{ height: 4, background: "rgba(255,255,255,0.07)", borderRadius: 4 }}>
-                <div style={{ height: "100%", borderRadius: 4, background: `linear-gradient(90deg,${C.accent},${C.green})`, width: `${pct}%`, transition: "width 0.5s" }} />
-              </div>
-            </div>
-
-            {/* Turn-by-turn list */}
-            <div style={{ flex: 1, overflowY: "auto", padding: "10px 0" }}>
-              {steps.map((s, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "10px 18px", background: i === currentStep ? "rgba(59,130,246,0.1)" : "transparent", borderLeft: `3px solid ${i === currentStep ? C.accent : "transparent"}`, transition: "background 0.3s" }}>
-                  <div style={{ width: 28, height: 28, borderRadius: "50%", background: i === currentStep ? "rgba(59,130,246,0.25)" : i < currentStep ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.05)", border: `1px solid ${i === currentStep ? C.accent : i < currentStep ? C.green : C.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0, color: i < currentStep ? C.green : C.text }}>
-                    {i < currentStep ? "✓" : s.icon}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 12, color: i === currentStep ? C.text : C.muted, fontWeight: i === currentStep ? 600 : 400 }}>{s.instr}</div>
-                    <div style={{ fontSize: 10, color: C.muted2, marginTop: 2 }}>{s.dist}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* SOS Target info */}
-            <div style={{ background: "rgba(239,68,68,0.08)", borderTop: `1px solid rgba(239,68,68,0.2)`, padding: "14px 18px" }}>
-              <div style={{ fontSize: 10, color: "#fca5a5", letterSpacing: "0.1em", marginBottom: 6 }}>EMERGENCY TARGET · VICTIM TRIAGE</div>
-              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 2 }}>{selectedSOS.user}</div>
-              <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>{selectedSOS.city} · {selectedSOS.altitude}m ASL</div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-                <Pill color="red">🩸 {selectedSOS.blood}</Pill>
-                {selectedSOS.medical !== "None" && <Pill color="amber">⚕ {selectedSOS.medical}</Pill>}
-              </div>
-              <div style={{ fontSize: 11, color: C.muted }}>EC: {selectedSOS.ec}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Bottom controls */}
-        <div style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)", padding: "10px 20px", borderTop: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 12 }}>
-          <button onClick={() => setCurrentStep((s) => Math.max(0, s - 1))} style={{ padding: "8px 16px", background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
-            ← Prev Waypoint
-          </button>
-          <button onClick={() => setCurrentStep((s) => Math.min(steps.length - 1, s + 1))} style={{ padding: "8px 16px", background: C.accent, border: "none", borderRadius: 8, color: "#fff", fontSize: 12, cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>
-            Next Waypoint →
-          </button>
-          <div style={{ flex: 1 }} />
-          <div style={{ fontSize: 11, color: C.muted }}>
-            Unit: <span style={{ color: C.amber, fontWeight: 600 }}>{assignedTeam?.name || "Team Alpha"}</span> · {assignedTeam?.vehicle} · VHF: {assignedTeam?.vhf}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Stand Down Confirmation Modal ──
-  const renderStandDownModal = () => {
-    if (!resolvingModal || !selectedSOS) return null;
-    return (
-      <div style={{
-        position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)",
-        backdropFilter: "blur(8px)", zIndex: 300, display: "flex",
-        alignItems: "center", justifyContent: "center", padding: 20
-      }}>
-        <div style={{
-          background: "#0d1b2e", border: `1px solid ${C.border2}`,
-          borderRadius: 16, width: "100%", maxWidth: 520, padding: 24,
-          boxShadow: "0 20px 50px rgba(0,0,0,0.7)"
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-            <div style={{ width: 42, height: 42, borderRadius: 12, background: "rgba(34,197,94,0.15)", border: `1px solid ${C.green}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
-              🛡️
-            </div>
-            <div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Execute SAR Stand-Down & Resolve Emergency</div>
-              <div style={{ fontSize: 12, color: C.muted }}>Distressed Trekker: <strong style={{ color: C.text }}>{selectedSOS.user}</strong> ({selectedSOS.tripName})</div>
-            </div>
-          </div>
-
-          <p style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, marginBottom: 14 }}>
-            Executing Stand-Down will mark this emergency distress beacon as <strong style={{ color: C.green }}>resolved</strong> in Firestore, reset the trekker's status back to <strong style={{ color: C.green }}>Active/Safe</strong>, recall dispatched SAR units back to tactical standby, and archive the incident record.
-          </p>
-
-          <div style={{ marginBottom: 14 }}>
-            <label style={{ fontSize: 11, color: C.muted2, display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>Resolution Notes & Incident Debrief</label>
-            <textarea
-              value={resolutionNote}
-              onChange={(e) => setResolutionNote(e.target.value)}
-              rows={3}
-              style={{
-                width: "100%", background: "rgba(255,255,255,0.04)", border: `1px solid ${C.border}`,
-                borderRadius: 8, padding: "10px 12px", color: C.text, fontSize: 12,
-                fontFamily: "inherit", resize: "vertical"
-              }}
-            />
-          </div>
-
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 18 }}>
-            {[
-              "Victim safely assisted by Lead Guide Ajay Saini; safe and escorted back to base camp",
-              "Trekker cancelled SOS beacon (Self-Resolved)",
-              "Minor sprain treated on trail, proceeding to camp",
-              "False alarm verified and cleared by dispatch",
-            ].map((preset) => (
-              <button
-                key={preset}
-                onClick={() => setResolutionNote(preset)}
-                style={{
-                  background: resolutionNote === preset ? "rgba(59,130,246,0.2)" : "rgba(255,255,255,0.03)",
-                  border: `1px solid ${resolutionNote === preset ? C.accent : C.border}`,
-                  borderRadius: 6, padding: "4px 8px", fontSize: 10, color: resolutionNote === preset ? C.accent : C.muted,
-                  cursor: "pointer", fontFamily: "inherit"
-                }}
-              >
-                + {preset.slice(0, 38)}…
-              </button>
-            ))}
-          </div>
-
-          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-            <button
-              onClick={() => setResolvingModal(false)}
-              disabled={isSubmitting}
-              style={{
-                padding: "9px 18px", borderRadius: 8, background: "rgba(255,255,255,0.05)",
-                border: `1px solid ${C.border}`, color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit"
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleStandDown}
-              disabled={isSubmitting}
-              style={{
-                padding: "9px 20px", borderRadius: 8, background: `linear-gradient(135deg, ${C.green}, #16a34a)`,
-                border: "none", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit"
-              }}
-            >
-              {isSubmitting ? "Stand-Down Executing…" : "✓ Stand Down SAR & Mark Safe"}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // ════════════════════════════════════════════════════════════════════════
-  // VIEW A: ALL CLEAR / SAR TACTICAL STANDBY (0 Active Incidents)
-  // ════════════════════════════════════════════════════════════════════════
-  if (activeIncidents.length === 0) {
-    return (
-      <div>
-        {renderStandDownModal()}
-
-        <PageHeader
-          title="Realtime SOS Command & SAR Dispatch"
-          sub="Search & rescue tactical command — zero active distress alerts across Sahyadri trails"
-          right={
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <Pill color="green">🟢 ALL CLEAR · STANDBY</Pill>
-              <Pill color="blue">📻 VHF 145.500 & 156.800 MHz</Pill>
-            </div>
-          }
-        />
-
-        {calloutMsg && (
-          <div style={{ background: "rgba(34,197,94,0.12)", border: `1px solid rgba(34,197,94,0.35)`, borderRadius: 10, padding: "10px 16px", fontSize: 13, color: C.green, marginBottom: 14 }}>
-            {calloutMsg}
-          </div>
-        )}
-
-        {/* Tactical Readiness Banner */}
-        <div style={{
-          background: "linear-gradient(135deg, rgba(34,197,94,0.12), rgba(16,185,129,0.04))",
-          border: `1px solid rgba(34,197,94,0.3)`,
-          borderRadius: 14,
-          padding: "16px 20px",
-          marginBottom: 16,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          flexWrap: "wrap",
-          gap: 14
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(34,197,94,0.18)", border: `1px solid ${C.green}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
-              🛡️
-            </div>
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: C.green, display: "flex", alignItems: "center", gap: 8 }}>
-                SAR STATUS: ALL TRAILS NORMAL · OPERATIONAL MONITORING ACTIVE
-              </div>
-              <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
-                All expedition sectors secure. 0 active distress beacons. Mountain rescue teams staged at Khandala and Karjat safety posts. Field Guide Ajay Saini maintaining live escort on Rajmachi Fort trail.
-              </div>
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              onClick={handleTriggerDrill}
-              disabled={isSubmitting}
-              style={{
-                padding: "8px 16px", borderRadius: 8, background: "rgba(239,68,68,0.15)",
-                border: `1px solid rgba(239,68,68,0.35)`, color: "#fca5a5", fontSize: 12,
-                fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6
-              }}
-            >
-              🚨 Simulate SAR Emergency Drill
-            </button>
-            <button
-              onClick={handleVhfCheck}
-              style={{
-                padding: "8px 16px", borderRadius: 8, background: "rgba(59,130,246,0.15)",
-                border: `1px solid rgba(59,130,246,0.35)`, color: C.accent, fontSize: 12,
-                fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6
-              }}
-            >
-              📻 VHF Check with Guide Ajay Saini
-            </button>
-          </div>
-        </div>
-
-        {/* 4 KPI Cards */}
-        <div className="resp-4col" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 18 }}>
-          <StatCard label="Active SOS Distress Alerts" value="0" sub="All trails normal" color={C.green} icon="🛡️" />
-          <StatCard label="SAR Teams on Standby" value="2 Units" sub="Khandala & Karjat Bases" color={C.accent} icon="🚑" />
-          <StatCard label="VHF Tactical Radio SNR" value="100%" sub="145.500 MHz (Ch 1)" color={C.amber} icon="📻" />
-          <StatCard label="Audited Incidents" value={`${resolvedIncidents.length} Closed`} sub="Complete audit trail" color={C.teal} icon="📋" />
-        </div>
-
-        {/* Main 2-Column Grid */}
-        <div className="resp-32" style={{ display: "grid", gridTemplateColumns: "1.7fr 1.3fr", gap: 16 }}>
-          {/* LEFT: Tactical Trail Map & Staging Units */}
-          <div>
-            <Card style={{ padding: 0, overflow: "hidden", marginBottom: 14 }}>
-              <div style={{ padding: "12px 18px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>Live Sector Overview & SAR Staging Bases</div>
-                  <div style={{ fontSize: 11, color: C.muted }}>Rajmachi Fort Trail Corridor · Monitoring 6 registered trekkers</div>
-                </div>
-                <Pill color="green">● Telemetry Live</Pill>
-              </div>
-              <LiveMap points={users} teams={teamsState} height={380} zoom={zoom} onZoom={(d) => setZoom((z) => Math.max(0.5, Math.min(3, z + d * 0.5)))} />
-            </Card>
-
-            {/* Standby Deployment Units Card */}
-            <Card>
-              <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>
-                Search & Rescue Deployment Units (Standby Ready)
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {teamsState.map((t) => (
-                  <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "rgba(255,255,255,0.02)", border: `1px solid ${C.border}`, borderRadius: 10 }}>
-                    <div style={{ width: 10, height: 10, borderRadius: "50%", background: C.green, boxShadow: `0 0 6px ${C.green}` }} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{t.name}</div>
-                      <div style={{ fontSize: 11, color: C.muted }}>Lead: {t.lead} · {t.members} Members · Vehicle: {t.vehicle}</div>
-                      <div style={{ fontSize: 10, color: C.muted2, marginTop: 2 }}>Staging Base: {t.base} · Tactical VHF: {t.vhf}</div>
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      <Pill color="green">STANDBY READY</Pill>
-                      <div style={{ fontSize: 11, color: C.amber, marginTop: 4, fontWeight: 600 }}>ETA {t.eta}</div>
-                    </div>
-                  </div>
-                ))}
-
-                {/* Field Guide Unit */}
-                <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "rgba(245,158,11,0.04)", border: `1px solid rgba(245,158,11,0.25)`, borderRadius: 10 }}>
-                  <div style={{ width: 10, height: 10, borderRadius: "50%", background: C.amber, boxShadow: `0 0 6px ${C.amber}` }} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>Field Guide Ajay Saini (Trail Escort Unit)</div>
-                    <div style={{ fontSize: 11, color: C.muted }}>Equipped with Garmin InReach Mini 2 & Alpine First Aid trauma pack</div>
-                    <div style={{ fontSize: 10, color: C.muted2, marginTop: 2 }}>Direct Tactical Frequency: 156.800 MHz (Channel 16)</div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <Pill color="amber">ON-TRAIL ESCORT</Pill>
-                    <div style={{ fontSize: 11, color: C.green, marginTop: 4 }}>In Direct Contact</div>
-                  </div>
-                </div>
-              </div>
-            </Card>
-          </div>
-
-          {/* RIGHT: Incident Log & Stand-Down History */}
-          <div>
-            <Card style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>SAR Incident Log & Stand-Down Archive</div>
-                  <div style={{ fontSize: 11, color: C.muted }}>Historical emergency beacons and self-cancellations</div>
-                </div>
-                <Pill color="teal">{resolvedIncidents.length} Records</Pill>
-              </div>
-
-              <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
-                {resolvedIncidents.map((incident) => (
-                  <div
-                    key={incident.id}
-                    style={{
-                      background: "rgba(255,255,255,0.02)",
-                      border: `1px solid ${C.border}`,
-                      borderRadius: 10,
-                      padding: "12px 14px",
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{incident.user}</div>
-                        <div style={{ fontSize: 11, color: C.muted }}>📍 {incident.city} · {incident.tripName}</div>
-                      </div>
-                      <Pill color={incident.resolution?.includes("Self-Resolved") ? "green" : "blue"}>
-                        {incident.resolution?.includes("Self-Resolved") ? "✓ Self-Resolved" : "✓ Stood Down"}
-                      </Pill>
-                    </div>
-
-                    <div style={{ background: "rgba(0,0,0,0.25)", borderRadius: 6, padding: "8px 10px", marginTop: 6, fontSize: 11, color: C.text }}>
-                      <span style={{ color: C.muted2 }}>Debrief Note: </span>
-                      {incident.resolution || "Trekker cancelled SOS beacon (Self-Resolved)"}
-                    </div>
-
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: C.muted2, marginTop: 8 }}>
-                      <span>Triggered: {incident.time}</span>
-                      <span>Resolved: {incident.resolvedAt} ({incident.resolvedBy})</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ════════════════════════════════════════════════════════════════════════
-  // VIEW B: ACTIVE EMERGENCY DISPATCH CONSOLE (Active SOS > 0)
-  // ════════════════════════════════════════════════════════════════════════
   return (
     <div>
-      {renderStandDownModal()}
-
       <PageHeader
-        title="Realtime SOS Command & SAR Dispatch"
-        sub="🚨 CRITICAL RESCUE OPERATION IN PROGRESS — ROUTING RESCUE TEAMS"
+        title="SOS Command"
+        sub="Emergency beacons from the field, and alerts from the command team."
         right={
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <Pill color="red">🚨 {activeIncidents.length} ACTIVE DISTRESS BEACON{activeIncidents.length > 1 ? "S" : ""}</Pill>
-            <Pill color="green">● Tactical Live</Pill>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            {activeIncidents.length > 0 ? (
+              <Pill color="red">🚨 {activeIncidents.length} live</Pill>
+            ) : (
+              <Pill color="green">● All clear</Pill>
+            )}
+            <Btn variant="default" onClick={loadBroadcasts} disabled={loadingBroadcasts}>
+              {loadingBroadcasts ? "↻ Refreshing…" : "↻ Refresh"}
+            </Btn>
           </div>
         }
       />
 
-      {calloutMsg && (
-        <div style={{ background: "rgba(239,68,68,0.12)", border: `1px solid rgba(239,68,68,0.35)`, borderRadius: 10, padding: "10px 16px", fontSize: 13, color: "#fca5a5", marginBottom: 14 }}>
-          {calloutMsg}
+      {/* Scope — SOS stays inside the expedition group */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "10px 14px",
+          marginBottom: 16,
+          borderRadius: 12,
+          background: "linear-gradient(90deg, rgba(59,130,246,0.10), rgba(59,130,246,0.03))",
+          border: "1px solid rgba(59,130,246,0.28)",
+          flexWrap: "wrap",
+        }}
+      >
+        <div
+          style={{
+            width: 30, height: 30, borderRadius: 9, flexShrink: 0,
+            background: "rgba(59,130,246,0.18)", border: "1px solid rgba(59,130,246,0.35)",
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15,
+          }}
+        >
+          🛡️
+        </div>
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text }}>
+            SOS is limited to this team
+          </div>
+          <div style={{ fontSize: 11.5, color: C.muted, marginTop: 1 }}>
+            Beacons and command alerts stay inside the expedition group ({members} member{members === 1 ? "" : "s"}) — they are never shared outside it.
+          </div>
+        </div>
+      </div>
+
+      {toast && (
+        <div
+          style={{
+            marginBottom: 14, padding: "10px 14px", borderRadius: 10, fontSize: 12.5,
+            background: toast.type === "success" ? "rgba(34,197,94,0.12)" : toast.type === "error" ? "rgba(239,68,68,0.12)" : "rgba(59,130,246,0.12)",
+            border: `1px solid ${toast.type === "success" ? "rgba(34,197,94,0.3)" : toast.type === "error" ? "rgba(239,68,68,0.3)" : "rgba(59,130,246,0.3)"}`,
+            color: toast.type === "success" ? "#86efac" : toast.type === "error" ? "#fca5a5" : "#93c5fd",
+          }}
+        >
+          {toast.text}
         </div>
       )}
 
-      {/* Emergency Beacon Banner - flashes until a duty officer acknowledges */}
-      <div style={{
-        background: selectedSOS?.acknowledged
-          ? "linear-gradient(135deg, rgba(245,158,11,0.18), rgba(120,53,15,0.08))"
-          : "linear-gradient(135deg, rgba(239,68,68,0.22), rgba(185,28,28,0.08))",
-        border: `1px solid ${selectedSOS?.acknowledged ? "rgba(245,158,11,0.45)" : "rgba(239,68,68,0.5)"}`,
-        borderRadius: 14,
-        padding: "16px 20px",
-        marginBottom: 16,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        flexWrap: "wrap",
-        gap: 14
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ width: 44, height: 44, borderRadius: 12, background: selectedSOS?.acknowledged ? "rgba(245,158,11,0.2)" : "rgba(239,68,68,0.25)", border: `1px solid ${selectedSOS?.acknowledged ? C.amber : C.red}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, animation: selectedSOS?.acknowledged ? "none" : "pulse 1.2s infinite" }}>
-            {selectedSOS?.acknowledged ? "✅" : "🚨"}
-          </div>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: selectedSOS?.acknowledged ? "#fcd34d" : "#fca5a5", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              {selectedSOS?.acknowledged
-                ? `ACKNOWLEDGED · ${selectedSOS.user.toUpperCase()} · ACTION IN PROGRESS`
-                : `CRITICAL DISTRESS SIGNAL ACTIVE · ${selectedSOS.user.toUpperCase()}`}
-            </div>
-            <div style={{ fontSize: 12, color: C.text, marginTop: 2 }}>
-              Location: <strong>{selectedSOS.city}</strong> · Altitude: <strong>{selectedSOS.altitude}m ASL</strong> · Coordinates: <span style={{ fontFamily: "monospace" }}>{selectedSOS.lat}°N, {selectedSOS.lon}°E</span> · Blood: <strong style={{ color: C.red }}>{selectedSOS.blood}</strong>
-            </div>
-            {selectedSOS?.acknowledged && (
-              <div style={{ fontSize: 11, color: C.amber, marginTop: 3 }}>
-                Acknowledged by {selectedSOS.acknowledgedBy || "SAR Command"} - alarm silenced, beacon still live until stand-down.
-              </div>
-            )}
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          {!selectedSOS?.acknowledged ? (
-            <button
-              onClick={() => handleAcknowledge(selectedSOS)}
-              style={{
-                padding: "10px 18px", borderRadius: 8, background: "rgba(245,158,11,0.2)",
-                border: `1px solid ${C.amber}`, color: "#fcd34d", fontSize: 13, fontWeight: 700,
-                cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6,
-                boxShadow: "0 4px 12px rgba(245,158,11,0.25)"
-              }}
-            >
-              ✅ ACKNOWLEDGE &amp; SILENCE ALARM
-            </button>
-          ) : (
-            <Pill color="amber">🔕 Alarm silenced · beacon live</Pill>
-          )}
-          <button
-            onClick={() => setResolvingModal(true)}
-            style={{
-              padding: "10px 18px", borderRadius: 8, background: `linear-gradient(135deg, ${C.green}, #16a34a)`,
-              border: "none", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
-              display: "flex", alignItems: "center", gap: 6, boxShadow: "0 4px 12px rgba(34,197,94,0.3)"
-            }}
-          >
-            ✓ STAND DOWN SAR &amp; RESOLVE
-          </button>
-        </div>
-      </div>
-
-      {/* 3-Column SAR Dispatch Grid */}
-      <div className="resp-3col" style={{ display: "grid", gridTemplateColumns: "240px 1fr 310px", gap: 14 }}>
-        {/* LEFT COLUMN: Active SOS Queue */}
+      <div className="resp-2col" style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 16 }}>
+        {/* Incoming beacons */}
         <div>
-          <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>
-            Distress Queue ({activeIncidents.length})
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
+            <span>🚨</span>
+            <span>Incoming emergency beacons</span>
+            {activeIncidents.length > 0 && <Pill color="red">{activeIncidents.length}</Pill>}
           </div>
 
-          {activeIncidents.map((ev) => (
-            <Card
-              key={ev.id}
-              onClick={() => setSelectedId(ev.id)}
-              style={{
-                marginBottom: 8,
-                cursor: "pointer",
-                borderColor: selectedSOS?.id === ev.id ? C.red : "rgba(239,68,68,0.35)",
-                background: selectedSOS?.id === ev.id ? "rgba(239,68,68,0.12)" : C.card,
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: C.red, animation: "ping 1s infinite", flexShrink: 0 }} />
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.text, flex: 1 }}>{ev.user}</div>
-                <Pill color="red">{ev.priority}</Pill>
+          {activeIncidents.length === 0 ? (
+            <Card style={{ textAlign: "center", padding: "26px 18px" }}>
+              <div style={{ fontSize: 24, marginBottom: 6 }}>🛡️</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 4 }}>No beacons waiting</div>
+              <div style={{ fontSize: 11.5, color: C.muted }}>
+                When a team member triggers an SOS it lands here instantly. Their live location and vitals are already on the Live Navigation page.
               </div>
-              <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>📍 {ev.city}</div>
-              <div style={{ fontSize: 10, color: C.muted2, marginBottom: 8 }}>Signal Ping: {ev.time}</div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, marginBottom: 8 }}>
-                {ev.acknowledged ? (
-                  <Pill color="amber">✅ ACKNOWLEDGED</Pill>
-                ) : (
-                  <Pill color="red">🚨 ACTIVE BEACON</Pill>
-                )}
-                <span style={{ fontSize: 11, color: C.amber, fontWeight: 600 }}>🩸 {ev.blood}</span>
-              </div>
-              {!ev.acknowledged ? (
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleAcknowledge(ev); }}
+            </Card>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {activeIncidents.map((incident) => (
+                <Card
+                  key={incident.id}
                   style={{
-                    width: "100%", padding: "7px 10px", borderRadius: 7,
-                    background: "rgba(245,158,11,0.16)", border: `1px solid rgba(245,158,11,0.45)`,
-                    color: "#fcd34d", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit"
+                    padding: "12px 14px",
+                    border: incident.acknowledged ? "1px solid rgba(245,158,11,0.35)" : "1px solid rgba(239,68,68,0.35)",
+                    background: incident.acknowledged
+                      ? "linear-gradient(140deg, rgba(245,158,11,0.07), rgba(11,20,34,0.6))"
+                      : "linear-gradient(140deg, rgba(239,68,68,0.09), rgba(11,20,34,0.6))",
                   }}
                 >
-                  ✅ ACKNOWLEDGE &amp; SILENCE ALARM
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <div
+                      style={{
+                        width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+                        background: incident.acknowledged ? C.amber : C.red,
+                        animation: incident.acknowledged ? "none" : "ping 1s infinite",
+                      }}
+                    />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>
+                        {incident.user}
+                        <span style={{ fontSize: 11, color: C.muted2, fontWeight: 500, marginLeft: 8 }}>{incident.tripName}</span>
+                      </div>
+                      <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>
+                        {incident.time}
+                        {incident.acknowledged && ` · acknowledged by ${incident.acknowledgedBy || "command"}`}
+                      </div>
+                    </div>
+
+                    {incident.acknowledged ? (
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <Pill color="amber">🔕 Acknowledged</Pill>
+                        <button
+                          type="button"
+                          disabled={actingId === incident.id}
+                          onClick={() => { setResolutionNote("Trekker is safe and escorted back to base camp"); setStandDownTarget(incident); }}
+                          style={{
+                            padding: "6px 12px", borderRadius: 7, border: "1px solid rgba(34,197,94,0.35)",
+                            background: "rgba(34,197,94,0.14)", color: "#86efac", fontSize: 11.5, fontWeight: 700,
+                            cursor: "pointer", fontFamily: "inherit",
+                          }}
+                        >
+                          Stand down
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <button
+                          type="button"
+                          disabled={actingId === incident.id}
+                          onClick={() => handleAcknowledge(incident)}
+                          style={{
+                            padding: "6px 12px", borderRadius: 7, border: "1px solid rgba(245,158,11,0.4)",
+                            background: "rgba(245,158,11,0.15)", color: "#fcd34d", fontSize: 11.5, fontWeight: 700,
+                            cursor: actingId === incident.id ? "not-allowed" : "pointer", fontFamily: "inherit",
+                          }}
+                        >
+                          {actingId === incident.id ? "…" : "Acknowledge"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={actingId === incident.id}
+                          onClick={() => { setResolutionNote("Trekker is safe and escorted back to base camp"); setStandDownTarget(incident); }}
+                          style={{
+                            padding: "6px 12px", borderRadius: 7, border: `1px solid ${C.border}`,
+                            background: "transparent", color: "#fca5a5", fontSize: 11.5, fontWeight: 700,
+                            cursor: actingId === incident.id ? "not-allowed" : "pointer", fontFamily: "inherit",
+                          }}
+                        >
+                          Stand down
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {/* Recent history */}
+          {resolvedIncidents.length > 0 && (
+            <div style={{ marginTop: 18 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.07em" }}>
+                Recent incidents
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {resolvedIncidents.map((incident) => (
+                  <div
+                    key={incident.id}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
+                      borderRadius: 9, background: "rgba(255,255,255,0.02)", border: `1px solid ${C.border}`,
+                      fontSize: 11.5, color: C.muted,
+                    }}
+                  >
+                    <span style={{ color: C.green }}>✓</span>
+                    <span style={{ color: C.text, fontWeight: 600 }}>{incident.user}</span>
+                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{incident.tripName}</span>
+                    <span>{incident.note}</span>
+                    <span style={{ color: C.muted2 }}>{incident.at}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Command → team alerts */}
+        <div>
+          <Card style={{ padding: "14px 16px" }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 3, display: "flex", alignItems: "center", gap: 8 }}>
+              <span>📣</span>
+              <span>Alert all team members</span>
+            </div>
+            <div style={{ fontSize: 11, color: C.muted, marginBottom: 12, lineHeight: 1.5 }}>
+              Sends one alert to every member of this group at once.
+            </div>
+
+            <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+              {[
+                ["advisory", "Advisory", C.accent],
+                ["urgent", "Urgent", C.amber],
+                ["critical", "Critical", C.red],
+              ].map(([value, label, color]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setSeverity(value)}
+                  style={{
+                    flex: 1, padding: "6px 4px", borderRadius: 7, fontSize: 11, fontWeight: 700,
+                    background: severity === value ? `${color}22` : "rgba(255,255,255,0.03)",
+                    border: `1px solid ${severity === value ? color : C.border}`,
+                    color: severity === value ? color : C.muted,
+                    cursor: "pointer", fontFamily: "inherit",
+                  }}
+                >
+                  {label}
                 </button>
-              ) : (
-                <div style={{ fontSize: 10.5, color: C.muted2 }}>
-                  Acknowledged by {ev.acknowledgedBy || "SAR Command"}
-                </div>
-              )}
-            </Card>
-          ))}
+              ))}
+            </div>
 
-          {/* Quick Metrics */}
-          <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
-            {[
-              ["Active Distress", activeIncidents.length, C.red],
-              ["Units Deployed", teamsState.filter((t) => t.status === "deployed").length, C.amber],
-              ["Resolved Today", resolvedIncidents.length, C.green],
-            ].map(([l, v, col]) => (
-              <Card key={l} style={{ marginBottom: 0, padding: "10px 14px" }}>
-                <div style={{ fontSize: 10, color: C.muted, marginBottom: 2 }}>{l}</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: col }}>{v}</div>
-              </Card>
-            ))}
-          </div>
-        </div>
-
-        {/* CENTER COLUMN: Tactical Route Map & Navigation */}
-        <div>
-          <Card style={{ padding: 0, overflow: "hidden" }}>
-            <LiveMap
-              points={users}
-              teams={teamsState.filter((t) => t.status === "deployed").map((t) => ({
-                ...t,
-                lat: teamPos && assignedTeam?.id === t.id ? teamPos.lat : t.lat,
-                lon: teamPos && assignedTeam?.id === t.id ? teamPos.lon : t.lon,
-              }))}
-              routeFrom={teamPos || assignedTeam || undefined}
-              routeTo={selectedSOS || undefined}
-              height={400}
-              zoom={zoom}
-              onZoom={(d) => setZoom((z) => Math.max(0.5, Math.min(3, z + d * 0.5)))}
+            <textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              rows={3}
+              placeholder="e.g. Severe weather ahead on the ridge — hold position and stay sheltered."
+              style={{
+                width: "100%", background: "rgba(255,255,255,0.04)", border: `1px solid ${C.border}`,
+                borderRadius: 8, padding: "9px 11px", color: C.text, fontSize: 12, fontFamily: "inherit",
+                resize: "vertical", outline: "none", marginBottom: 10,
+              }}
             />
-          </Card>
 
-          {/* Live Navigation Telemetry Row */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginTop: 12 }}>
-            <StatCard label="Distance to Target" value={`${distToTarget} km`} sub="From Rescue Unit" color={C.accent} icon="📏" />
-            <StatCard label="Estimated Arrival" value={`${remainingEta} min`} sub={assignedTeam?.vehicle || "4x4 QRV"} color={C.green} icon="⏱" />
-            <StatCard label="Response Speed" value={assignedTeam?.speed || "35 km/h"} sub="Tactical Transit" color={C.amber} icon="🚑" />
-            <StatCard label="GPS Accuracy" value="±6m" sub="Live Satellite Fix" color={C.purple} icon="🛰" />
-          </div>
-
-          {/* Action Buttons Row */}
-          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1.3fr", gap: 10, marginTop: 12 }}>
-            <button
-              onClick={() => { setNavMode(true); setCurrentStep(0); }}
-              style={{
-                padding: "14px",
-                background: `linear-gradient(135deg, ${C.red}, ${C.accent2})`,
-                border: "none",
-                borderRadius: 10,
-                color: "#fff",
-                fontSize: 14,
-                fontWeight: 700,
-                cursor: "pointer",
-                fontFamily: "inherit",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-                boxShadow: "0 4px 14px rgba(239,68,68,0.4)"
-              }}
-            >
-              🗺 LAUNCH REALTIME NAVIGATION
-            </button>
-
-            <button
-              onClick={() => window.open(`https://www.google.com/maps?q=${selectedSOS.lat},${selectedSOS.lon}`, "_blank")}
-              style={{
-                padding: "14px",
-                background: "rgba(255,255,255,0.06)",
-                border: `1px solid ${C.border}`,
-                borderRadius: 10,
-                color: C.text,
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: "pointer",
-                fontFamily: "inherit",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6
-              }}
-            >
-              📍 Google Maps
-            </button>
-
-            <button
-              onClick={() => setResolvingModal(true)}
-              style={{
-                padding: "14px",
-                background: "rgba(34,197,94,0.18)",
-                border: `1px solid ${C.green}`,
-                borderRadius: 10,
-                color: C.green,
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: "pointer",
-                fontFamily: "inherit",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6
-              }}
-            >
-              ✓ Stand Down SAR
-            </button>
-          </div>
-        </div>
-
-        {/* RIGHT COLUMN: Victim Triage & Medical Dossier */}
-        <div>
-          {/* Victim Details Card */}
-          <Card style={{ marginBottom: 10, borderColor: "rgba(239,68,68,0.4)" }}>
-            <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>
-              Victim Triage Dossier
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-              <Avatar initials={selectedSOS.user.slice(0, 2).toUpperCase()} bg="#E6F1FB" text="#0C447C" size={42} />
-              <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{selectedSOS.user}</div>
-                <div style={{ fontSize: 11, color: C.muted }}>{selectedSOS.tripName} ({selectedSOS.tripCode})</div>
-              </div>
-            </div>
-
-            {[
-              ["Distress Type", selectedSOS.type],
-              ["Beacon Time", selectedSOS.time],
-              ["Coordinates", `${selectedSOS.lat}°N, ${selectedSOS.lon}°E`],
-              ["Trail Elevation", `${selectedSOS.altitude}m ASL`],
-              ["From Guide Ajay Saini", formatDistance(calculateDistanceMeters(RAJMACHI_ADMIN.lat, RAJMACHI_ADMIN.lon, selectedSOS.lat, selectedSOS.lon)) + " away"],
-              ["VHF Tactical Radio", "145.500 MHz (Channel 1)"],
-              ["Live Biometrics", `❤️ ${selectedSOS.vitals?.hr || 114} bpm · 🫁 ${selectedSOS.vitals?.spo2 || 96}% SpO2`],
-              ["Beacon Battery", `🔋 ${selectedSOS.vitals?.battery || 88}%`],
-            ].map(([k, v]) => (
-              <div key={k} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "5px 0", borderBottom: `1px solid ${C.border}` }}>
-                <span style={{ color: C.muted2 }}>{k}</span>
-                <span style={{ color: C.text, fontWeight: 500, fontFamily: k === "Coordinates" ? "monospace" : "inherit", fontSize: k === "Coordinates" ? 10 : 12 }}>{v}</span>
-              </div>
-            ))}
-          </Card>
-
-          {/* Medical Alerts & Emergency Contact Card */}
-          <Card style={{ marginBottom: 10, borderColor: "rgba(167,139,250,0.35)" }}>
-            <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
-              Medical Profile & Contacts
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-              <Pill color="red">🩸 {selectedSOS.blood}</Pill>
-              <Pill color={selectedSOS.medical === "None" || selectedSOS.medical === "None reported" ? "green" : "amber"}>
-                ⚕ {selectedSOS.medical}
-              </Pill>
-            </div>
-            <div style={{ fontSize: 11, color: C.muted, marginBottom: 2 }}>Primary Emergency Contact:</div>
-            <div style={{ fontSize: 12, fontWeight: 600, color: C.text, marginBottom: 10 }}>{selectedSOS.ec}</div>
-            <Btn
-              variant="success"
-              style={{ width: "100%", justifyContent: "center", fontSize: 11 }}
-              onClick={() => window.open(`tel:${(selectedSOS.ec || "").replace(/[^0-9+]/g, "") || "+919153191902"}`)}
-            >
-              📞 Direct Call Emergency Contact
+            <Btn variant="primary" onClick={handleSendBroadcast} disabled={sending || !message.trim()} style={{ width: "100%", justifyContent: "center" }}>
+              {sending ? "Sending…" : "📣 Send alert to everyone"}
             </Btn>
           </Card>
 
-          {/* Rescue Team Assignment Card */}
-          <Card>
-            <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
-              Assigned SAR Tactical Unit
-            </div>
-            {teamsState.map((t) => (
-              <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{t.name}</div>
-                  <div style={{ fontSize: 10, color: C.muted }}>{t.vehicle} · {t.members}m · ETA {t.eta}</div>
-                </div>
-                <Pill color={t.status === "deployed" ? "amber" : "gray"}>{t.status}</Pill>
-                <button
-                  onClick={() => handleDispatch(t.id, selectedSOS.id)}
-                  style={{
-                    padding: "4px 10px", borderRadius: 6,
-                    border: `1px solid ${t.assignedTo === selectedSOS.id ? C.green : C.border}`,
-                    background: t.assignedTo === selectedSOS.id ? "rgba(34,197,94,0.15)" : "transparent",
-                    color: t.assignedTo === selectedSOS.id ? C.green : C.muted,
-                    fontSize: 10, cursor: "pointer", fontFamily: "inherit", fontWeight: 600
-                  }}
-                >
-                  {t.assignedTo === selectedSOS.id ? "✓ En Route" : "Assign Unit"}
-                </button>
+          {broadcasts.length > 0 && (
+            <Card style={{ padding: "14px 16px", marginTop: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.07em" }}>
+                Sent alerts
               </div>
-            ))}
-          </Card>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {broadcasts.slice(0, 6).map((b) => (
+                  <div key={b.id} style={{ padding: "8px 10px", borderRadius: 8, background: "rgba(255,255,255,0.02)", border: `1px solid ${C.border}` }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                      <Pill color={b.severity === "critical" ? "red" : b.severity === "urgent" ? "amber" : "blue"}>{b.severity}</Pill>
+                      <span style={{ fontSize: 10.5, color: C.muted2, marginLeft: "auto" }}>{formatClock(b.timestamp, "Just now")}</span>
+                    </div>
+                    <div style={{ fontSize: 11.5, color: C.text, lineHeight: 1.5 }}>{b.message}</div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
         </div>
       </div>
 
-      {/* Team Status Table */}
-      <div style={{ marginTop: 20 }}>
-        <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>
-          Search & Rescue Live Unit Status
+      {/* Stand-down confirmation */}
+      {standDownTarget && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(6px)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div style={{ background: "#0d1b2e", border: `1px solid ${C.border2}`, borderRadius: 16, width: "100%", maxWidth: 440, padding: 22 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 6 }}>Stand down this emergency</div>
+            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, marginBottom: 14 }}>
+              The beacon is marked resolved, the trekker is reset to safe, and the alert leaves the team's active list.
+            </div>
+            <textarea
+              value={resolutionNote}
+              onChange={(e) => setResolutionNote(e.target.value)}
+              rows={2}
+              style={{
+                width: "100%", background: "rgba(255,255,255,0.04)", border: `1px solid ${C.border}`,
+                borderRadius: 8, padding: "9px 11px", color: C.text, fontSize: 12, fontFamily: "inherit",
+                resize: "vertical", outline: "none", marginBottom: 14,
+              }}
+            />
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <Btn variant="default" onClick={() => setStandDownTarget(null)}>Cancel</Btn>
+              <Btn variant="success" onClick={() => {
+                const target = standDownTarget;
+                setStandDownTarget(null);
+                if (target) handleStandDown(target);
+              }} disabled={isSubmitting}>
+                {isSubmitting ? "Confirming…" : "✓ Stand down"}
+              </Btn>
+            </div>
+          </div>
         </div>
-        <Card style={{ padding: 0, overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                {["Tactical Unit", "Field Commander", "Personnel", "Vehicle Payload", "Status", "Speed", "Heading", "ETA to Rajmachi", "Assigned Incident"].map((h) => (
-                  <TH key={h}>{h}</TH>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {teamsState.map((t, i) => {
-                const assignedEv = activeIncidents.find((e) => e.id === t.assignedTo);
-                return (
-                  <tr key={t.id} style={{ background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.012)" }}>
-                    <TD>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: t.status === "deployed" ? C.red : C.green }} />
-                        <span style={{ fontWeight: 600 }}>{t.name}</span>
-                      </div>
-                    </TD>
-                    <TD>{t.lead}</TD>
-                    <TD><Pill color="blue">{t.members} members</Pill></TD>
-                    <TD>{t.vehicle}</TD>
-                    <TD><Pill color={t.status === "deployed" ? "red" : "green"}>{t.status.toUpperCase()}</Pill></TD>
-                    <TD style={{ fontFamily: "monospace", color: t.status === "deployed" ? C.green : C.muted }}>{t.speed}</TD>
-                    <TD style={{ fontFamily: "monospace" }}>{t.heading}°</TD>
-                    <TD style={{ color: t.eta === "—" ? C.muted : C.amber, fontWeight: 600 }}>{t.eta}</TD>
-                    <TD>
-                      {assignedEv ? (
-                        <div>
-                          <div style={{ fontSize: 12, color: C.red, fontWeight: 600 }}>{assignedEv.user}</div>
-                          <div style={{ fontSize: 10, color: C.muted }}>{assignedEv.city}</div>
-                        </div>
-                      ) : (
-                        <span style={{ color: C.muted2 }}>Tactical Standby</span>
-                      )}
-                    </TD>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </Card>
-      </div>
+      )}
     </div>
   );
 };
@@ -6667,6 +6048,11 @@ export default function AdminPanel() {
     return await triggerDemoSOSEvent(payload);
   };
 
+  // Command team → every member of the group, in one action.
+  const handleBroadcastAlert = async ({ message, severity, title }) => {
+    return await broadcastSOSAlert({ message, severity, title });
+  };
+
   const loadPendingAdmins = useCallback(async () => {
     setRefreshingPending(true);
     try {
@@ -6869,8 +6255,10 @@ export default function AdminPanel() {
         onResolveSOS={handleResolveSOS}
         onTriggerDemo={handleTriggerDemoSOS}
         onAcknowledge={handleAcknowledgeSOS}
+        onBroadcast={handleBroadcastAlert}
         acknowledgedMap={ackedSos}
         sosFeedLoaded={sosFeedLoaded}
+        teamSize={Math.max(firestoreUsers.length, 1)}
       />
     ),
 

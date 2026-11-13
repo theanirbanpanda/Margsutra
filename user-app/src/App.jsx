@@ -2920,10 +2920,40 @@ const PageWeatherMaps = ({ joinedTrip, onNavigate }) => {
 /* ════════════════════════════════════════════════
    PAGE: SOS NAVIGATION  (user view)
 ════════════════════════════════════════════════ */
+const formatAlertTime = (value) => {
+  if (!value) return "Just now";
+  const d = value?.toDate ? value.toDate() : new Date(value);
+  if (Number.isNaN(d.getTime())) return "Just now";
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+};
+
 const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate, sosDelivery, sosAcknowledged }) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [expandProtocol, setExpandProtocol] = useState(null);
   const [safetyProtocols, setSafetyProtocols] = useState(FALLBACK_SAFETY_PROTOCOLS);
+  const [alerts, setAlerts] = useState([]);
+
+  // Alerts sent by the command team to this group (two-way SOS).
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch("http://localhost:5050/api/sos/alerts");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        setAlerts(Array.isArray(data?.alerts) ? data.alerts : []);
+      } catch {
+        /* transient — the next poll retries */
+      }
+    };
+    load();
+    const timer = setInterval(load, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
 
   // Safety protocols live here — the dashboard no longer repeats them.
   useEffect(() => {
@@ -3106,6 +3136,70 @@ const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate, sosDelivery, sosAcknow
     );
   };
 
+  // Alerts from the command team — the team only, never shared outside it.
+  const alertsBlock = (
+    <div style={{marginTop:16}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+        <span style={{fontSize:15}}>📣</span>
+        <span style={{fontSize:13,fontWeight:600,color:C.text}}>Alerts from SAR Command</span>
+        {alerts.length > 0 && (
+          <span style={{fontSize:10,padding:"1px 7px",borderRadius:10,background:"rgba(59,130,246,0.2)",color:C.accent,fontWeight:700}}>
+            {alerts.length}
+          </span>
+        )}
+      </div>
+
+      {alerts.length === 0 ? (
+        <div style={{padding:"12px 14px",borderRadius:10,background:"rgba(59,130,246,0.06)",border:"1px solid rgba(59,130,246,0.22)",fontSize:12,color:C.muted}}>
+          No alerts right now. If the command team needs your attention, it appears here instantly.
+        </div>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {alerts.slice(0,5).map((a) => {
+            const isCritical = a.severity === "critical";
+            const isUrgent = a.severity === "urgent";
+            const tone = isCritical ? { bg:"rgba(239,68,68,0.12)", border:"rgba(239,68,68,0.4)", color:"#fca5a5" }
+              : isUrgent ? { bg:"rgba(245,158,11,0.12)", border:"rgba(245,158,11,0.4)", color:"#fcd34d" }
+              : { bg:"rgba(59,130,246,0.12)", border:"rgba(59,130,246,0.4)", color:"#93c5fd" };
+            return (
+              <div key={a.id} style={{padding:"12px 14px",borderRadius:11,background:tone.bg,border:`1px solid ${tone.border}`}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                  <span style={{fontSize:10,fontWeight:800,letterSpacing:"0.06em",textTransform:"uppercase",color:tone.color}}>
+                    {a.severity}
+                  </span>
+                  <span style={{fontSize:10.5,color:C.muted2,marginLeft:"auto"}}>
+                    {a.createdByName || "SAR Command"} · {formatAlertTime(a.timestamp)}
+                  </span>
+                </div>
+                <div style={{fontSize:12.5,color:C.text,lineHeight:1.55}}>{a.message}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
+  // SOS is limited to this expedition group.
+  const scopeBlock = (
+    <div style={{
+      display:"flex",alignItems:"center",gap:10,padding:"10px 14px",marginBottom:14,borderRadius:11,
+      background:"linear-gradient(90deg, rgba(59,130,246,0.10), rgba(59,130,246,0.03))",
+      border:"1px solid rgba(59,130,246,0.28)",flexWrap:"wrap",
+    }}>
+      <div style={{
+        width:30,height:30,borderRadius:9,flexShrink:0,background:"rgba(59,130,246,0.18)",
+        border:"1px solid rgba(59,130,246,0.35)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,
+      }}>🛡️</div>
+      <div style={{flex:1,minWidth:170}}>
+        <div style={{fontSize:12.5,fontWeight:700,color:C.text}}>SOS is limited to your team</div>
+        <div style={{fontSize:11.5,color:C.muted,marginTop:1}}>
+          Your beacon and the command team's alerts stay inside this expedition group — nothing is shared outside it.
+        </div>
+      </div>
+    </div>
+  );
+
   // Safety protocols — the single home for them in the trekker app.
   const protocolsBlock = (
         <div style={{marginTop:16}}>
@@ -3151,6 +3245,8 @@ const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate, sosDelivery, sosAcknow
         </div>
       </div>
 
+      {scopeBlock}
+      {alertsBlock}
       {protocolsBlock}
     </div>
   );
@@ -3345,6 +3441,8 @@ const PageSOSNav = ({ user, activeSOS, onSOS, onNavigate, sosDelivery, sosAcknow
         </div>
       </div>
 
+      {scopeBlock}
+      {alertsBlock}
       {protocolsBlock}
     </div>
   );

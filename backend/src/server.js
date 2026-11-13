@@ -35,6 +35,8 @@ const {
   removeTripUser,
   getUserActiveTrip,
   createSOSEvent,
+  createSOSBroadcast,
+  listSOSBroadcasts,
   resolveSOSEvent,
   acknowledgeSOSEvent,
   DEMO_ACCOUNTS,
@@ -404,6 +406,65 @@ app.post("/api/sos/:id/resolve", optionalAuth, async (req, res) => {
   } catch (error) {
     console.error("Resolve SOS error:", error);
     res.status(500).json({ error: "Failed to resolve SOS event." });
+  }
+});
+
+// Two-way SOS: the command team can alert every member of the group at once.
+app.post("/api/sos/broadcast", requireAuth, async (req, res) => {
+  try {
+    const adminUser = await findUserById(req.userId);
+    const role = (adminUser?.role || "").toLowerCase();
+    if (role !== "admin") {
+      return res.status(403).json({ error: "Only command team members can broadcast alerts." });
+    }
+
+    const message = String(req.body?.message || "").trim();
+    if (!message) {
+      return res.status(400).json({ error: "Write a short alert message before sending." });
+    }
+
+    const result = await createSOSBroadcast({
+      message,
+      severity: req.body?.severity || "advisory",
+      title: req.body?.title || "",
+      createdBy: req.userId,
+      createdByName: adminUser?.name || adminUser?.email || "SAR Command",
+    });
+
+    // Push it to every connected console and trekker immediately.
+    try {
+      await fetch("http://localhost:4000/api/sos/broadcast", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event: {
+            type: "command-broadcast",
+            id: result.event.id,
+            message: result.event.message,
+            severity: result.event.severity,
+            title: result.event.title,
+            createdByName: result.event.createdByName,
+            timestamp: Date.now(),
+          },
+        }),
+      });
+    } catch {}
+
+    res.status(201).json(result);
+  } catch (error) {
+    console.error("Broadcast SOS error:", error);
+    res.status(500).json({ error: "Failed to send the alert." });
+  }
+});
+
+// Alerts sent by the command team to the whole group.
+app.get("/api/sos/alerts", async (_req, res) => {
+  try {
+    const alerts = await withTimeout(listSOSBroadcasts(20), 6000, "List SOS alerts");
+    res.json({ success: true, alerts });
+  } catch (error) {
+    console.error("List SOS alerts error:", error);
+    res.status(500).json({ error: "Failed to load alerts." });
   }
 });
 
