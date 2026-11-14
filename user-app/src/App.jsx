@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import QRCode from "qrcode";
 import UserTrackingWidget from "./UserTrackingWidget";
 import FitnessGadgetManager from "./FitnessGadgetManager";
 import { useLocationTracking } from "./useLocationTracking";
@@ -2320,8 +2321,8 @@ const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) 
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [openInfoId, setOpenInfoId] = useState(null);
   const [bookingTrip, setBookingTrip] = useState(null);
-  const [paymentReference, setPaymentReference] = useState("");
-  const [paymentNote, setPaymentNote] = useState("");
+  const [paymentQr, setPaymentQr] = useState("");
+  const [qrError, setQrError] = useState("");
 
   const joinedId = joinedTrip?.id || joinedTrip?.tripId;
   const paymentSubmitted = joinedTrip?.tripStatus === "payment_submitted";
@@ -2368,14 +2369,13 @@ const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) 
       return;
     }
     setSubmittingId(trip.id || trip.tripId);
-    const ok = await onJoin(trip, { paymentReference, paymentNote });
+    const ok = await onJoin(trip, { paymentConfirmed: true, paymentMethod: "upi_qr" });
     setSubmittingId(null);
     if (!ok) {
       setLocalErr("Your join request could not be sent. Please try again.");
     } else {
       setBookingTrip(null);
-      setPaymentReference("");
-      setPaymentNote("");
+      setPaymentQr("");
     }
   };
 
@@ -2419,8 +2419,7 @@ const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) 
         disabled={submittingId === tripId}
         onClick={() => {
           setBookingTrip(trip);
-          setPaymentReference("");
-          setPaymentNote("");
+          setPaymentQr("");
         }}
         style={{ padding: "8px 18px", fontSize: 12.5 }}
       >
@@ -2428,6 +2427,23 @@ const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) 
       </Btn>
     );
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!bookingTrip || Number(bookingTrip.price) <= 0) {
+      setPaymentQr("");
+      setQrError("");
+      return undefined;
+    }
+    const amount = Number(bookingTrip.price).toFixed(2);
+    const description = `${bookingTrip.name || "Trek booking"}`;
+    const upiPayload = `upi://pay?pa=margsutra@upi&pn=Margsutra&am=${amount}&cu=${encodeURIComponent(bookingTrip.currency || "INR")}&tn=${encodeURIComponent(description)}`;
+    setQrError("");
+    QRCode.toDataURL(upiPayload, { width: 220, margin: 2, errorCorrectionLevel: "M" })
+      .then((url) => { if (!cancelled) setPaymentQr(url); })
+      .catch(() => { if (!cancelled) setQrError("Could not generate the demo payment QR."); });
+    return () => { cancelled = true; };
+  }, [bookingTrip]);
 
   const InfoBlock = ({ label, value }) => (
     <div style={{ background: "rgba(255,255,255,0.03)", padding: "9px 12px", borderRadius: 9, border: `1px solid ${C.border}`, minWidth: 0 }}>
@@ -2513,7 +2529,7 @@ const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) 
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 14, flexWrap: "wrap", marginBottom: 14 }}>
               <div style={{ minWidth: 0 }}>
                 <Pill color={isPending ? "amber" : "green"}>
-                  {paymentSubmitted ? "⏳ Payment submitted — awaiting manual verification" : paymentVerified ? "✓ Payment verified — awaiting booking approval" : isPending ? "⏳ Request sent — awaiting admin approval" : "● Booking approved"}
+                  {paymentSubmitted ? "⏳ Payment claimed — awaiting admin receipt check" : paymentVerified ? "✓ Payment verified — awaiting booking approval" : isPending ? "⏳ Request sent — awaiting admin approval" : "● Booking approved"}
                 </Pill>
                 <div style={{ fontSize: 21, fontWeight: 800, color: C.text, marginTop: 8, lineHeight: 1.3 }}>{joinedTrip.name}</div>
                 <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4 }}>
@@ -2557,13 +2573,13 @@ const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) 
             {isPending ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "12px 14px", borderRadius: 10, background: "rgba(0,0,0,0.22)", border: "1px solid rgba(245,158,11,0.22)" }}>
                 <div style={{ fontSize: 12, color: "#fcd34d", fontWeight: 600 }}>
-                  {paymentSubmitted ? "Your payment reference is in the manual verification queue." : paymentVerified ? "Your payment is verified; the organizer is reviewing your booking." : "Your request is in the admin queue."}
+                  {paymentSubmitted ? "Your slot is reserved while the admin verifies payment and reviews your booking." : paymentVerified ? "Payment verified; the organizer is reviewing your booking." : "Your request is in the admin queue."}
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 11, color: C.muted }}>
-                  {joinedTrip.price > 0 ? <><span>1 · Payment submitted ✓</span><span>2 · Manual verification {paymentVerified ? "✓" : "(now)"}</span><span>3 · Booking approval</span><span>4 · Enrolled</span></> : <><span>1 · Request sent ✓</span><span>2 · Admin review (now)</span><span>3 · Enrolled</span></>}
+                  {joinedTrip.price > 0 ? <><span>1 · Payment confirmation sent ✓</span><span>2 · Admin checks receipt {paymentVerified ? "✓" : "(now)"}</span><span>3 · Booking approval</span><span>4 · Enrolled</span></> : <><span>1 · Request sent ✓</span><span>2 · Admin review (now)</span><span>3 · Enrolled</span></>}
                 </div>
                 <div style={{ fontSize: 11, color: C.muted2, lineHeight: 1.55 }}>
-                  This page updates when the team verifies payment and approves the booking. You can cancel the request any time.
+                  Payment is not confirmed automatically in this demo. An admin must verify receipt before approving; your slot is held in the meantime. You can cancel the request any time.
                 </div>
               </div>
             ) : (
@@ -2601,27 +2617,32 @@ const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) 
 
       {bookingTrip && (
         <div role="presentation" onClick={() => setBookingTrip(null)} style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(3,7,18,.82)", display: "grid", placeItems: "center", padding: 16, overflowY: "auto" }}>
-          <form onSubmit={(event) => { event.preventDefault(); handleJoinTrip(bookingTrip); }} onClick={(event) => event.stopPropagation()} style={{ width: "min(560px,100%)", borderRadius: 16, border: `1px solid ${C.border2}`, background: "#0b1422", padding: 22, boxShadow: "0 24px 70px rgba(0,0,0,.55)" }}>
-            <div style={{ color: C.text, fontSize: 18, fontWeight: 800 }}>Book {bookingTrip.name}</div>
-            <div style={{ color: C.muted, fontSize: 12, marginTop: 5 }}>{bookingTrip.date || bookingTrip.startDate || "Date to be confirmed"} · {bookingTrip.location || ""}</div>
+          <form onSubmit={(event) => { event.preventDefault(); handleJoinTrip(bookingTrip); }} onClick={(event) => event.stopPropagation()} style={{ width: "min(760px,100%)", maxHeight: "92vh", overflowY: "auto", borderRadius: 18, border: `1px solid ${C.border2}`, background: "#0b1422", padding: "clamp(18px,4vw,30px)", boxShadow: "0 24px 70px rgba(0,0,0,.55)" }}>
+            <div style={{ color: C.text, fontSize: 22, fontWeight: 800, lineHeight: 1.2 }}>Book {bookingTrip.name}</div>
+            <div style={{ color: C.muted, fontSize: 13, marginTop: 7 }}>{bookingTrip.date || bookingTrip.startDate || "Date to be confirmed"} · {bookingTrip.location || ""}</div>
             {Number(bookingTrip.price) > 0 ? (
               <>
-                <div style={{ marginTop: 16, padding: 13, borderRadius: 10, background: "rgba(59,130,246,.08)", border: `1px solid ${C.border}` }}>
-                  <div style={{ fontSize: 11, color: "#93c5fd", fontWeight: 800, textTransform: "uppercase" }}>Trip fee · {bookingTrip.currency || "INR"} {Number(bookingTrip.price).toLocaleString()}</div>
-                  <div style={{ marginTop: 8, color: C.text, fontSize: 12, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{bookingTrip.paymentInstructions || "Contact the trip organizer for payment instructions before paying."}</div>
+                <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(220px, 100%), 1fr))", gap: 22, alignItems: "center", padding: 18, borderRadius: 14, background: "rgba(59,130,246,.07)", border: `1px solid ${C.border}` }}>
+                  <div style={{ display: "grid", justifyItems: "center", gap: 9 }}>
+                    <div style={{ background: "#fff", padding: 10, borderRadius: 12, minHeight: 220, minWidth: 220, display: "grid", placeItems: "center", boxSizing: "border-box" }}>
+                      {paymentQr ? <img src={paymentQr} alt="UPI payment QR code" width="200" height="200" style={{ display: "block" }} /> : <span style={{ color: "#64748b", fontSize: 12 }}>Generating QR…</span>}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: "#93c5fd", fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em" }}>UPI payment</div>
+                    <div style={{ color: C.text, fontSize: 27, fontWeight: 800, marginTop: 8 }}>{bookingTrip.currency || "INR"} {Number(bookingTrip.price).toLocaleString()}</div>
+                    <div style={{ color: C.muted, fontSize: 12, lineHeight: 1.6, marginTop: 8 }}>Scan this QR with any UPI app to pay the trek fee.</div>
+                    <div style={{ marginTop: 14, padding: "10px 12px", borderRadius: 9, background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.2)", color: "#fcd34d", fontSize: 11, lineHeight: 1.55 }}>
+                      After completing payment, tap <strong>Payment done</strong>. Your slot will be reserved while the admin verifies receipt and reviews your booking.
+                    </div>
+                  </div>
                 </div>
-                <label style={{ display: "block", color: C.muted, fontSize: 11, marginTop: 14 }}>Payment reference / UTR / transaction ID *
-                  <input required maxLength={120} value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} placeholder="Enter the reference from your payment receipt" style={{ display: "block", boxSizing: "border-box", width: "100%", padding: 10, marginTop: 6, borderRadius: 8, border: `1px solid ${C.border2}`, background: "rgba(255,255,255,.04)", color: C.text, fontSize: 12 }} />
-                </label>
-                <label style={{ display: "block", color: C.muted, fontSize: 11, marginTop: 11 }}>Additional payment details (optional)
-                  <textarea maxLength={500} value={paymentNote} onChange={(event) => setPaymentNote(event.target.value)} placeholder="Payment date, payer name, or other details" rows={3} style={{ display: "block", boxSizing: "border-box", width: "100%", padding: 10, marginTop: 6, borderRadius: 8, border: `1px solid ${C.border2}`, background: "rgba(255,255,255,.04)", color: C.text, fontSize: 12, resize: "vertical" }} />
-                </label>
-                <div style={{ color: C.muted2, fontSize: 10, lineHeight: 1.5, marginTop: 10 }}>Payment happens outside this website. Submitting a reference does not confirm receipt or reserve final approval; the team will verify it manually.</div>
+                {qrError && <div role="alert" style={{ color: "#fca5a5", fontSize: 11, marginTop: 8 }}>{qrError}</div>}
               </>
             ) : <div style={{ color: C.muted, fontSize: 12, marginTop: 15 }}>No fee is configured for this trip. Submit a request and wait for the organizer’s review.</div>}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
               <button type="button" onClick={() => setBookingTrip(null)} style={{ padding: "8px 13px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.muted, cursor: "pointer" }}>Cancel</button>
-              <Btn type="submit" variant="primary" disabled={submittingId === (bookingTrip.id || bookingTrip.tripId)}>{submittingId ? "Submitting…" : "Submit booking request"}</Btn>
+              <Btn type="submit" variant="primary" disabled={submittingId === (bookingTrip.id || bookingTrip.tripId) || (!!qrError && Number(bookingTrip.price) > 0)}>{submittingId ? "Submitting…" : Number(bookingTrip.price) > 0 ? "Payment done" : "Request a spot"}</Btn>
             </div>
           </form>
         </div>
@@ -4867,6 +4888,8 @@ export default function UserDashboard() {
           ec1Name: user?.ec1Name,
           ec1Rel: user?.ec1Rel,
           ec1Ph: user?.ec1Ph,
+          paymentConfirmed: paymentData.paymentConfirmed === true,
+          paymentMethod: paymentData.paymentMethod || "",
           paymentReference: paymentData.paymentReference || "",
           paymentNote: paymentData.paymentNote || ""
         })

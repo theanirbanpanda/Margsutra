@@ -8,7 +8,6 @@ import {
   rejectAdmin,
   fetchPendingTripRequests,
   approveTrekker,
-  verifyTrekkerPayment,
   removeTrekker,
   fetchTripRoster,
   createSafetyProtocol,
@@ -1989,7 +1988,6 @@ const PageAdminApprovals = ({
   onApproveTrekker,
   onDenyTrekker,
   onReviewTrekkers,
-  onRefreshTrekkers,
 }) => {
   const [actingId, setActingId] = useState(null);
   const [actingTrekker, setActingTrekker] = useState(null);
@@ -2010,17 +2008,6 @@ const PageAdminApprovals = ({
       setToast({ type: "error", text: `Failed to ${approve ? "approve" : "decline"}: ${res?.error || "Unknown error"}` });
     }
     setTimeout(() => setToast(null), 4000);
-  };
-
-  const handleVerifyPayment = async (applicant) => {
-    const applicantId = applicant.userId || applicant.id;
-    const key = `${applicant.tripId}-${applicantId}`;
-    setActingTrekker(key);
-    const res = await verifyTrekkerPayment(applicant.tripId, applicantId);
-    setActingTrekker(null);
-    setToast({ type: res?.success ? "success" : "error", text: res?.success ? `Payment verified for ${applicant.name || "trekker"}. You can now approve the booking.` : `Verification failed: ${res?.error || "Unknown error"}` });
-    if (res?.success) onRefreshTrekkers?.();
-    setTimeout(() => setToast(null), 5000);
   };
 
   const handleApprove = async (admin) => {
@@ -2128,30 +2115,26 @@ const PageAdminApprovals = ({
                       <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{applicant.tripName || "Expedition"}</div>
                     </div>
               <Pill color={applicant.paymentStatus === "verified" ? "green" : "amber"}>
-                {applicant.paymentStatus === "verified" ? "payment verified" : applicant.paymentStatus === "submitted" ? "payment submitted" : "review"}
+                {applicant.paymentStatus === "verified" ? "payment verified" : "pending review"}
               </Pill>
                   </div>
                   <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.65, marginBottom: 10 }}>
                     <div>📞 {applicant.phone || "No phone"} · 🩸 {applicant.blood || "B+"}</div>
                     <div>🩺 {applicant.medical || "No medical notes"}</div>
                     <div>🆘 {applicant.ec1Name || "Emergency contact"} ({applicant.ec1Rel || "Kin"}) · {applicant.ec1Ph || "—"}</div>
+                    {applicant.paymentClaimed && applicant.paymentStatus !== "verified" && <div style={{ marginTop: 5, color: "#fcd34d", fontWeight: 700 }}>Trekker marked payment done. Check your payment account before verifying.</div>}
                     {applicant.paymentReference && <div style={{ marginTop: 5, color: "#fcd34d" }}>Payment ref: <strong>{applicant.paymentReference}</strong></div>}
                     {applicant.paymentNote && <div>Payment note: {applicant.paymentNote}</div>}
                     {applicant.bookingPrice > 0 && <div>Fee: {applicant.currency || "INR"} {Number(applicant.bookingPrice).toLocaleString()}</div>}
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
-                    {applicant.paymentStatus === "submitted" && (
-                      <button type="button" disabled={isActing} onClick={() => handleVerifyPayment(applicant)} style={{ flex: 1, padding: "7px 10px", borderRadius: 7, border: "1px solid rgba(59,130,246,.35)", background: "rgba(59,130,246,.14)", color: "#93c5fd", fontSize: 11.5, fontWeight: 700, cursor: isActing ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
-                        {isActing ? "…" : "Verify payment"}
-                      </button>
-                    )}
                     <button
                       type="button"
-                      disabled={isActing || (applicant.bookingPrice > 0 && applicant.paymentStatus !== "verified")}
+                      disabled={isActing}
                       onClick={() => handleTrekkerDecision(applicant, true)}
-                      style={{ flex: 1, padding: "7px 10px", borderRadius: 7, border: "1px solid rgba(34,197,94,0.35)", background: "rgba(34,197,94,0.14)", color: "#86efac", fontSize: 11.5, fontWeight: 700, cursor: isActing || (applicant.bookingPrice > 0 && applicant.paymentStatus !== "verified") ? "not-allowed" : "pointer", fontFamily: "inherit" }}
+                      style={{ flex: 1, padding: "7px 10px", borderRadius: 7, border: "1px solid rgba(34,197,94,0.35)", background: "rgba(34,197,94,0.14)", color: "#86efac", fontSize: 11.5, fontWeight: 700, cursor: isActing ? "not-allowed" : "pointer", fontFamily: "inherit" }}
                     >
-                      {isActing ? "…" : applicant.bookingPrice > 0 && applicant.paymentStatus !== "verified" ? "Verify payment first" : "Approve booking"}
+                      {isActing ? "…" : "Approve booking"}
                     </button>
                     <button
                       type="button"
@@ -7006,7 +6989,6 @@ export default function AdminPanel() {
       onApproveTrekker={handleApproveTrekker}
       onDenyTrekker={handleRemoveTrekker}
       onReviewTrekkers={() => setPage("trip-rosters")}
-      onRefreshTrekkers={loadPendingTrekkers}
     />,
     "device-tracking": <PageFieldHardware users={displayUsers} admin={activeAdmin} trip={myTeam} />,
     "weather-console": <PageMountainWeather trip={myTeam} />,

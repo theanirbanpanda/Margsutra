@@ -690,10 +690,12 @@ async function joinTrip(tripId, userId, userData = {}, paymentData = {}) {
 
   const tripData = tripDoc.data();
   const price = Math.max(0, Number(tripData.price) || 0);
+  const paymentConfirmed = paymentData.paymentConfirmed === true;
+  const paymentMethod = String(paymentData.paymentMethod || "").trim().slice(0, 40);
   const paymentReference = String(paymentData.paymentReference || "").trim().slice(0, 120);
   const paymentNote = String(paymentData.paymentNote || "").trim().slice(0, 500);
-  if (price > 0 && !paymentReference) {
-    return { error: "Submit your payment reference to complete this booking request." };
+  if (price > 0 && !paymentConfirmed) {
+    return { error: "Confirm that you have completed payment before reserving this slot." };
   }
   const rosterRef = tripRef.collection("roster").doc(userId);
   const now = new Date();
@@ -731,6 +733,9 @@ async function joinTrip(tripId, userId, userData = {}, paymentData = {}) {
     currency: String(tripData.currency || "INR"),
     paymentReference: paymentReference || "",
     paymentNote,
+    paymentMethod: price > 0 ? (paymentMethod || "upi_qr") : "",
+    paymentClaimed: price > 0,
+    paymentClaimedAt: price > 0 ? now : null,
     paymentSubmittedAt: price > 0 ? now : null,
     paymentStatus: price > 0 ? "submitted" : "not_required",
     requestedAt: now,
@@ -829,8 +834,13 @@ async function approveTripUser(tripId, userId, approvedBy = DEMO_ADMIN_EMAIL) {
 
   const tripData = tripDoc.data();
   const rosterData = rDoc.data();
-  if (Number(tripData.price) > 0 && rosterData.paymentStatus !== "verified") {
-    return { error: "Verify the submitted payment before approving this booking." };
+  if (
+    Number(tripData.price) > 0 &&
+    rosterData.paymentStatus !== "verified" &&
+    rosterData.paymentClaimed !== true &&
+    !rosterData.paymentReference
+  ) {
+    return { error: "The trekker has not marked payment as complete." };
   }
   const baseCount = Number(tripData.baseRosterCount) || 0;
   const maxRoster = Number(tripData.maxRoster) || 25;
@@ -862,6 +872,13 @@ async function approveTripUser(tripId, userId, approvedBy = DEMO_ADMIN_EMAIL) {
     status: "approved",
     approvedAt: now,
     approvedBy: approvedBy || DEMO_ADMIN_EMAIL,
+    ...(Number(tripData.price) > 0
+      ? {
+          paymentStatus: "verified",
+          paymentVerifiedAt: now,
+          paymentVerifiedBy: approvedBy || DEMO_ADMIN_EMAIL,
+        }
+      : {}),
   });
 
   const userRef = db.collection("users").doc(userId);
@@ -894,8 +911,8 @@ async function verifyTripPayment(tripId, userId, verifiedBy = DEMO_ADMIN_EMAIL) 
   const rosterDoc = await rosterRef.get();
   if (!rosterDoc.exists) return { error: "Booking not found." };
   const roster = rosterDoc.data();
-  if (roster.status !== "payment_submitted" || !roster.paymentReference) {
-    return { error: "This booking has no payment submission awaiting verification." };
+  if (roster.status !== "payment_submitted" || (!roster.paymentReference && roster.paymentClaimed !== true)) {
+    return { error: "This booking has no payment confirmation awaiting verification." };
   }
   const now = new Date();
   await rosterRef.update({
