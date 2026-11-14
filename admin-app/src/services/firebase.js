@@ -26,7 +26,6 @@ import {
   get,
   child,
 } from "firebase/database";
-import { getStorage, ref as storageRef, uploadBytes } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -47,7 +46,24 @@ if (import.meta.env.VITE_USE_FIRESTORE_EMULATOR === "true") {
   }
 }
 export const rtdb = getDatabase(app);
-export const storage = getStorage(app);
+export const uploadTripCoverPhoto = async (file) => {
+  if (!file) return { success: true, url: "" };
+  if (!file.type?.startsWith("image/")) return { success: false, error: "Choose an image file." };
+  if (file.size > 8 * 1024 * 1024) return { success: false, error: "Cover photos must be 8 MB or smaller." };
+  try {
+    const response = await api("/admin/trip-covers", {
+      method: "POST",
+      headers: { "Content-Type": file.type },
+      body: file,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return { success: false, error: data.error || `Cover upload failed (${response.status}).` };
+    return { success: true, url: data.imageUrl };
+  } catch (error) {
+    console.error("Trip cover upload failed:", error);
+    return { success: false, error: error?.message || "Could not upload this cover photo." };
+  }
+};
 
 export const AUTH_API_URL = import.meta.env.VITE_AUTH_API_URL || "http://localhost:5050/api";
 
@@ -103,6 +119,18 @@ const api = (path, options = {}) =>
     ...options,
     headers: authHeaders(options.headers || {}),
   });
+
+export const deleteRegisteredUser = async (userId) => {
+  if (!userId) return { success: false, error: "User ID is missing." };
+  try {
+    const response = await api(`/admin/users/${encodeURIComponent(userId)}`, { method: "DELETE" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return { success: false, error: data.error || `Delete failed (${response.status}).` };
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error?.message || "Unable to delete this profile." };
+  }
+};
 
 // ===== AUTHENTICATION =====
 export const adminLogin = async (email, password) => {
@@ -450,6 +478,10 @@ export const createTrip = async (nameOrData, dateArg, locationArg) => {
     rosterCount: (isObj && Number(nameOrData.rosterCount)) || 0,
     maxRoster: (isObj && Number(nameOrData.maxRoster)) || 25,
     instructions: (isObj && nameOrData.instructions) || "",
+    price: Math.max(0, Number(isObj && nameOrData.price) || 0),
+    currency: String((isObj && nameOrData.currency) || "INR").toUpperCase(),
+    paymentInstructions: (isObj && nameOrData.paymentInstructions) || "",
+    coverImageUrl: (isObj && nameOrData.coverImageUrl) || "",
     gearList: (isObj && nameOrData.gearList) || [],
     notes: (isObj && nameOrData.notes) || "",
     admins: (isObj && nameOrData.admins) || [],
@@ -655,7 +687,7 @@ export const fetchPendingTripRequests = async () => {
     for (const tDoc of tripsSnap.docs) {
       const tripData = tDoc.data();
       const rosterSnap = await getDocs(
-        query(collection(db, "trips", tDoc.id, "roster"), where("status", "==", "pending_approval"))
+        query(collection(db, "trips", tDoc.id, "roster"), where("status", "in", ["pending_approval", "payment_submitted", "payment_verified"]))
       );
       for (const rDoc of rosterSnap.docs) {
         pending.push({
@@ -715,6 +747,17 @@ export const approveTrekker = async (tripId, userId, approvedBy = DEMO_ADMIN_EMA
   } catch (err) {
     console.warn("Direct Firestore approve error:", err);
     return { success: false, error: err.message };
+  }
+};
+
+export const verifyTrekkerPayment = async (tripId, userId) => {
+  try {
+    const res = await api(`/admin/trips/${encodeURIComponent(tripId)}/verify-payment/${encodeURIComponent(userId)}`, { method: "POST" });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) return { success: true };
+    return { success: false, error: data.error || `Payment verification failed (${res.status}).` };
+  } catch (error) {
+    return { success: false, error: error?.message || "Payment verification unavailable." };
   }
 };
 

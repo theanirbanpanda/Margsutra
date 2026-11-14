@@ -8,6 +8,7 @@ import {
   rejectAdmin,
   fetchPendingTripRequests,
   approveTrekker,
+  verifyTrekkerPayment,
   removeTrekker,
   fetchTripRoster,
   createSafetyProtocol,
@@ -33,6 +34,8 @@ import {
   setAdminToken,
   authHeaders,
   updateAdminProfile,
+  deleteRegisteredUser,
+  uploadTripCoverPhoto,
 } from "./services/firebase";
 import {
   calculateDistanceMeters,
@@ -40,6 +43,7 @@ import {
   RAJMACHI_ADMIN,
   RAJMACHI_MEMBERS,
 } from "./services/expeditionTeam";
+import { getTripCoverAlt, getTripCoverImage } from "../../shared/tripCoverImages";
 import { getDemoTrackingData, toFreshPosition } from "./services/trackingDemoData";
 import { DEMO_EXPEDITION_GUIDE, DEMO_EXPEDITION_MEMBERS, DEMO_USER_PROFILE, getDemoMemberProfile, withDemoProfileDefaults } from "../../shared/demoExpeditionRoster";
 
@@ -299,10 +303,27 @@ const TH = ({ children, style }) => <th style={{ fontSize: 11, color: C.muted, t
 const TD = ({ children, style }) => <td style={{ fontSize: 13, padding: "11px 12px", color: C.text, borderBottom: `1px solid ${C.border}`, verticalAlign: "middle", ...style }}>{children}</td>;
 const Avatar = ({ initials, bg, text, size = 32 }) => <div style={{ width: size, height: size, borderRadius: "50%", background: bg || "rgba(59,130,246,0.18)", color: text || C.accent, fontSize: size * 0.35, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{initials}</div>;
 const Toggle = ({ on, onChange }) => <div onClick={onChange} style={{ width: 36, height: 20, borderRadius: 10, background: on ? C.accent : "rgba(255,255,255,0.12)", position: "relative", cursor: "pointer", transition: "background 0.25s", flexShrink: 0 }}><div style={{ position: "absolute", top: 3, left: on ? 19 : 3, width: 14, height: 14, borderRadius: "50%", background: "#fff", transition: "left 0.25s" }} /></div>;
-const Input = ({ value, onChange, placeholder, type = "text", style: sx }) => <input type={type} value={value} onChange={onChange} placeholder={placeholder} style={{ height: 36, width: "100%", background: "rgba(255,255,255,0.04)", border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 13, padding: "0 12px", fontFamily: "inherit", boxSizing: "border-box", outline: "none", ...sx }} />;
-const Btn = ({ children, onClick, variant = "default", style: sx }) => {
+const Input = ({ value, onChange, placeholder, type = "text", style: sx, required = false, min, max }) => <input type={type} value={value} onChange={onChange} placeholder={placeholder} required={required} min={min} max={max} style={{ height: 36, width: "100%", background: "rgba(255,255,255,0.04)", border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 13, padding: "0 12px", fontFamily: "inherit", boxSizing: "border-box", outline: "none", ...sx }} />;
+const TripCoverPhotoField = ({ trip, preview, onChange }) => {
+  const image = preview || getTripCoverImage(trip);
+  return (
+    <div>
+      <div style={{ height: 150, position: "relative", overflow: "hidden", borderRadius: 10, border: `1px solid ${C.border}`, background: "linear-gradient(135deg,#243b53,#0b1422)", marginBottom: 8 }}>
+        {image ? (
+          <img src={image} alt={getTripCoverAlt(trip)} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} onError={(event) => { event.currentTarget.style.display = "none"; }} />
+        ) : (
+          <div style={{ height: "100%", display: "grid", placeItems: "center", color: C.muted, fontSize: 12 }}>Trip cover preview will appear here</div>
+        )}
+        <span style={{ position: "absolute", left: 9, bottom: 8, padding: "4px 7px", borderRadius: 6, background: "rgba(7,13,23,.8)", color: "#fff", fontSize: 9, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase" }}>User listing preview</span>
+      </div>
+      <input type="file" accept="image/jpeg,image/png,image/webp,image/avif" onChange={(event) => onChange(event.target.files?.[0] || null)} style={{ width: "100%", color: C.muted, fontSize: 11 }} />
+      <div style={{ marginTop: 5, color: C.muted2, fontSize: 10 }}>JPG, PNG, WebP or AVIF · max 8 MB. This photo appears on the trek card in the user app.</div>
+    </div>
+  );
+};
+const Btn = ({ children, onClick, variant = "default", style: sx, disabled = false, type = "button" }) => {
   const v = { primary: { background: C.accent, color: "#fff", border: "none" }, danger: { background: C.red, color: "#fff", border: "none" }, success: { background: "rgba(34,197,94,0.15)", color: C.green, border: `1px solid rgba(34,197,94,0.3)` }, default: { background: "rgba(255,255,255,0.05)", color: C.text, border: `1px solid ${C.border}` }, ghost: { background: "transparent", color: C.muted, border: "none" } };
-  return <button onClick={onClick} style={{ padding: "7px 16px", borderRadius: 8, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 6, ...v[variant], ...sx }}>{children}</button>;
+  return <button type={type} disabled={disabled} onClick={onClick} style={{ padding: "7px 16px", borderRadius: 8, fontSize: 12, fontWeight: 500, cursor: disabled ? "not-allowed" : "pointer", fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 6, opacity: disabled ? 0.55 : 1, ...v[variant], ...sx }}>{children}</button>;
 };
 const PageHeader = ({ title, sub, right }) => (
   <div className="page-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22 }}>
@@ -1968,6 +1989,7 @@ const PageAdminApprovals = ({
   onApproveTrekker,
   onDenyTrekker,
   onReviewTrekkers,
+  onRefreshTrekkers,
 }) => {
   const [actingId, setActingId] = useState(null);
   const [actingTrekker, setActingTrekker] = useState(null);
@@ -1988,6 +2010,17 @@ const PageAdminApprovals = ({
       setToast({ type: "error", text: `Failed to ${approve ? "approve" : "decline"}: ${res?.error || "Unknown error"}` });
     }
     setTimeout(() => setToast(null), 4000);
+  };
+
+  const handleVerifyPayment = async (applicant) => {
+    const applicantId = applicant.userId || applicant.id;
+    const key = `${applicant.tripId}-${applicantId}`;
+    setActingTrekker(key);
+    const res = await verifyTrekkerPayment(applicant.tripId, applicantId);
+    setActingTrekker(null);
+    setToast({ type: res?.success ? "success" : "error", text: res?.success ? `Payment verified for ${applicant.name || "trekker"}. You can now approve the booking.` : `Verification failed: ${res?.error || "Unknown error"}` });
+    if (res?.success) onRefreshTrekkers?.();
+    setTimeout(() => setToast(null), 5000);
   };
 
   const handleApprove = async (admin) => {
@@ -2056,12 +2089,12 @@ const PageAdminApprovals = ({
         </div>
       )}
 
-      {/* Trekker join requests — approved right here */}
+      {/* Trip payment verification and booking approval */}
       <div style={{ marginBottom: 28 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: "#fbbf24", display: "flex", alignItems: "center", gap: 8 }}>
             <span>🧭</span>
-            <span>Pending trekker join requests</span>
+            <span>Trip bookings · payment verification & approval</span>
             <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 12, background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.3)", color: "#fcd34d", fontWeight: 700 }}>
               {pendingTrekkers.length}
             </span>
@@ -2094,21 +2127,31 @@ const PageAdminApprovals = ({
                       <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{applicant.name || "Trekker"}</div>
                       <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{applicant.tripName || "Expedition"}</div>
                     </div>
-                    <Pill color="amber">pending</Pill>
+              <Pill color={applicant.paymentStatus === "verified" ? "green" : "amber"}>
+                {applicant.paymentStatus === "verified" ? "payment verified" : applicant.paymentStatus === "submitted" ? "payment submitted" : "review"}
+              </Pill>
                   </div>
                   <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.65, marginBottom: 10 }}>
                     <div>📞 {applicant.phone || "No phone"} · 🩸 {applicant.blood || "B+"}</div>
                     <div>🩺 {applicant.medical || "No medical notes"}</div>
                     <div>🆘 {applicant.ec1Name || "Emergency contact"} ({applicant.ec1Rel || "Kin"}) · {applicant.ec1Ph || "—"}</div>
+                    {applicant.paymentReference && <div style={{ marginTop: 5, color: "#fcd34d" }}>Payment ref: <strong>{applicant.paymentReference}</strong></div>}
+                    {applicant.paymentNote && <div>Payment note: {applicant.paymentNote}</div>}
+                    {applicant.bookingPrice > 0 && <div>Fee: {applicant.currency || "INR"} {Number(applicant.bookingPrice).toLocaleString()}</div>}
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
+                    {applicant.paymentStatus === "submitted" && (
+                      <button type="button" disabled={isActing} onClick={() => handleVerifyPayment(applicant)} style={{ flex: 1, padding: "7px 10px", borderRadius: 7, border: "1px solid rgba(59,130,246,.35)", background: "rgba(59,130,246,.14)", color: "#93c5fd", fontSize: 11.5, fontWeight: 700, cursor: isActing ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
+                        {isActing ? "…" : "Verify payment"}
+                      </button>
+                    )}
                     <button
                       type="button"
-                      disabled={isActing}
+                      disabled={isActing || (applicant.bookingPrice > 0 && applicant.paymentStatus !== "verified")}
                       onClick={() => handleTrekkerDecision(applicant, true)}
-                      style={{ flex: 1, padding: "7px 10px", borderRadius: 7, border: "1px solid rgba(34,197,94,0.35)", background: "rgba(34,197,94,0.14)", color: "#86efac", fontSize: 11.5, fontWeight: 700, cursor: isActing ? "not-allowed" : "pointer", fontFamily: "inherit" }}
+                      style={{ flex: 1, padding: "7px 10px", borderRadius: 7, border: "1px solid rgba(34,197,94,0.35)", background: "rgba(34,197,94,0.14)", color: "#86efac", fontSize: 11.5, fontWeight: 700, cursor: isActing || (applicant.bookingPrice > 0 && applicant.paymentStatus !== "verified") ? "not-allowed" : "pointer", fontFamily: "inherit" }}
                     >
-                      {isActing ? "…" : "Approve"}
+                      {isActing ? "…" : applicant.bookingPrice > 0 && applicant.paymentStatus !== "verified" ? "Verify payment first" : "Approve booking"}
                     </button>
                     <button
                       type="button"
@@ -2737,6 +2780,8 @@ const PageTripRosters = ({
   const [geofenceZone, setGeofenceZone] = useState("");
   const [savingGeofence, setSavingGeofence] = useState(false);
   const [geofenceToast, setGeofenceToast] = useState("");
+  const [newCoverPreview, setNewCoverPreview] = useState("");
+  const [detailsCoverPreview, setDetailsCoverPreview] = useState("");
   const isDemoAdmin = String(currentAdmin?.email || "").toLowerCase() === DEMO_ADMIN_EMAIL;
 
   // Create / delete
@@ -2765,8 +2810,13 @@ const PageTripRosters = ({
     baseLocation: "",
     maxRoster: 12,
     instructions: "",
+    price: 0,
+    currency: "INR",
+    paymentInstructions: "",
     gearList: "",
     notes: "",
+    coverImageUrl: "",
+    coverPhotoFile: null,
     adminInCharge: currentAdmin?.id || admins[0]?.id || "",
     extraAdmins: [],
   });
@@ -2799,6 +2849,19 @@ const PageTripRosters = ({
     setToastKind(kind);
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 5000);
+  };
+
+  const setCoverPhotoFile = (file, formType) => {
+    const setter = formType === "new" ? setNewCoverPreview : setDetailsCoverPreview;
+    setter((previous) => {
+      if (previous.startsWith("blob:")) URL.revokeObjectURL(previous);
+      return file ? URL.createObjectURL(file) : "";
+    });
+    if (formType === "new") {
+      setNewExpForm((form) => ({ ...form, coverPhotoFile: file || null }));
+    } else {
+      setDetailsForm((form) => ({ ...form, coverPhotoFile: file || null }));
+    }
   };
 
   const adminOptions = useMemo(() => {
@@ -2842,11 +2905,17 @@ const PageTripRosters = ({
       baseLocation: trip.baseLocation || "",
       maxRoster: trip.maxRoster || 12,
       instructions: trip.instructions || "",
+      price: Number(trip.price) || 0,
+      currency: trip.currency || "INR",
+      paymentInstructions: trip.paymentInstructions || "",
       gearList: Array.isArray(trip.gearList) ? trip.gearList.join("\n") : (trip.gearList || ""),
       notes: trip.notes || "",
+      coverImageUrl: trip.coverImageUrl || "",
+      coverPhotoFile: null,
       adminInCharge: trip.adminInCharge || trip.adminInChargeName || "",
       extraAdmins: (trip.admins || []).map((a) => a.id || a).filter((id) => id !== trip.adminInCharge),
     });
+    setCoverPhotoFile(null, "details");
     if (!rosters[tripId] && !loadingRoster[tripId]) loadRosterForTrip(tripId);
   };
 
@@ -2950,10 +3019,23 @@ const PageTripRosters = ({
       setFormError("Choose an admin in charge — an expedition can never have zero admins.");
       return;
     }
+    if (!Number.isFinite(Number(newExpForm.price)) || Number(newExpForm.price) <= 0) {
+      setFormError("Enter a trip price greater than ₹0 before publishing.");
+      return;
+    }
     setCreatingExpedition(true);
     try {
       const formattedDate = `${newExpForm.startDate} · ${newExpForm.startTime} – ${newExpForm.endDate} · ${newExpForm.endTime}`;
       const gear = newExpForm.gearList.split(/\r?\n|,/).map((g) => g.trim()).filter(Boolean);
+      let coverImageUrl = newExpForm.coverImageUrl || "";
+      if (newExpForm.coverPhotoFile) {
+        const uploadedCover = await uploadTripCoverPhoto(newExpForm.coverPhotoFile);
+        if (!uploadedCover.success) {
+          setFormError(uploadedCover.error || "Could not upload the cover photo.");
+          return;
+        }
+        coverImageUrl = uploadedCover.url;
+      }
       const res = await createTripRemote({
         name: newExpForm.name.trim(),
         date: formattedDate,
@@ -2969,8 +3051,12 @@ const PageTripRosters = ({
         difficulty: newExpForm.difficulty,
         maxRoster: Number(newExpForm.maxRoster) || 12,
         instructions: newExpForm.instructions,
+        price: Math.max(0, Number(newExpForm.price) || 0),
+        currency: newExpForm.currency || "INR",
+        paymentInstructions: newExpForm.paymentInstructions,
         gearList: gear,
         notes: newExpForm.notes,
+        coverImageUrl,
         admins: [newExpForm.adminInCharge, ...newExpForm.extraAdmins].filter(Boolean),
         adminInCharge: newExpForm.adminInCharge,
         createdBy: currentAdmin?.id || newExpForm.adminInCharge,
@@ -2985,6 +3071,7 @@ const PageTripRosters = ({
         if (res.trip) setTrips((p) => [res.trip, ...p.filter((t) => (t.id || t.tripId) !== res.trip.id)]);
         setShowCreateModal(false);
         setNewExpForm(emptyForm());
+        setCoverPhotoFile(null, "new");
         flash(`Expedition "${res.trip?.name || newExpForm.name}" created.`);
       } else {
         setFormError(res?.error || "Could not create the expedition. Please try again.");
@@ -3007,9 +3094,22 @@ const PageTripRosters = ({
       setFormError("An expedition must always have an admin in charge.");
       return;
     }
+    if (!Number.isFinite(Number(detailsForm.price)) || Number(detailsForm.price) <= 0) {
+      setFormError("A published trip must have a price greater than ₹0.");
+      return;
+    }
     setSavingDetails(true);
     const tripId = selectedTrip.id || selectedTrip.tripId;
     try {
+      let coverImageUrl = detailsForm.coverImageUrl || "";
+      if (detailsForm.coverPhotoFile) {
+        const uploadedCover = await uploadTripCoverPhoto(detailsForm.coverPhotoFile);
+        if (!uploadedCover.success) {
+          setFormError(uploadedCover.error || "Could not upload the cover photo.");
+          return;
+        }
+        coverImageUrl = uploadedCover.url;
+      }
       const res = await updateTripRemote(tripId, {
         name: detailsForm.name.trim(),
         startDate: detailsForm.startDate,
@@ -3025,13 +3125,22 @@ const PageTripRosters = ({
         baseLocation: detailsForm.baseLocation,
         maxRoster: Number(detailsForm.maxRoster) || 1,
         instructions: detailsForm.instructions,
+        price: Math.max(0, Number(detailsForm.price) || 0),
+        currency: detailsForm.currency || "INR",
+        paymentInstructions: detailsForm.paymentInstructions,
         gearList: detailsForm.gearList.split(/\r?\n|,/).map((g) => g.trim()).filter(Boolean),
         notes: detailsForm.notes,
+        coverImageUrl,
         admins: [detailsForm.adminInCharge, ...detailsForm.extraAdmins].filter(Boolean),
         adminInCharge: detailsForm.adminInCharge,
       });
       if (res?.success && res.trip) {
         setTrips((prev) => prev.map((t) => ((t.id || t.tripId) === tripId ? { ...t, ...res.trip } : t)));
+        setDetailsForm((form) => ({ ...form, coverImageUrl, coverPhotoFile: null }));
+        setDetailsCoverPreview((preview) => {
+          if (preview.startsWith("blob:")) URL.revokeObjectURL(preview);
+          return "";
+        });
         flash("Expedition details saved.");
       } else {
         setFormError(res?.error || "Could not save the expedition details.");
@@ -3133,7 +3242,7 @@ const PageTripRosters = ({
             <Btn variant="default" onClick={onRefresh} disabled={refreshing}>
               {refreshing ? "↻ Refreshing…" : "↻ Refresh"}
             </Btn>
-            <Btn variant="primary" onClick={() => { setFormError(""); setNewExpForm({ ...emptyForm(), adminInCharge: currentAdmin?.id || admins[0]?.id || "" }); setShowCreateModal(true); }}>
+            <Btn variant="primary" onClick={() => { setFormError(""); setCoverPhotoFile(null, "new"); setNewExpForm({ ...emptyForm(), adminInCharge: currentAdmin?.id || admins[0]?.id || "" }); setShowCreateModal(true); }}>
               + New expedition
             </Btn>
           </div>
@@ -3183,8 +3292,17 @@ const PageTripRosters = ({
                 const isInCharge = trip.adminInCharge === currentAdmin?.id;
                 const inChargeName = trip.adminInChargeName || (adminOptions.find((a) => a.id === trip.adminInCharge) || {}).name || trip.leader || "—";
                 const isManaged = !!trip.isManaged || trip.status === "in-field";
+                const coverImage = getTripCoverImage(trip);
                 return (
                   <Card key={tripId} style={{ display: "flex", flexDirection: "column", gap: 11, padding: "15px 16px" }}>
+                    <div style={{ position: "relative", height: 168, overflow: "hidden", margin: "-15px -16px 0", borderRadius: "14px 14px 0 0", background: "linear-gradient(135deg,#365d68,#0f172a)" }}>
+                      {coverImage && <img src={coverImage} alt={getTripCoverAlt(trip)} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} onError={(event) => { event.currentTarget.style.display = "none"; }} />}
+                      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(4,10,18,.02) 25%,rgba(4,10,18,.78) 100%)" }} />
+                      <div style={{ position: "absolute", left: 13, right: 13, bottom: 11, display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 8 }}>
+                        <div style={{ color: "#fff", fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".1em", textShadow: "0 1px 8px #000" }}>Western Ghats · {trip.duration || "Guided trek"}</div>
+                        <span style={{ padding: "5px 9px", borderRadius: 20, background: "rgba(8,15,26,.82)", color: "#fff", fontSize: 11, fontWeight: 800, border: "1px solid rgba(255,255,255,.25)" }}>{trip.currency || "INR"} {Number(trip.price || 0).toLocaleString()} <span style={{ fontWeight: 500, color: "#cbd5e1" }}>/ person</span></span>
+                      </div>
+                    </div>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                         <span style={{ width: 7, height: 7, borderRadius: "50%", background: isManaged ? "#22c55e" : "#3b82f6", flexShrink: 0 }} />
@@ -3211,6 +3329,9 @@ const PageTripRosters = ({
                       <div style={{ fontSize: 11.5, color: C.muted, marginTop: 4 }}>
                         📅 {trip.startDate}{trip.endDate ? ` – ${trip.endDate}` : ""}
                         {trip.location ? ` · 📍 ${trip.location}` : ""}
+                      </div>
+                      <div style={{ fontSize: 12, color: "#93c5fd", fontWeight: 750, marginTop: 6 }}>
+                        {trip.currency || "INR"} {Number(trip.price || 0).toLocaleString()} <span style={{ color: C.muted2, fontWeight: 500 }}>per trekker</span>
                       </div>
                       {trip.difficulty && <div style={{ fontSize: 11, color: C.muted2, marginTop: 2 }}>⛰ {trip.difficulty}</div>}
                     </div>
@@ -3439,6 +3560,24 @@ const PageTripRosters = ({
                   <TextArea rows={4} value={detailsForm.instructions} onChange={(e) => setDetailsForm((f) => ({ ...f, instructions: e.target.value }))} placeholder="Reporting time, ID checks, route rules…" />
                 </Field>
               </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+                <Field label="Booking price">
+                  <Input type="number" min="1" step="1" required value={detailsForm.price} onChange={(e) => setDetailsForm((f) => ({ ...f, price: e.target.value }))} placeholder="999" />
+                </Field>
+                <Field label="Currency (ISO code)">
+                  <Input maxLength={3} value={detailsForm.currency} onChange={(e) => setDetailsForm((f) => ({ ...f, currency: e.target.value.toUpperCase() }))} placeholder="INR" />
+                </Field>
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <Field label="External payment instructions" hint="Transfer details, payment deadline, or contact information. No payment gateway is used.">
+                  <TextArea rows={3} value={detailsForm.paymentInstructions} onChange={(e) => setDetailsForm((f) => ({ ...f, paymentInstructions: e.target.value }))} placeholder="UPI ID / bank details / how to contact the trip organizer…" />
+                </Field>
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <Field label="Trek cover photo">
+                  <TripCoverPhotoField trip={{ ...selectedTrip, ...detailsForm }} preview={detailsCoverPreview} onChange={(file) => setCoverPhotoFile(file, "details")} />
+                </Field>
+              </div>
               <div style={{ marginBottom: 12 }}>
                 <Field label="Things to carry" hint="One item per line.">
                   <TextArea rows={4} value={detailsForm.gearList} onChange={(e) => setDetailsForm((f) => ({ ...f, gearList: e.target.value }))} placeholder={"Trekking shoes\n2L water\nHeadlamp"} />
@@ -3514,7 +3653,7 @@ const PageTripRosters = ({
         <ModalShell
           title="New expedition"
           subtitle="Created trips appear instantly in the trekker app."
-          onClose={() => setShowCreateModal(false)}
+          onClose={() => { setCoverPhotoFile(null, "new"); setShowCreateModal(false); }}
         >
           <form onSubmit={handleCreateExpedition}>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10, marginBottom: 10 }}>
@@ -3566,6 +3705,24 @@ const PageTripRosters = ({
                 <TextArea rows={3} value={newExpForm.instructions} onChange={(e) => setNewExpForm((f) => ({ ...f, instructions: e.target.value }))} placeholder="Reporting time, ID checks, route rules…" />
               </Field>
             </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+              <Field label="Booking price">
+                <Input type="number" min="1" step="1" required value={newExpForm.price} onChange={(e) => setNewExpForm((f) => ({ ...f, price: e.target.value }))} placeholder="999" />
+              </Field>
+              <Field label="Currency (ISO code)">
+                <Input maxLength={3} value={newExpForm.currency} onChange={(e) => setNewExpForm((f) => ({ ...f, currency: e.target.value.toUpperCase() }))} placeholder="INR" />
+              </Field>
+            </div>
+            <div style={{ marginBottom: 10 }}>
+              <Field label="External payment instructions" hint="Transfer details, payment deadline, or contact information. No payment gateway is used.">
+                <TextArea rows={3} value={newExpForm.paymentInstructions} onChange={(e) => setNewExpForm((f) => ({ ...f, paymentInstructions: e.target.value }))} placeholder="UPI ID / bank details / how to contact the trip organizer…" />
+              </Field>
+            </div>
+            <div style={{ marginBottom: 10 }}>
+              <Field label="Trek cover photo">
+                <TripCoverPhotoField trip={newExpForm} preview={newCoverPreview} onChange={(file) => setCoverPhotoFile(file, "new")} />
+              </Field>
+            </div>
             <div style={{ marginBottom: 10 }}>
               <Field label="Things to carry" hint="One item per line.">
                 <TextArea rows={3} value={newExpForm.gearList} onChange={(e) => setNewExpForm((f) => ({ ...f, gearList: e.target.value }))} placeholder={"Trekking shoes\n2L water\nHeadlamp"} />
@@ -3580,7 +3737,7 @@ const PageTripRosters = ({
             {formError && <div style={{ marginBottom: 10, fontSize: 11.5, color: "#fca5a5" }}>{formError}</div>}
             <button
               type="submit"
-              disabled={creatingExpedition || !newExpForm.name.trim()}
+              disabled={creatingExpedition || !newExpForm.name.trim() || !Number(newExpForm.price)}
               style={{ width: "100%", padding: "10px 14px", borderRadius: 9, border: "none", background: "linear-gradient(135deg,#2563eb,#1d4ed8)", color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: creatingExpedition ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: creatingExpedition || !newExpForm.name.trim() ? 0.6 : 1 }}
             >
               {creatingExpedition ? "Creating…" : "Create expedition"}
@@ -3856,15 +4013,40 @@ const PageAdminProfile = ({ admin, onUpdate }) => {
 /* ════════════════════════════════════════════════
    PAGE: ALL USERS
 ════════════════════════════════════════════════ */
-const PageAllUsers = ({ users = [], navigate, includeDemoGroupMembers = false }) => {
+const PageAllUsers = ({ users = [], navigate, includeDemoGroupMembers = false, usersReady = false, registeredUserIds = [], currentAdminId, onUserDeleted }) => {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [selectedUser, setSelectedUser] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteStep, setDeleteStep] = useState(1);
+  const [deletePhrase, setDeletePhrase] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deletedKeys, setDeletedKeys] = useState([]);
+  const registeredIds = useMemo(() => new Set(registeredUserIds.map(String)), [registeredUserIds]);
+  const protectedDemoIds = useMemo(() => new Set([
+    "demo-admin",
+    "demo-user",
+    String(DEMO_EXPEDITION_GUIDE.id || ""),
+    String(DEMO_USER_PROFILE.id || ""),
+    ...DEMO_EXPEDITION_MEMBERS.map((member) => String(member.id || "")),
+  ].filter(Boolean)), []);
+  const isProtectedDemo = (user) => {
+    const email = String(user.email || "").trim().toLowerCase();
+    const id = String(user.id || user.uid || "");
+    return email === DEMO_ADMIN_EMAIL || email === String(DEMO_USER_PROFILE.email || "").toLowerCase() ||
+      protectedDemoIds.has(id) ||
+      DEMO_EXPEDITION_MEMBERS.some((member) => String(member.email || "").toLowerCase() === email);
+  };
 
   const allUsers = useMemo(() => {
     const registeredUsers = users && users.length > 0 ? users : USERS;
-    if (!includeDemoGroupMembers) return registeredUsers;
-    const combined = [...registeredUsers];
+    const hidden = new Set(deletedKeys);
+    const visibleRegistered = registeredUsers.filter((user) =>
+      !hidden.has(String(user.id || user.uid || "")) && !hidden.has(String(user.email || "").toLowerCase())
+    );
+    if (!includeDemoGroupMembers) return visibleRegistered;
+    const combined = [...visibleRegistered];
     const knownIds = new Set(combined.map((user) => String(user.id || user.uid || "")).filter(Boolean));
     const knownEmails = new Set(combined.map((user) => String(user.email || "").toLowerCase()).filter(Boolean));
     for (const member of DEMO_EXPEDITION_MEMBERS) {
@@ -3880,7 +4062,7 @@ const PageAllUsers = ({ users = [], navigate, includeDemoGroupMembers = false })
       knownEmails.add(String(member.email).toLowerCase());
     }
     return combined;
-  }, [users, includeDemoGroupMembers]);
+  }, [users, includeDemoGroupMembers, deletedKeys]);
   const filtered = allUsers.filter(u =>
     (filter === "all" || u.status === filter) &&
     ((u.name || "").toLowerCase().includes(search.toLowerCase()) ||
@@ -3888,6 +4070,37 @@ const PageAllUsers = ({ users = [], navigate, includeDemoGroupMembers = false })
       (u.city || "").toLowerCase().includes(search.toLowerCase()))
   );
   const statusColor = { active: "green", inactive: "gray", sos: "red", pending_approval: "amber" };
+  const beginDelete = (user) => {
+    setDeleteTarget(user);
+    setDeleteStep(1);
+    setDeletePhrase("");
+    setDeleteError("");
+  };
+  const closeDelete = (force = false) => {
+    if (deleting && !force) return;
+    setDeleteTarget(null);
+    setDeleteStep(1);
+    setDeletePhrase("");
+    setDeleteError("");
+  };
+  const confirmDelete = async () => {
+    if (!deleteTarget || deletePhrase.trim() !== "DELETE") return;
+    setDeleting(true);
+    setDeleteError("");
+    const userId = String(deleteTarget.id || deleteTarget.uid || "");
+    const result = await deleteRegisteredUser(userId);
+    if (!result.success) {
+      setDeleteError(result.error || "Could not delete this profile.");
+      setDeleting(false);
+      return;
+    }
+    const keys = [userId, String(deleteTarget.email || "").toLowerCase()].filter(Boolean);
+    setDeletedKeys((previous) => [...new Set([...previous, ...keys])]);
+    onUserDeleted?.(userId);
+    if (selectedUser && String(selectedUser.id || selectedUser.uid) === userId) setSelectedUser(null);
+    setDeleting(false);
+    closeDelete(true);
+  };
 
   return (
     <div>
@@ -3974,6 +4187,11 @@ const PageAllUsers = ({ users = [], navigate, includeDemoGroupMembers = false })
                     >
                       Profile
                     </Btn>
+                    {usersReady && registeredIds.has(String(u.id || u.uid || "")) && !isProtectedDemo(u) && String(u.id || u.uid) !== String(currentAdminId || "") && (
+                      <Btn variant="danger" style={{ fontSize: 10, padding: "4px 8px" }} onClick={() => beginDelete(u)}>
+                        Delete
+                      </Btn>
+                    )}
                   </div>
                 </TD>
               </tr>
@@ -4085,6 +4303,27 @@ const PageAllUsers = ({ users = [], navigate, includeDemoGroupMembers = false })
                   Locate on Live Radar →
                 </Btn>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {deleteTarget && (
+        <div role="presentation" onClick={closeDelete} style={{ position: "fixed", inset: 0, zIndex: 1200, background: "rgba(3,7,18,.84)", backdropFilter: "blur(5px)", display: "grid", placeItems: "center", padding: 16 }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="delete-user-title" onClick={(event) => event.stopPropagation()} style={{ width: "min(440px,100%)", borderRadius: 15, border: "1px solid rgba(239,68,68,.4)", background: "#0b1422", padding: 20, boxShadow: "0 24px 60px rgba(0,0,0,.6)" }}>
+            <div style={{ color: C.red, fontSize: 10, fontWeight: 800, letterSpacing: ".09em", textTransform: "uppercase" }}>Permanent account deletion · confirmation {deleteStep} of 2</div>
+            <h2 id="delete-user-title" style={{ color: C.text, fontSize: 17, margin: "8px 0" }}>{deleteStep === 1 ? "Delete this user profile?" : "Confirm permanent deletion"}</h2>
+            <p style={{ color: C.muted, fontSize: 12, lineHeight: 1.6, margin: "0 0 14px" }}>
+              {deleteStep === 1
+                ? <>This will permanently delete <strong style={{ color: C.text }}>{deleteTarget.name}</strong> ({deleteTarget.email}) and remove their membership from expedition rosters. This cannot be undone.</>
+                : <>To confirm deletion of <strong style={{ color: C.text }}>{deleteTarget.name}</strong>, type <strong style={{ color: C.text }}>DELETE</strong> below.</>}
+            </p>
+            {deleteStep === 2 && <input autoFocus value={deletePhrase} onChange={(event) => setDeletePhrase(event.target.value)} placeholder="Type DELETE" aria-label="Type DELETE to confirm" style={{ width: "100%", padding: "10px 12px", marginBottom: 12, borderRadius: 8, border: `1px solid ${C.border2}`, background: "rgba(255,255,255,.04)", color: C.text, outline: "none", fontSize: 13 }} />}
+            {deleteError && <div role="alert" style={{ color: "#fca5a5", fontSize: 11, marginBottom: 12 }}>{deleteError}</div>}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+              <Btn onClick={closeDelete} disabled={deleting}>Cancel</Btn>
+              {deleteStep === 1
+                ? <Btn variant="danger" onClick={() => setDeleteStep(2)}>Continue</Btn>
+                : <Btn variant="danger" disabled={deleting || deletePhrase.trim() !== "DELETE"} onClick={confirmDelete}>{deleting ? "Deleting…" : "Delete profile permanently"}</Btn>}
             </div>
           </div>
         </div>
@@ -6273,6 +6512,7 @@ export default function AdminPanel() {
   });
   const [page, setPage] = useState("dashboard");
   const [firestoreUsers, setFirestoreUsers] = useState(USERS);
+  const [firestoreUsersReady, setFirestoreUsersReady] = useState(false);
   const [firestoreSosEvents, setFirestoreSosEvents] = useState([]);
   const [sosFeedLoaded, setSosFeedLoaded] = useState(false);
   const [pendingAdmins, setPendingAdmins] = useState([]);
@@ -6663,7 +6903,8 @@ export default function AdminPanel() {
   useEffect(() => {
     // 1. Live Firestore real-time listener for users
     const unsubscribe = subscribeToUsers((usersList) => {
-      if (Array.isArray(usersList) && usersList.length > 0) {
+      if (Array.isArray(usersList)) {
+        setFirestoreUsersReady(true);
         setFirestoreUsers(usersList.map(u => ({
           ...u,
           name: u.name || u.displayName || "Unknown User",
@@ -6687,7 +6928,8 @@ export default function AdminPanel() {
         }
         if (!response.ok) return;
         const data = await response.json();
-        if (!cancelled && Array.isArray(data?.users) && data.users.length > 0) {
+        if (!cancelled && Array.isArray(data?.users)) {
+          setFirestoreUsersReady(true);
           setFirestoreUsers(data.users);
         }
       } catch {
@@ -6734,7 +6976,15 @@ export default function AdminPanel() {
   const pages = {
     dashboard: <PageDashboard navigate={navigate} users={displayUsers} assignedTrip={myTeam} admin={activeAdmin} />,
     "admin-profile": <PageAdminProfile admin={activeAdmin} onUpdate={setActiveAdmin} />,
-    "all-users": <PageAllUsers users={displayUsers} navigate={navigate} includeDemoGroupMembers={String(activeAdmin?.email || "").toLowerCase() === DEMO_ADMIN_EMAIL} />,
+    "all-users": <PageAllUsers
+      users={displayUsers}
+      navigate={navigate}
+      includeDemoGroupMembers={String(activeAdmin?.email || "").toLowerCase() === DEMO_ADMIN_EMAIL}
+      usersReady={firestoreUsersReady}
+      registeredUserIds={firestoreUsers.map((user) => user.id || user.uid).filter(Boolean)}
+      currentAdminId={activeAdmin?.id}
+      onUserDeleted={(userId) => setFirestoreUsers((current) => current.filter((user) => String(user.id || user.uid) !== String(userId)))}
+    />,
     "trip-rosters": <PageTripRosters
       defaultTab="expeditions"
       pendingTrekkers={pendingTrekkers}
@@ -6756,6 +7006,7 @@ export default function AdminPanel() {
       onApproveTrekker={handleApproveTrekker}
       onDenyTrekker={handleRemoveTrekker}
       onReviewTrekkers={() => setPage("trip-rosters")}
+      onRefreshTrekkers={loadPendingTrekkers}
     />,
     "device-tracking": <PageFieldHardware users={displayUsers} admin={activeAdmin} trip={myTeam} />,
     "weather-console": <PageMountainWeather trip={myTeam} />,

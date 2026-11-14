@@ -14,8 +14,10 @@ const {
   findUserByEmail,
   findUserById,
   createUser,
+  deleteRegisteredUser,
   listUsers,
   updateUser,
+  saveTripCoverPhoto,
   getAppThemeConfig,
   setAppThemeConfig,
   listTrips,
@@ -32,6 +34,7 @@ const {
   getTripRoster,
   listPendingTripRequests,
   approveTripUser,
+  verifyTripPayment,
   removeTripUser,
   getUserActiveTrip,
   createSOSEvent,
@@ -106,6 +109,21 @@ function requireSelf(req, res, next) {
   });
 }
 
+function requireAdmin(req, res, next) {
+  requireAuth(req, res, () => {
+    findUserById(req.userId)
+      .then((user) => {
+        if (!user || user.role !== "admin" || user.approved === false || user.status === "rejected") {
+          return res.status(403).json({ error: "Administrator access is required." });
+        }
+        next();
+      })
+      .catch((error) => {
+        console.error("Admin authorization lookup failed:", error?.message || error);
+        res.status(500).json({ error: "Unable to verify administrator access." });
+      });
+  });
+}
 const PORT = process.env.PORT || 5050;
 const CORS_ORIGIN = (process.env.CORS_ORIGIN || "http://localhost:5173,http://localhost:5174,http://localhost:5175")
   .split(",")
@@ -268,15 +286,13 @@ app.get("/api/trips/:tripId/roster", async (req, res) => {
   }
 });
 
-app.post("/api/trips/:tripId/join", optionalAuth, async (req, res) => {
+app.post("/api/trips/:tripId/join", requireAuth, async (req, res) => {
   pendingTripRequestsCache = { at: 0, data: null };
   try {
-    const userId = req.userId || req.body?.userId;
-    if (!userId) {
-      return res.status(401).json({ error: "Authentication or user identification required to join." });
-    }
-    const user = (await findUserById(userId)) || req.body || {};
-    const result = await joinTrip(req.params.tripId, userId, user);
+    const userId = req.userId;
+    const user = await findUserById(userId);
+    if (!user) return res.status(404).json({ error: "Registered user profile not found." });
+    const result = await joinTrip(req.params.tripId, userId, user, req.body || {});
     if (result && result.error) {
       return res.status(400).json({ error: result.error });
     }
@@ -899,6 +915,24 @@ app.post("/api/admin/reject-admin/:id", async (req, res) => {
 });
 
 // Persist per-user feature access toggles from the admin console.
+app.post(
+  "/api/admin/trip-covers",
+  requireAdmin,
+  express.raw({ type: ["image/jpeg", "image/png", "image/webp", "image/avif"], limit: "8mb" }),
+  async (req, res) => {
+    try {
+      const imageUrl = await saveTripCoverPhoto(req.body, req.headers["content-type"]);
+      res.status(201).json({ success: true, imageUrl });
+    } catch (error) {
+      if (error instanceof HttpError || typeof error?.status === "number") {
+        return res.status(error.status || 400).json({ error: error.message });
+      }
+      console.error("Trip cover upload error:", error);
+      res.status(500).json({ error: "Could not store the cover photo. Check Storage bucket configuration and permissions." });
+    }
+  }
+);
+
 app.post("/api/admin/users/:id/features", requireAuth, async (req, res) => {
   try {
     const { features } = req.body || {};
@@ -922,7 +956,7 @@ app.post("/api/admin/users/:id/features", requireAuth, async (req, res) => {
 // daily Firestore read quota.
 let pendingTripRequestsCache = { at: 0, data: null };
 
-app.get("/api/admin/pending-trip-requests", async (_req, res) => {
+app.get("/api/admin/pending-trip-requests", requireAdmin, async (_req, res) => {
   try {
     if (pendingTripRequestsCache.data && Date.now() - pendingTripRequestsCache.at < 30000) {
       return res.json({ success: true, pending: pendingTripRequestsCache.data, cached: true });
@@ -936,14 +970,24 @@ app.get("/api/admin/pending-trip-requests", async (_req, res) => {
   }
 });
 
-app.post("/api/admin/trips/:tripId/approve-user/:userId", optionalAuth, async (req, res) => {
+app.post("/api/admin/trips/:tripId/verify-payment/:userId", requireAdmin, async (req, res) => {
   pendingTripRequestsCache = { at: 0, data: null };
   try {
-    let approvedBy = req.body?.approvedBy;
-    if (!approvedBy && req.userId) {
-      const adminUser = await findUserById(req.userId);
-      approvedBy = adminUser?.email || DEMO_ADMIN_EMAIL;
-    }
+    const admin = await findUserById(req.userId);
+    const result = await verifyTripPayment(req.params.tripId, req.params.userId, admin?.email);
+    if (result?.error) return res.status(400).json({ error: result.error });
+    res.json(result);
+  } catch (error) {
+    console.error("Verify trip payment error:", error);
+    res.status(500).json({ error: "Failed to verify payment." });
+  }
+});
+
+app.post("/api/admin/trips/:tripId/approve-user/:userId", requireAdmin, async (req, res) => {
+  pendingTripRequestsCache = { at: 0, data: null };
+  try {
+    const adminUser = await findUserById(req.userId);
+    const approvedBy = adminUser?.email || DEMO_ADMIN_EMAIL;
     const result = await approveTripUser(req.params.tripId, req.params.userId, approvedBy || DEMO_ADMIN_EMAIL);
     if (result && result.error) {
       return res.status(400).json({ error: result.error });
@@ -955,7 +999,7 @@ app.post("/api/admin/trips/:tripId/approve-user/:userId", optionalAuth, async (r
   }
 });
 
-app.post("/api/admin/trips/:tripId/remove-user/:userId", optionalAuth, async (req, res) => {
+app.post("/api/admin/trips/:tripId/remove-user/:userId", requireAdmin, async (req, res) => {
   try {
     let removedBy = req.body?.removedBy;
     if (!removedBy && req.userId) {
@@ -1002,6 +1046,34 @@ app.get("/api/users", requireAuth, async (_req, res) => {
       roleTitle: a.roleTitle || "",
     }));
     return res.json({ users: fallback });
+  }
+});
+
+app.delete("/api/admin/users/:id", requireAdmin, async (req, res) => {
+  try {
+    const targetId = String(req.params.id || "");
+    if (!targetId) return res.status(400).json({ error: "User ID is required." });
+    if (targetId === req.userId) return res.status(400).json({ error: "You cannot delete your own administrator account here." });
+
+    const target = await findUserById(targetId);
+    if (!target) return res.status(404).json({ error: "User profile not found." });
+    const email = String(target.email || "").trim().toLowerCase();
+    if (email === DEMO_ADMIN_EMAIL || email === DEMO_USER_EMAIL) {
+      return res.status(403).json({ error: "Demo accounts are protected and cannot be deleted." });
+    }
+
+    await deleteRegisteredUser(targetId);
+    usersCache = { at: 0, data: null };
+    return res.json({ success: true, deletedUserId: targetId });
+  } catch (error) {
+    if (error?.code === "ACTIVE_SOS") {
+      return res.status(409).json({ error: error.message });
+    }
+    if (error?.code === "PROTECTED_DEMO") {
+      return res.status(403).json({ error: error.message });
+    }
+    console.error("Delete registered user error:", error);
+    return res.status(500).json({ error: error?.message || "Unable to delete this user profile." });
   }
 });
 

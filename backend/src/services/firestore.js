@@ -2,6 +2,8 @@ const path = require("path");
 const fs = require("fs");
 const { initializeApp, cert, getApps } = require("firebase-admin/app");
 const { getFirestore, Timestamp } = require("firebase-admin/firestore");
+const { getStorage } = require("firebase-admin/storage");
+const { randomUUID } = require("crypto");
 
 // Set FIRESTORE_EMULATOR_HOST to run against the local Firestore emulator
 // (no credentials or production quota needed). Otherwise use the service
@@ -41,6 +43,14 @@ const firebaseApp = getApps().length === 0
   : getApps()[0];
 
 const db = getFirestore(firebaseApp);
+if (usingEmulator && !process.env.STORAGE_EMULATOR_HOST) {
+  process.env.STORAGE_EMULATOR_HOST = "127.0.0.1:9199";
+}
+const storageBucketName =
+  process.env.FIREBASE_STORAGE_BUCKET ||
+  process.env.VITE_FIREBASE_STORAGE_BUCKET ||
+  (usingEmulator ? `${emulatorProjectId}.firebasestorage.app` : "") ||
+  (serviceAccount?.project_id ? `${serviceAccount.project_id}.firebasestorage.app` : "");
 
 if (usingEmulator) {
   console.log(`🔥 Firestore emulator mode → ${process.env.FIRESTORE_EMULATOR_HOST} (project ${emulatorProjectId})`);
@@ -239,9 +249,94 @@ async function updateUser(id, updates) {
     updatedAt: new Date(),
   };
 
+  if (updates.price !== undefined) {
+    const price = Number(updates.price);
+    if (!Number.isFinite(price) || price <= 0) throw new HttpError(400, "A trip must have a price greater than zero.");
+    dataToUpdate.price = price;
+  }
+  if (updates.currency !== undefined) {
+    const currency = String(updates.currency).trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(currency)) throw new HttpError(400, "Currency must be a three-letter ISO code.");
+    dataToUpdate.currency = currency;
+  }
+  if (updates.paymentInstructions !== undefined) {
+    dataToUpdate.paymentInstructions = String(updates.paymentInstructions).trim().slice(0, 4000);
+  }
+  if (updates.coverImageUrl !== undefined) {
+    dataToUpdate.coverImageUrl = String(updates.coverImageUrl).trim().slice(0, 2048);
+  }
+
   await docRef.set(dataToUpdate, { merge: true });
   const updatedDoc = await docRef.get();
   return { id: updatedDoc.id, ...updatedDoc.data() };
+}
+
+async function saveTripCoverPhoto(imageBuffer, contentType) {
+  if (!Buffer.isBuffer(imageBuffer) || imageBuffer.length === 0) {
+    throw new HttpError(400, "A cover photo is required.");
+  }
+  const extensions = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/avif": "avif",
+  };
+  const extension = extensions[String(contentType || "").toLowerCase()];
+  if (!extension) throw new HttpError(415, "Use a JPEG, PNG, WebP, or AVIF image.");
+  if (imageBuffer.length > 8 * 1024 * 1024) throw new HttpError(413, "Cover photos must be 8 MB or smaller.");
+  if (!storageBucketName) throw new Error("FIREBASE_STORAGE_BUCKET is not configured.");
+
+  const objectPath = `trip-covers/${randomUUID()}.${extension}`;
+  const downloadToken = randomUUID();
+  const bucket = getStorage(firebaseApp).bucket(storageBucketName);
+  const file = bucket.file(objectPath);
+  await file.save(imageBuffer, {
+    resumable: false,
+    metadata: {
+      contentType,
+      metadata: { firebaseStorageDownloadTokens: downloadToken },
+    },
+  });
+  return `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucket.name)}/o/${encodeURIComponent(objectPath)}?alt=media&token=${downloadToken}`;
+}
+
+async function deleteRegisteredUser(id) {
+  const userRef = db.collection("users").doc(String(id));
+  const userSnap = await userRef.get();
+  if (!userSnap.exists) return false;
+  const userEmail = String(userSnap.data()?.email || "").trim().toLowerCase();
+  if (userEmail === DEMO_ADMIN_EMAIL || userEmail === DEMO_USER_EMAIL) {
+    const error = new Error("Demo accounts are protected and cannot be deleted.");
+    error.code = "PROTECTED_DEMO";
+    throw error;
+  }
+
+  const sosSnap = await db.collection("sos_events").where("userId", "==", String(id)).get();
+  if (sosSnap.docs.some((event) => event.data()?.status === "active")) {
+    const error = new Error("Resolve this user's active SOS before deleting their profile.");
+    error.code = "ACTIVE_SOS";
+    throw error;
+  }
+
+  // Remove roster entries everywhere and keep each expedition's count in sync.
+  const tripsSnap = await db.collection("trips").get();
+  for (const tripDoc of tripsSnap.docs) {
+    const tripRef = tripDoc.ref;
+    const rosterSnap = await tripRef.collection("roster").get();
+    const memberDocs = rosterSnap.docs.filter((rosterDoc) => {
+      const rosterUserId = String(rosterDoc.data()?.userId || "");
+      return rosterDoc.id === String(id) || rosterUserId === String(id);
+    });
+    if (!memberDocs.length) continue;
+    for (const rosterDoc of memberDocs) await rosterDoc.ref.delete();
+    const remainingApproved = await tripRef.collection("roster").where("status", "==", "approved").get();
+    await tripRef.update({
+      rosterCount: (Number(tripDoc.data()?.baseRosterCount) || 0) + remainingApproved.size,
+    });
+  }
+
+  await userRef.delete();
+  return true;
 }
 
 async function getAppThemeConfig() {
@@ -374,6 +469,10 @@ async function createTrip(tripData = {}) {
   }
 
   const maxRoster = Number(tripData.maxRoster);
+  const price = Number(tripData.price) || 0;
+  const currency = String(tripData.currency || "INR").trim().toUpperCase();
+  if (!Number.isFinite(price) || price <= 0) throw new HttpError(400, "A trip must have a price greater than zero.");
+  if (!/^[A-Z]{3}$/.test(currency)) throw new HttpError(400, "Currency must be a three-letter ISO code.");
   const newTrip = {
     name: tripData.name || "Sahyadri Mountain Expedition",
     date: formattedDate,
@@ -392,6 +491,10 @@ async function createTrip(tripData = {}) {
     instructions: String(tripData.instructions || "").trim(),
     gearList: normalizeGearList(tripData.gearList || tripData.gear),
     notes: String(tripData.notes || "").trim(),
+    price,
+    currency,
+    paymentInstructions: String(tripData.paymentInstructions || "").trim().slice(0, 4000),
+    coverImageUrl: String(tripData.coverImageUrl || "").trim().slice(0, 2048),
     code,
     isManaged: !!tripData.isManaged,
     status: tripData.status || (tripData.isManaged ? "in-field" : "upcoming"),
@@ -569,7 +672,7 @@ async function updateTrip(tripId, updates = {}) {
   return { id: updatedDoc.id, ...updatedDoc.data() };
 }
 
-async function joinTrip(tripId, userId, userData = {}) {
+async function joinTrip(tripId, userId, userData = {}, paymentData = {}) {
   const tripRef = db.collection("trips").doc(tripId);
   const tripDoc = await tripRef.get();
   if (!tripDoc.exists) return { error: "Expedition not found." };
@@ -586,14 +689,21 @@ async function joinTrip(tripId, userId, userData = {}) {
   }
 
   const tripData = tripDoc.data();
+  const price = Math.max(0, Number(tripData.price) || 0);
+  const paymentReference = String(paymentData.paymentReference || "").trim().slice(0, 120);
+  const paymentNote = String(paymentData.paymentNote || "").trim().slice(0, 500);
+  if (price > 0 && !paymentReference) {
+    return { error: "Submit your payment reference to complete this booking request." };
+  }
   const rosterRef = tripRef.collection("roster").doc(userId);
   const now = new Date();
   const baseCount = Number(tripData.baseRosterCount) || 0;
   const maxRoster = Number(tripData.maxRoster) || 25;
 
   // Capacity check (base roster counts mocked/demo members for demo trips).
-  const existingApproved = await tripRef.collection("roster").where("status", "==", "approved").get();
-  if (baseCount + existingApproved.size >= maxRoster) {
+  const existingBookings = await tripRef.collection("roster")
+    .where("status", "in", ["pending_approval", "payment_submitted", "payment_verified", "approved"]).get();
+  if (baseCount + existingBookings.size >= maxRoster) {
     return { error: "This expedition is full — all slots have been taken." };
   }
 
@@ -616,7 +726,13 @@ async function joinTrip(tripId, userId, userData = {}) {
     ec1Name: userData.ec1Name || existingUser.ec1Name || "",
     ec1Rel: userData.ec1Rel || existingUser.ec1Rel || "Family",
     ec1Ph: userData.ec1Ph || existingUser.ec1Ph || "",
-    status: "pending_approval",
+    status: price > 0 ? "payment_submitted" : "pending_approval",
+    bookingPrice: price,
+    currency: String(tripData.currency || "INR"),
+    paymentReference: paymentReference || "",
+    paymentNote,
+    paymentSubmittedAt: price > 0 ? now : null,
+    paymentStatus: price > 0 ? "submitted" : "not_required",
     requestedAt: now,
     approvedAt: null,
     approvedBy: "",
@@ -629,7 +745,7 @@ async function joinTrip(tripId, userId, userData = {}) {
     activeTripId: tripId,
     activeTripCode: tripData.code || "",
     activeTripName: tripData.name || "Expedition",
-    tripStatus: "pending_approval",
+    tripStatus: price > 0 ? "payment_submitted" : "pending_approval",
     tripRequestedAt: now,
     tripApprovedAt: null,
     updatedAt: now,
@@ -642,8 +758,8 @@ async function joinTrip(tripId, userId, userData = {}) {
 
   return {
     success: true,
-    status: "pending_approval",
-    trip: { id: tripDoc.id, ...tripData, rosterCount: baseCount + existingApproved.size },
+    status: rosterEntry.status,
+    trip: { id: tripDoc.id, ...tripData, rosterCount: baseCount + existingBookings.size },
     rosterEntry,
   };
 }
@@ -687,7 +803,8 @@ async function listPendingTripRequests() {
   const pending = [];
   for (const tDoc of tripsSnap.docs) {
     const tripData = tDoc.data();
-    const rosterSnap = await tDoc.ref.collection("roster").where("status", "==", "pending_approval").get();
+      const rosterSnap = await tDoc.ref.collection("roster")
+        .where("status", "in", ["pending_approval", "payment_submitted", "payment_verified"]).get();
     for (const rDoc of rosterSnap.docs) {
       pending.push({
         tripId: tDoc.id,
@@ -711,6 +828,10 @@ async function approveTripUser(tripId, userId, approvedBy = DEMO_ADMIN_EMAIL) {
   if (!rDoc.exists) return { error: "User is not in the expedition roster." };
 
   const tripData = tripDoc.data();
+  const rosterData = rDoc.data();
+  if (Number(tripData.price) > 0 && rosterData.paymentStatus !== "verified") {
+    return { error: "Verify the submitted payment before approving this booking." };
+  }
   const baseCount = Number(tripData.baseRosterCount) || 0;
   const maxRoster = Number(tripData.maxRoster) || 25;
 
@@ -763,6 +884,27 @@ async function approveTripUser(tripId, userId, approvedBy = DEMO_ADMIN_EMAIL) {
     userId,
     rosterCount: baseCount + approvedSnap.size,
   };
+}
+
+async function verifyTripPayment(tripId, userId, verifiedBy = DEMO_ADMIN_EMAIL) {
+  const tripRef = db.collection("trips").doc(tripId);
+  const tripDoc = await tripRef.get();
+  if (!tripDoc.exists) return { error: "Expedition not found." };
+  const rosterRef = tripRef.collection("roster").doc(userId);
+  const rosterDoc = await rosterRef.get();
+  if (!rosterDoc.exists) return { error: "Booking not found." };
+  const roster = rosterDoc.data();
+  if (roster.status !== "payment_submitted" || !roster.paymentReference) {
+    return { error: "This booking has no payment submission awaiting verification." };
+  }
+  const now = new Date();
+  await rosterRef.update({
+    status: "payment_verified",
+    paymentStatus: "verified",
+    paymentVerifiedAt: now,
+    paymentVerifiedBy: verifiedBy || DEMO_ADMIN_EMAIL,
+  });
+  return { success: true, tripId, userId, paymentVerifiedAt: now };
 }
 
 async function removeTripUser(tripId, userId, removedBy = DEMO_ADMIN_EMAIL) {
@@ -1202,6 +1344,8 @@ async function seedEmulatorData() {
   if (harExists.empty) {
     await createTrip({
       name: "Harishchandragad Peak & Konkan Kada Trek",
+      price: 1199,
+      currency: "INR",
       code: "HAR26",
       startDate: "Dec 19, 2026",
       startTime: "05:30 AM",
@@ -1217,7 +1361,8 @@ async function seedEmulatorData() {
         "Report at Kalyan station by 05:00 AM. The Konkan Kada descent is exposed — follow the rope line " +
         "and the guide at all times. Carry 3L of water; there is no refill after Pachnai.",
       gearList: ["Trekking shoes with grip", "3L water minimum", "Headlamp", "Windproof layer", "Personal medication + ID"],
-      notes: "Confirmation and payment are handled by the Margsutra team over WhatsApp.",
+      notes: "",
+      paymentInstructions: "Pay the trip fee using the payment details shared by the Margsutra team. Enter your UTR / transaction reference when submitting your booking. Payment is verified manually.",
       maxRoster: 20,
       baseRosterCount: 0,
       createdBy: "demo-admin",
@@ -1228,12 +1373,23 @@ async function seedEmulatorData() {
       geofence: { lat: 19.3888, lon: 73.7761, radius: 3000, zoneName: "Harishchandragad Safe Corridor" },
     });
     console.log("🌱 Seeded secondary demo expedition HAR26");
+  } else {
+    const harDoc = harExists.docs[0];
+    if (!(Number(harDoc.data()?.price) > 0)) {
+      await harDoc.ref.set({ price: 1199, currency: "INR" }, { merge: true });
+    }
+    if (/confirmation and payment are handled.*whatsapp/i.test(String(harDoc.data()?.notes || ""))) {
+      await harDoc.ref.set({ notes: "", updatedAt: new Date() }, { merge: true });
+    }
   }
 }
 
 const DEMO_TRIP_CODE = "RAJM26";
 const DEMO_TRIP_FIELDS = {
   name: "Rajmachi Fort Night Trek",
+  price: 999,
+  currency: "INR",
+  paymentInstructions: "Pay the trip fee using the payment details shared by the Margsutra team. Enter your UTR / transaction reference when submitting your booking. Payment is verified manually.",
   startDate: "Dec 12, 2026",
   startTime: "06:30 AM",
   endDate: "Dec 13, 2026",
@@ -1256,7 +1412,7 @@ const DEMO_TRIP_FIELDS = {
     "Warm layer for the night",
     "Personal medication + ID",
   ],
-  notes: "1 slot left. Confirmation and payment are handled by the Margsutra team over WhatsApp.",
+  notes: "",
   maxRoster: 6,
   baseRosterCount: 5,
   demoRoster: true,
@@ -1285,6 +1441,9 @@ function demoTripsSnapshot() {
       id: "demo-rajm26",
       code: "RAJM26",
       name: DEMO_TRIP_FIELDS.name,
+      price: DEMO_TRIP_FIELDS.price,
+      currency: DEMO_TRIP_FIELDS.currency,
+      paymentInstructions: DEMO_TRIP_FIELDS.paymentInstructions,
       date: `${DEMO_TRIP_FIELDS.startDate} · ${DEMO_TRIP_FIELDS.startTime} – ${DEMO_TRIP_FIELDS.endDate} · ${DEMO_TRIP_FIELDS.endTime}`,
       startDate: DEMO_TRIP_FIELDS.startDate,
       startTime: DEMO_TRIP_FIELDS.startTime,
@@ -1313,6 +1472,8 @@ function demoTripsSnapshot() {
       id: "demo-har26",
       code: "HAR26",
       name: "Harishchandragad Peak & Konkan Kada Trek",
+      price: 1199,
+      currency: "INR",
       date: "Dec 19, 2026 · 05:30 AM – Dec 20, 2026 · 06:00 PM",
       startDate: "Dec 19, 2026",
       startTime: "05:30 AM",
@@ -1327,8 +1488,9 @@ function demoTripsSnapshot() {
       instructions:
         "Report at Kalyan station by 05:00 AM. The Konkan Kada descent is exposed — follow the rope line " +
         "and the guide at all times. Carry 3L of water; there is no refill after Pachnai.",
+      paymentInstructions: "Pay the trip fee using the payment details shared by the Margsutra team. Enter your UTR / transaction reference when submitting your booking. Payment is verified manually.",
       gearList: ["Trekking shoes with grip", "3L water minimum", "Headlamp", "Windproof layer", "Personal medication + ID"],
-      notes: "Confirmation and payment are handled by the Margsutra team over WhatsApp.",
+      notes: "",
       maxRoster: 20,
       baseRosterCount: 0,
       leader: "Demo Admin",
@@ -1354,7 +1516,15 @@ async function seedDemoTrip() {
     const doc = existing.docs[0];
     const data = doc.data();
     // Already upgraded (or created by this seed): never overwrite live edits.
-    if (data.demoRoster === true) return { created: false, id: doc.id };
+    if (data.demoRoster === true) {
+      const missingDemoPricing = {};
+      if (!(Number(data.price) > 0)) missingDemoPricing.price = DEMO_TRIP_FIELDS.price;
+      if (!data.currency) missingDemoPricing.currency = DEMO_TRIP_FIELDS.currency;
+      if (!data.paymentInstructions) missingDemoPricing.paymentInstructions = DEMO_TRIP_FIELDS.paymentInstructions;
+      if (/confirmation and payment are handled.*whatsapp/i.test(String(data.notes || ""))) missingDemoPricing.notes = "";
+      if (Object.keys(missingDemoPricing).length) await doc.ref.set({ ...missingDemoPricing, updatedAt: new Date() }, { merge: true });
+      return { created: false, id: doc.id, upgraded: Object.keys(missingDemoPricing).length > 0 };
+    }
 
     const approvedSnap = await doc.ref.collection("roster").where("status", "==", "approved").get();
     const admins = Array.isArray(data.admins) && data.admins.length ? data.admins : [adminProfile];
@@ -1370,8 +1540,11 @@ async function seedDemoTrip() {
       admins,
       createdBy: data.createdBy || adminProfile.id,
       instructions: data.instructions || DEMO_TRIP_FIELDS.instructions,
+      price: Number(data.price) > 0 ? Number(data.price) : DEMO_TRIP_FIELDS.price,
+      currency: data.currency || DEMO_TRIP_FIELDS.currency,
+      paymentInstructions: data.paymentInstructions || DEMO_TRIP_FIELDS.paymentInstructions,
       gearList: Array.isArray(data.gearList) && data.gearList.length ? data.gearList : DEMO_TRIP_FIELDS.gearList,
-      notes: data.notes || DEMO_TRIP_FIELDS.notes,
+      notes: /confirmation and payment are handled.*whatsapp/i.test(String(data.notes || "")) ? "" : (data.notes || DEMO_TRIP_FIELDS.notes),
       updatedAt: new Date(),
     }, { merge: true });
 
@@ -1412,6 +1585,8 @@ module.exports = {
   createUser,
   listUsers,
   updateUser,
+  saveTripCoverPhoto,
+  deleteRegisteredUser,
   getAppThemeConfig,
   setAppThemeConfig,
   listTrips,
@@ -1427,6 +1602,7 @@ module.exports = {
   getTripRoster,
   listPendingTripRequests,
   approveTripUser,
+  verifyTripPayment,
   removeTripUser,
   getUserActiveTrip,
   createSOSEvent,

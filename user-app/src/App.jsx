@@ -4,6 +4,7 @@ import FitnessGadgetManager from "./FitnessGadgetManager";
 import { useLocationTracking } from "./useLocationTracking";
 import { useLivePosition } from "./useLivePosition";
 import SOSConfirmModal from "./components/SOSConfirmModal";
+import { getTripCoverAlt, getTripCoverImage } from "../../shared/tripCoverImages";
 import {
   broadcastSOSBeacon,
   cancelSOSBeacon,
@@ -1816,7 +1817,7 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
   }
 
   // Awaiting Admin Approval state
-  if (joinedTrip && joinedTrip.tripStatus === "pending_approval") {
+  if (joinedTrip && ["pending_approval", "payment_submitted", "payment_verified"].includes(joinedTrip.tripStatus)) {
     return (
       <div>
         <PageHeader
@@ -1824,7 +1825,7 @@ const PageDashboard = ({ user, onNavigate, activeSOS, joinedTrip, onSOS }) => {
           sub={`Welcome back, ${user?.name || "Trekker"} · Duty-of-Care Portal`}
           right={
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <Pill color="amber">⏳ Application Pending Approval</Pill>
+              <Pill color="amber">{joinedTrip.tripStatus === "payment_submitted" ? "⏳ Payment verification pending" : joinedTrip.tripStatus === "payment_verified" ? "✓ Payment verified · approval pending" : "⏳ Application Pending Approval"}</Pill>
               <Btn variant="default" onClick={() => onNavigate("join-trip")}>
                 🧭 View Expeditions
               </Btn>
@@ -2318,9 +2319,14 @@ const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) 
   const [localErr, setLocalErr] = useState("");
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [openInfoId, setOpenInfoId] = useState(null);
+  const [bookingTrip, setBookingTrip] = useState(null);
+  const [paymentReference, setPaymentReference] = useState("");
+  const [paymentNote, setPaymentNote] = useState("");
 
   const joinedId = joinedTrip?.id || joinedTrip?.tripId;
-  const isPending = joinedTrip?.tripStatus === "pending_approval";
+  const paymentSubmitted = joinedTrip?.tripStatus === "payment_submitted";
+  const paymentVerified = joinedTrip?.tripStatus === "payment_verified";
+  const isPending = ["pending_approval", "payment_submitted", "payment_verified"].includes(joinedTrip?.tripStatus);
   const isApproved = !!joinedTrip && !isPending;
 
   const loadTrips = async () => {
@@ -2362,10 +2368,14 @@ const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) 
       return;
     }
     setSubmittingId(trip.id || trip.tripId);
-    const ok = await onJoin(trip);
+    const ok = await onJoin(trip, { paymentReference, paymentNote });
     setSubmittingId(null);
     if (!ok) {
       setLocalErr("Your join request could not be sent. Please try again.");
+    } else {
+      setBookingTrip(null);
+      setPaymentReference("");
+      setPaymentNote("");
     }
   };
 
@@ -2407,10 +2417,14 @@ const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) 
       <Btn
         variant="primary"
         disabled={submittingId === tripId}
-        onClick={() => handleJoinTrip(trip)}
+        onClick={() => {
+          setBookingTrip(trip);
+          setPaymentReference("");
+          setPaymentNote("");
+        }}
         style={{ padding: "8px 18px", fontSize: 12.5 }}
       >
-        {submittingId === tripId ? "Sending request…" : "Join expedition"}
+        {Number(trip.price) > 0 ? "Book this trek" : "Request a spot"}
       </Btn>
     );
   };
@@ -2424,7 +2438,7 @@ const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) 
 
   const TripInfo = ({ trip }) => {
     const gear = Array.isArray(trip.gearList) ? trip.gearList : [];
-    const hasInfo = trip.instructions || gear.length > 0 || trip.notes;
+    const hasInfo = trip.instructions || trip.paymentInstructions || gear.length > 0 || trip.notes;
     if (!hasInfo) return null;
     return (
       <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.border}`, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -2432,6 +2446,12 @@ const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) 
           <div>
             <div style={{ fontSize: 10, color: C.muted2, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700, marginBottom: 3 }}>Instructions</div>
             <div style={{ fontSize: 12, color: C.text, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{trip.instructions}</div>
+          </div>
+        )}
+        {trip.paymentInstructions && (
+          <div>
+            <div style={{ fontSize: 10, color: C.muted2, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700, marginBottom: 3 }}>Booking & payment</div>
+            <div style={{ fontSize: 12, color: C.text, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{trip.paymentInstructions}</div>
           </div>
         )}
         {gear.length > 0 && (
@@ -2457,11 +2477,11 @@ const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto" }}>
       <PageHeader
-        title="Expeditions & Trips"
-        sub="Trips are published by the Margsutra team. Send a join request and you'll be enrolled once an admin approves it."
+        title="Discover your next trek"
+        sub="Compare upcoming Maharashtra treks, check the details, then reserve your place and pay using the trip’s instructions."
         right={
           <Pill color={isApproved ? "green" : isPending ? "amber" : "gray"}>
-            {isApproved ? "● Enrolled" : isPending ? "⏳ Approval pending" : "Not enrolled"}
+            {isApproved ? "● Booking approved" : paymentSubmitted ? "⏳ Payment verification pending" : paymentVerified ? "✓ Payment verified · approval pending" : isPending ? "⏳ Approval pending" : "Not enrolled"}
           </Pill>
         }
       />
@@ -2493,7 +2513,7 @@ const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) 
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 14, flexWrap: "wrap", marginBottom: 14 }}>
               <div style={{ minWidth: 0 }}>
                 <Pill color={isPending ? "amber" : "green"}>
-                  {isPending ? "⏳ Request sent — awaiting admin approval" : "● Enrolled — admin approved"}
+                  {paymentSubmitted ? "⏳ Payment submitted — awaiting manual verification" : paymentVerified ? "✓ Payment verified — awaiting booking approval" : isPending ? "⏳ Request sent — awaiting admin approval" : "● Booking approved"}
                 </Pill>
                 <div style={{ fontSize: 21, fontWeight: 800, color: C.text, marginTop: 8, lineHeight: 1.3 }}>{joinedTrip.name}</div>
                 <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4 }}>
@@ -2537,15 +2557,13 @@ const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) 
             {isPending ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "12px 14px", borderRadius: 10, background: "rgba(0,0,0,0.22)", border: "1px solid rgba(245,158,11,0.22)" }}>
                 <div style={{ fontSize: 12, color: "#fcd34d", fontWeight: 600 }}>
-                  Your request is in the admin queue.
+                  {paymentSubmitted ? "Your payment reference is in the manual verification queue." : paymentVerified ? "Your payment is verified; the organizer is reviewing your booking." : "Your request is in the admin queue."}
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 11, color: C.muted }}>
-                  <span>1 · Request sent ✓</span>
-                  <span>2 · Admin review (now)</span>
-                  <span>3 · Enrolled</span>
+                  {joinedTrip.price > 0 ? <><span>1 · Payment submitted ✓</span><span>2 · Manual verification {paymentVerified ? "✓" : "(now)"}</span><span>3 · Booking approval</span><span>4 · Enrolled</span></> : <><span>1 · Request sent ✓</span><span>2 · Admin review (now)</span><span>3 · Enrolled</span></>}
                 </div>
                 <div style={{ fontSize: 11, color: C.muted2, lineHeight: 1.55 }}>
-                  This page updates automatically when an admin approves or declines. You can cancel the request any time.
+                  This page updates when the team verifies payment and approves the booking. You can cancel the request any time.
                 </div>
               </div>
             ) : (
@@ -2565,9 +2583,9 @@ const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) 
       {/* ── Available expeditions ───────────────────────────────────────── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
         <div>
-          <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>Available expeditions</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: C.text }}>Available treks</div>
           <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
-            {joinedTrip ? "Other trips stay visible but are locked until you leave your current one." : "Pick a trip and send a join request."}
+            {joinedTrip ? "Other treks stay visible but are locked until you leave your current booking." : "Compare per-person prices, trip details and payment instructions before booking."}
           </div>
         </div>
         <button onClick={loadTrips} style={{ background: "transparent", border: "none", color: C.accent, fontSize: 11.5, cursor: "pointer", fontFamily: "inherit" }}>
@@ -2581,6 +2599,33 @@ const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) 
         </Card>
       )}
 
+      {bookingTrip && (
+        <div role="presentation" onClick={() => setBookingTrip(null)} style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(3,7,18,.82)", display: "grid", placeItems: "center", padding: 16, overflowY: "auto" }}>
+          <form onSubmit={(event) => { event.preventDefault(); handleJoinTrip(bookingTrip); }} onClick={(event) => event.stopPropagation()} style={{ width: "min(560px,100%)", borderRadius: 16, border: `1px solid ${C.border2}`, background: "#0b1422", padding: 22, boxShadow: "0 24px 70px rgba(0,0,0,.55)" }}>
+            <div style={{ color: C.text, fontSize: 18, fontWeight: 800 }}>Book {bookingTrip.name}</div>
+            <div style={{ color: C.muted, fontSize: 12, marginTop: 5 }}>{bookingTrip.date || bookingTrip.startDate || "Date to be confirmed"} · {bookingTrip.location || ""}</div>
+            {Number(bookingTrip.price) > 0 ? (
+              <>
+                <div style={{ marginTop: 16, padding: 13, borderRadius: 10, background: "rgba(59,130,246,.08)", border: `1px solid ${C.border}` }}>
+                  <div style={{ fontSize: 11, color: "#93c5fd", fontWeight: 800, textTransform: "uppercase" }}>Trip fee · {bookingTrip.currency || "INR"} {Number(bookingTrip.price).toLocaleString()}</div>
+                  <div style={{ marginTop: 8, color: C.text, fontSize: 12, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{bookingTrip.paymentInstructions || "Contact the trip organizer for payment instructions before paying."}</div>
+                </div>
+                <label style={{ display: "block", color: C.muted, fontSize: 11, marginTop: 14 }}>Payment reference / UTR / transaction ID *
+                  <input required maxLength={120} value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} placeholder="Enter the reference from your payment receipt" style={{ display: "block", boxSizing: "border-box", width: "100%", padding: 10, marginTop: 6, borderRadius: 8, border: `1px solid ${C.border2}`, background: "rgba(255,255,255,.04)", color: C.text, fontSize: 12 }} />
+                </label>
+                <label style={{ display: "block", color: C.muted, fontSize: 11, marginTop: 11 }}>Additional payment details (optional)
+                  <textarea maxLength={500} value={paymentNote} onChange={(event) => setPaymentNote(event.target.value)} placeholder="Payment date, payer name, or other details" rows={3} style={{ display: "block", boxSizing: "border-box", width: "100%", padding: 10, marginTop: 6, borderRadius: 8, border: `1px solid ${C.border2}`, background: "rgba(255,255,255,.04)", color: C.text, fontSize: 12, resize: "vertical" }} />
+                </label>
+                <div style={{ color: C.muted2, fontSize: 10, lineHeight: 1.5, marginTop: 10 }}>Payment happens outside this website. Submitting a reference does not confirm receipt or reserve final approval; the team will verify it manually.</div>
+              </>
+            ) : <div style={{ color: C.muted, fontSize: 12, marginTop: 15 }}>No fee is configured for this trip. Submit a request and wait for the organizer’s review.</div>}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
+              <button type="button" onClick={() => setBookingTrip(null)} style={{ padding: "8px 13px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.muted, cursor: "pointer" }}>Cancel</button>
+              <Btn type="submit" variant="primary" disabled={submittingId === (bookingTrip.id || bookingTrip.tripId)}>{submittingId ? "Submitting…" : "Submit booking request"}</Btn>
+            </div>
+          </form>
+        </div>
+      )}
       {loading ? (
         <Card style={{ textAlign: "center", padding: 30, color: C.muted, fontSize: 12.5 }}>Loading expeditions…</Card>
       ) : availableTrips.length === 0 ? (
@@ -2599,7 +2644,10 @@ const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) 
             const filled = Number(trip.rosterCount || 0);
             const max = Number(trip.maxRoster) || 0;
             const full = max > 0 && filled >= max;
-            const hasInfo = trip.instructions || (Array.isArray(trip.gearList) && trip.gearList.length) || trip.notes;
+            const hasInfo = trip.instructions || trip.paymentInstructions || (Array.isArray(trip.gearList) && trip.gearList.length) || trip.notes;
+            const tripIdentity = `${trip.code || ""} ${trip.name || ""} ${trip.location || ""}`;
+            const isHarishchandragad = /harishchandra|konkan kada/i.test(tripIdentity);
+            const coverImage = getTripCoverImage(trip);
 
             return (
               <Card
@@ -2613,6 +2661,22 @@ const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) 
                   borderColor: mine ? (isPending ? "rgba(245,158,11,0.35)" : "rgba(34,197,94,0.3)") : C.border,
                 }}
               >
+                <div style={{ position: "relative", height: 168, overflow: "hidden", margin: "-15px -16px 2px", borderRadius: "14px 14px 0 0", background: isHarishchandragad ? "linear-gradient(135deg,#365d68,#0f172a)" : "linear-gradient(135deg,#41644a,#0f172a)" }}>
+                  {coverImage && (
+                    <img
+                      src={coverImage}
+                      alt={getTripCoverAlt(trip)}
+                      loading="lazy"
+                      style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                      onError={(event) => { event.currentTarget.style.display = "none"; }}
+                    />
+                  )}
+                  <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(4,10,18,.04) 25%,rgba(4,10,18,.78) 100%)" }} />
+                  <div style={{ position: "absolute", left: 13, right: 13, bottom: 11, display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 8 }}>
+                    <div style={{ color: "#fff", fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".1em", textShadow: "0 1px 8px #000" }}>Western Ghats · Guided trek</div>
+                    {Number(trip.price) > 0 && <span style={{ padding: "5px 9px", borderRadius: 20, background: "rgba(8,15,26,.82)", color: "#fff", fontSize: 11, fontWeight: 800, border: "1px solid rgba(255,255,255,.25)" }}>{trip.currency || "INR"} {Number(trip.price).toLocaleString()} <span style={{ fontWeight: 500, color: "#cbd5e1" }}>/ person</span></span>}
+                  </div>
+                </div>
                 <div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -2627,6 +2691,11 @@ const PageJoinTrip = ({ user, joinedTrip, onJoin, onLeave, onNavigate, error }) 
 
                   <div style={{ fontSize: 15.5, fontWeight: 700, color: C.text, lineHeight: 1.35 }}>{trip.name}</div>
                   <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>📍 {trip.location || "Location TBD"}</div>
+                  <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>Explore the route, pickup point, itinerary and kit list before booking.</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 9 }}>
+                    <span style={{ fontSize: 10, color: "#bfdbfe", padding: "4px 8px", borderRadius: 20, background: "rgba(59,130,246,.11)", border: `1px solid ${C.border}` }}>🗓 {trip.duration || "Guided departure"}</span>
+                    <span style={{ fontSize: 10, color: "#bbf7d0", padding: "4px 8px", borderRadius: 20, background: "rgba(34,197,94,.08)", border: "1px solid rgba(34,197,94,.2)" }}>✓ Manual booking confirmation</span>
+                  </div>
 
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 10, fontSize: 11.5, color: C.muted }}>
                     <div>📅 {trip.startDate || "Date TBD"}</div>
@@ -4730,7 +4799,7 @@ export default function UserDashboard() {
     }
   };
 
-  const handleJoinTrip = async (tripOrCode) => {
+  const handleJoinTrip = async (tripOrCode, paymentData = {}) => {
     setJoinError("");
     if (joinedTrip) {
       setJoinError("You are already enrolled in an expedition. Leave your current expedition before applying to another.");
@@ -4745,7 +4814,7 @@ export default function UserDashboard() {
 
       // 1. Try backend API lookup
       try {
-        const res = await fetch(`http://localhost:5050/api/trips/${code}`);
+        const res = await fetch(`${AUTH_API_URL}/trips/${code}`);
         if (res.ok) {
           const data = await res.json();
           if (data && data.code) targetTrip = data;
@@ -4777,12 +4846,12 @@ export default function UserDashboard() {
       return false;
     }
 
-    // Call backend join API to register join request in Firestore
+    // The authenticated backend owns booking creation and payment-reference state.
     const tripId = targetTrip.id || targetTrip.tripId;
     let joinOk = false;
     try {
       const token = localStorage.getItem(USER_TOKEN_KEY) || localStorage.getItem(LEGACY_USER_TOKEN_KEY);
-      const res = await fetch(`http://localhost:5050/api/trips/${tripId}/join`, {
+      const res = await fetch(`${AUTH_API_URL}/trips/${tripId}/join`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -4797,7 +4866,9 @@ export default function UserDashboard() {
           medical: user?.medical,
           ec1Name: user?.ec1Name,
           ec1Rel: user?.ec1Rel,
-          ec1Ph: user?.ec1Ph
+          ec1Ph: user?.ec1Ph,
+          paymentReference: paymentData.paymentReference || "",
+          paymentNote: paymentData.paymentNote || ""
         })
       });
 
@@ -4809,24 +4880,22 @@ export default function UserDashboard() {
         }
       } else {
         joinOk = true;
+        const result = await res.json().catch(() => ({}));
+        targetTrip = { ...targetTrip, tripStatus: result.status || (Number(targetTrip.price) > 0 ? "payment_submitted" : "pending_approval") };
       }
     } catch (e) {
       console.warn("Backend join API error:", e);
     }
 
-    // Direct Firestore update fallback if backend was unavailable
-    if (!joinOk && user?.id) {
-      const fbRes = await joinTripInFirestore(targetTrip, user);
-      if (!fbRes.success && fbRes.error) {
-        setJoinError(fbRes.error);
-        return false;
-      }
+    if (!joinOk) {
+      setJoinError("Booking could not be submitted securely. Check your connection and try again.");
+      return false;
     }
 
     // Save active trip (status is pending_approval until admin approves)
     const tripWithStatus = {
       ...targetTrip,
-      tripStatus: "pending_approval",
+      tripStatus: targetTrip.tripStatus || (Number(targetTrip.price) > 0 ? "payment_submitted" : "pending_approval"),
     };
     setJoinedTrip(tripWithStatus);
     localStorage.setItem("margsutra_joined_trip", JSON.stringify(tripWithStatus));
@@ -4898,8 +4967,8 @@ export default function UserDashboard() {
       <div>
         <PageHeader
           title="Fitness Wearables & Gadgets"
-          sub="Pair smartwatches, biometric sensors, and manage live telemetry broadcasts to expedition leaders"
-          right={<Pill color="amber">◐ Demo BLE · simulated</Pill>}
+          sub="Demo accounts show labeled scenario readings; other accounts display measurements only after a real Bluetooth connection."
+          right={<Pill color="blue">Bluetooth LE</Pill>}
         />
         <FitnessGadgetManager user={user} joinedTrip={joinedTrip} compact={false} onNavigate={navigate} />
       </div>
@@ -4972,7 +5041,7 @@ export default function UserDashboard() {
             <div style={{fontSize:10,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:2}}>
               {!joinedTrip ? (
                 <span style={{ color: C.amber }}>⚪ No Trip · Join →</span>
-              ) : joinedTrip.tripStatus === "pending_approval" ? (
+              ) : ["pending_approval", "payment_submitted", "payment_verified"].includes(joinedTrip.tripStatus) ? (
                 <span style={{ color: "#fbbf24" }}>⏳ {joinedTrip.code} · Pending</span>
               ) : (
                 <span style={{ color: "#86efac" }}>🟢 {joinedTrip.code} · Active</span>
@@ -5008,7 +5077,7 @@ export default function UserDashboard() {
                       !joinedTrip ? (
                         <div style={{marginLeft:"auto",background:"rgba(245,158,11,0.2)",border:"1px solid rgba(245,158,11,0.35)",
                           borderRadius:10,padding:"1px 6px",fontSize:9,color:C.amber,fontWeight:600}}>JOIN</div>
-                      ) : joinedTrip.tripStatus === "pending_approval" ? (
+                      ) : ["pending_approval", "payment_submitted", "payment_verified"].includes(joinedTrip.tripStatus) ? (
                         <div style={{marginLeft:"auto",background:"rgba(245,158,11,0.2)",border:"1px solid rgba(245,158,11,0.35)",
                           borderRadius:10,padding:"1px 6px",fontSize:9,color:C.amber,fontWeight:600}}>PENDING</div>
                       ) : (
@@ -5040,7 +5109,7 @@ export default function UserDashboard() {
               setPage("join-trip");
               return;
             }
-            if (joinedTrip.tripStatus === "pending_approval") {
+            if (["pending_approval", "payment_submitted", "payment_verified"].includes(joinedTrip.tripStatus)) {
               alert("⏳ Expedition Approval Pending: Your application to join " + (joinedTrip.name || "the expedition") + " is awaiting administrator review. Emergency SAR beacons activate once approved.");
               setPage("join-trip");
               return;
@@ -5079,7 +5148,7 @@ export default function UserDashboard() {
             <div className="app-mobile-title">Margsutra</div>
             <div className="app-mobile-sub">
               {joinedTrip
-                ? `${joinedTrip.code} · ${joinedTrip.tripStatus === "pending_approval" ? "Pending approval" : "Active expedition"}`
+                ? `${joinedTrip.code} · ${["pending_approval", "payment_submitted", "payment_verified"].includes(joinedTrip.tripStatus) ? "Booking pending" : "Active expedition"}`
                 : "Trip Safety Portal"}
             </div>
           </div>
