@@ -1,103 +1,68 @@
-# Margsutra 
+Margsutra
+A safety-first expedition management platform for guided treks. Margsutra supports the expedition lifecycle from planning and booking through live field coordination—bringing hardware-informed weather intelligence, real-time tracking, and resilient emergency communication into one system.
 
-> **Wilderness duty-of-care, real-time expedition tracking, and Search & Rescue (SAR) incident dispatch platform** for trek operators, field guides, and mountain safety commanders navigating regions with limited or zero cellular coverage.
+Designed for the realities of remote terrain, Margsutra pairs trekker and operator workflows with safety capabilities that go beyond standard tour-management software. Hardware-based weather forecasting helps teams assess changing conditions, while offline SOS sharing over ESP32 and LoRa is designed to carry distress messages beyond cellular coverage when compatible field hardware is available.
 
-Features real-time GPS telemetry, BLE fitness wearable sync, offline-capable SOS distress beaconing, and an auditable safety record for every trip.
+🧭 Platform Highlights
+🌦️ Hardware-informed weather forecasting: Field hardware contributes local conditions to weather intelligence, helping expedition teams make more context-aware decisions than forecasts based only on general regional data.
+📡 Offline emergency SOS sharing: ESP32 and LoRa-based communication supports distress-message relay when cellular connectivity is unavailable, with GPS context to help responders locate the person in need.
+🛰️ Live expedition intelligence: Socket.IO location telemetry, guide and trekker positions, route waypoints, and geofence alerts give teams a shared view of activity in the field.
+🚨 Safety operations and response: SOS dispatch, incident triage, trekker medical and emergency-contact information, and response coordination support teams from alert through resolution.
+⌚ Connected field devices: Web Bluetooth (BLE) wearable integrations can surface heart-rate and SpO₂ readings as additional context for field teams.
+📴 Resilient trekker experience: Offline-capable app workflows and SOS outbox behavior are designed to help preserve and share emergency information through intermittent connectivity.
+🗺️ End-to-end expedition management: Trip planning, discovery and booking connect to organizer tools for coordinating the people and operations behind each expedition.
+⚡ Quick Start
+Prerequisites
+Node.js and npm
+A Firebase project and service-account credentials for the backend
+Install and configure
+Install dependencies for all workspaces:
+npm install
+Configure Firebase credentials and the environment variables used by the apps and services. Place serviceAccountKey.json in the repository root (or set FIREBASE_SERVICE_ACCOUNT_PATH for the backend). Configure the Firebase client values in the app environment files and matching JWT_SECRET values for the backend and tracking server.
+Start the full development stack:
+npm run dev:all
+npm run dev:all aliases npm run dev. Both start the admin app, trekker app, backend API, and tracking server:
 
----
+Service	Local address
+Admin app	http://localhost:5174
+Trekker app	http://localhost:5173
+Backend API	http://localhost:5050
+Tracking server	http://localhost:4000
+Local emulator option: npm run dev:local starts the Firestore emulator and the apps/services configured for local development. The emulator startup script requires a compatible Java installation.
 
-## 🧭 Platform Highlights
+Demo data (optional)
+To reset and create the demo environment, run:
 
-- **🚨 Realtime SOS Dispatch Console:** Incident command center featuring dual-state operation (Zero-State Standby vs. Active Emergency Dispatch Mode), automated triaging, trekker health dossiers, turn-by-turn navigation HUD, and authenticated stand-down verification.
-- **🛰️ Live Geolocation & Geofencing:** Low-latency position tracking via Socket.IO, displaying field guide paths, waypoints, and automated corridor boundary breach alerts.
-- **⌚ Wearable Vital Sync:** Web Bluetooth (BLE) integration for heart-rate, SpO2, and biometric distress detection directly in the field.
-- **📴 Offline-First PWA:** Service Worker-backed offline trail maps, cached credentials, and background sync when connectivity drops.
-- **📡 Off-Grid Hardware Integration:** ESP32 firmware running LoRa (SX1276) mesh telemetry over India's license-exempt IN865 band (865.0625 MHz) paired with NEO-6M GPS modules.
+npm run seed
+This forwards to the backend demo-data reset script. Use it only when you intend to reset demo data.
 
----
+🏛️ Architecture: Two Purpose-Built Experiences
+Margsutra connects operator and trekker workflows through Firebase Firestore:
 
-## ⚡ Quick Start
+Admin and expedition operations: Firebase Authentication with role authorization stored in Firestore; tools for trip operations, live coordination, and safety response.
+Trekker experience: Node.js/Express API authentication with signed JWTs; trek and booking workflows, user profiles, and emergency information.
+🛰️ Live Tracking Pipeline
+The backend API (backend/) runs on port 5050.
+The Socket.IO tracking service (tracking/server/) runs on port 4000.
+The tracking server and backend must use matching JWT_SECRET values to verify tokens consistently. Keep secrets out of source control.
+📡 Embedded Firmware: ESP32, LoRa, and GPS
+Firmware for field relay nodes is in firmware/:
 
-1. **Firebase Service Account:**  
-   Drop your `serviceAccountKey.json` (from **Firebase Console → Project settings → Service accounts → Generate new private key**) into the root folder.
-
-2. **Install all dependencies:**
-   ```bash
-   npm install
-   ```
-   *(Installs dependencies across `admin-app`, `backend`, `user-app`, `tracking`, and root workspaces in one go).*
-
-3. **Seed demo environment:**
-   ```bash
-   npm run seed
-   ```
-   *(Creates your demo expedition `trip-001` Rajmachi Trek, guide account, and trekker roster).*
-
-4. **Launch development servers:**
-   - **Fast UI Mode (Admin + Trekker PWA):**
-     ```bash
-     npm run dev
-     ```
-   - **Full-Stack Mode (Admin + Trekker + Express API + Socket.IO Tracking):**
-     ```bash
-     npm run dev:all
-     ```
-
----
-
-
-## 🏛️ Architecture: Dual Authentication by Design
-
-Margsutra implements two separate, purpose-built authentication systems unified through Firebase Firestore:
-
-1. **Admin / SAR Commander Side:**
-   - Authenticates through **Firebase Authentication**.
-   - Role authorization (`role: "admin"`) is anchored in the Firestore `users/{uid}` document keyed by the Firebase Auth UID.
-2. **Field Trekker Side:**
-   - Authenticates via the **Node.js / Express API** using signed JWT tokens.
-   - User profiles, medical cards, blood groups, and emergency contacts are persisted directly in Firestore (`users` collection).
-   - Enables lightweight token exchange, offline token caching, and seamless QR-code or code-based expedition check-in.
-
----
-
-## 🛰️ Full-Stack Live Tracking Pipeline
-
-- `npm run dev` runs the **Admin App** and **User App** together for fast front-end development.
-- `npm run dev:all` additionally boots:
-  - **Core Express Backend (`backend/`)** on port `5050`.
-  - **Socket.IO Tracking Service (`tracking/server/`)** on port `4000`.
-
-> [!IMPORTANT]
-> The tracking server uses `tracking/server/.env` with the same `JWT_SECRET` as `backend/.env`. Both services cross-verify authentication tokens, so their secrets must match.
-
----
-
-## 📡 Embedded Firmware (ESP32 + LoRa + GPS)
-
-Hardware firmware for field relay nodes is located in [`firmware/`](./firmware/):
-- **`firmware/gateway-node`**: Stationed at base camp or mobile vehicle; bridges incoming LoRa packets to Wi-Fi/cellular backhaul.
-- **`firmware/remote-node`**: Carried by field guides; broadcasts periodic telemetry and distress beacons.
-
-### Hardware Specifications & Pinout (SX1276 via VSPI):
-- **SCK**: `GPIO 18`
-- **MISO**: `GPIO 19`
-- **MOSI**: `GPIO 23`
-- **NSS / SS**: `GPIO 5`
-- **RST**: `GPIO 14`
-- **DIO0**: `GPIO 2`
-- **GPS UART (NEO-6M)**: `RX=GPIO 26`, `TX=GPIO 27`
-- **RF Band**: `865.0625 MHz` (India License-Exempt **IN865** band)
-- **Driver Libraries**: `sandeepmistry/LoRa`, `mikalhart/TinyGPSPlus`
-
----
-
-## ⚠️ Pre-Deployment Checklist
-
-Before rolling out into a live expedition environment:
-
-- [ ] **Rotate Secrets:** Generate fresh `JWT_SECRET` keys and rotate Firebase API credentials.
-- [ ] **Strict Failure Handling:** Ensure mock data fallbacks fail loudly in production if live sensors or database feeds disconnect.
-- [ ] **Hardware Flash Testing:** Field-verify ESP32 LoRa packet transmission and GPS lock under dense forest canopy.
-
----
-
+firmware/gateway-node — base-camp or mobile gateway that bridges LoRa packets to Wi-Fi/cellular backhaul.
+firmware/remote-node — guide-carried node for periodic telemetry and distress beacons.
+SX1276 VSPI pinout
+Signal	ESP32 pin
+SCK	GPIO 18
+MISO	GPIO 19
+MOSI	GPIO 23
+NSS / SS	GPIO 5
+RST	GPIO 14
+DIO0	GPIO 2
+NEO-6M GPS UART	RX=GPIO 26, TX=GPIO 27
+RF band: 865.0625 MHz (IN865)
+Libraries: sandeepmistry/LoRa, mikalhart/TinyGPSPlus
+⚠️ Before Field Deployment
+Rotate development JWT secrets and protect Firebase credentials; never commit private keys.
+Validate behavior when network, location, weather inputs, or tracking services are unavailable.
+Test LoRa range, GPS acquisition, and SOS relay with the actual hardware and terrain.
+Treat hardware-assisted forecasts and distress relays as decision-support capabilities; verify operational limits and maintain established emergency procedures.
