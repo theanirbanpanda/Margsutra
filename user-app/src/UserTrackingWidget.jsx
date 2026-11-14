@@ -75,9 +75,9 @@ function TrackingMap({ center, route, waypoints, people, focusId, tripName }) {
     if (!focused && !bounds.length) instance.setView(center, 12);
   }, [ready, center[0], center[1], JSON.stringify(route), JSON.stringify(waypoints), JSON.stringify(people), focusId, tripName]);
 
-  return <div style={{ position: "relative", height: 400, borderRadius: 12, overflow: "hidden", border: `1px solid ${palette.line}`, background: "#08101e" }}>
+  return <div className="user-tracking-map" style={{ position: "relative", height: 400, borderRadius: 12, overflow: "hidden", border: `1px solid ${palette.line}`, background: "#08101e" }}>
     {!ready && <div style={{ height: "100%", display: "grid", placeItems: "center", color: palette.muted }}>Loading trail map…</div>}
-    <div ref={element} style={{ height: "100%", display: ready ? "block" : "none" }} />
+    <div className="user-tracking-map__leaflet" ref={element} style={{ height: "100%", display: ready ? "block" : "none" }} />
     <div style={{ position: "absolute", left: 12, top: 12, zIndex: 500, background: "#0b1422eF", padding: "9px 11px", borderRadius: 9, border: `1px solid ${palette.line}`, fontSize: 11, lineHeight: 1.7, color: palette.muted }}>
       <div><b style={{ color: "#fbbf24" }}>★</b> Expedition guide</div><div><b style={{ color: "#60a5fa" }}>YOU</b> Your location</div><div><b style={{ color: "#34d399" }}>●</b> Team members</div><div><b style={{ color: "#f59e0b" }}>┄</b> Trek route</div>
     </div>

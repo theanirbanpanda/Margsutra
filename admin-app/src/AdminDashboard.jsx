@@ -506,7 +506,7 @@ const LiveMap = ({ points = [], teams = [], height = 380, showPulse = true, rout
   }, [ready, routeKey]);
 
   return (
-    <div style={{ background: "#080f1a", borderRadius: 12, overflow: "hidden", border: `1px solid ${C.border}`, position: "relative" }}>
+    <div className="live-map-frame" style={{ background: "#080f1a", borderRadius: 12, overflow: "hidden", border: `1px solid ${C.border}`, position: "relative" }}>
       <div style={{ position: "absolute", top: 10, left: 10, zIndex: 900, background: "rgba(8,15,26,0.92)", border: "1px solid rgba(80,140,220,0.22)", borderRadius: 9, padding: "9px 13px", pointerEvents: "none" }}>
         {[[C.accent, "Active user", "dot"], [C.red, "SOS alert", "dot"], [C.amber, "SOS team", "rect"], [C.amber, "Route", "dash"]].map(([col, label, type]) => (
           <div key={label} style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5, fontSize: 10, color: C.muted }}>
@@ -523,7 +523,7 @@ const LiveMap = ({ points = [], teams = [], height = 380, showPulse = true, rout
           <button onClick={() => { mapRef.current?.zoomOut(); onZoom(-1); }} style={{ width: 30, height: 30, background: "rgba(11,20,34,0.92)", border: `1px solid ${C.border}`, borderRadius: 7, color: C.text, fontSize: 17, cursor: "pointer", lineHeight: 1 }}>−</button>
         </div>
       )}
-      {!ready ? <div style={{ height, background: "#08101e", display: "flex", alignItems: "center", justifyContent: "center", color: C.muted, fontSize: 13, gap: 8 }}><span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span> Loading map engine…</div> : <div ref={containerRef} style={{ height }} />}
+      {!ready ? <div style={{ height, background: "#08101e", display: "flex", alignItems: "center", justifyContent: "center", color: C.muted, fontSize: 13, gap: 8 }}><span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span> Loading map engine…</div> : <div className="live-map-leaflet" ref={containerRef} style={{ height }} />}
     </div>
   );
 };
