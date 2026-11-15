@@ -234,9 +234,14 @@ async function flushQueue() {
   }, {});
 
   const sent = [];
+  // Dev servers proxy nothing, so they need the API port; everywhere else
+  // the API is reverse-proxied on the site's own origin.
+  const SW_API_BASE = ["5173", "5174", "4173"].includes(self.location.port)
+    ? "http://localhost:5050/api"
+    : `${self.location.origin}/api`;
   for (const [token, items] of Object.entries(byToken)) {
     try {
-      const resp = await fetch("http://localhost:5050/api/location-batch", {
+      const resp = await fetch(`${SW_API_BASE}/location-batch`, {
         method:  "POST",
         headers: {
           "Content-Type":  "application/json",

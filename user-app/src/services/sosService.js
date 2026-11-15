@@ -11,8 +11,15 @@ import { io } from "socket.io-client";
 import { db } from "./firebase";
 import { doc, setDoc, onSnapshot, query, collection, where, getDocs } from "firebase/firestore";
 
-const BACKEND_URL = "http://localhost:5050";
-const TRACKING_URL = "http://localhost:4000";
+// Base URLs resolve the same way everywhere else in the app: explicit env var
+// first, localhost in development, the site's own origin in production.
+const API_BASE =
+  import.meta.env.VITE_AUTH_API_URL ||
+  (import.meta.env.DEV ? "http://localhost:5050/api" : "/api");
+const BACKEND_URL = API_BASE.replace(/\/api\/?$/, "");
+const TRACKING_URL =
+  import.meta.env.VITE_TRACKING_SERVER_URL ||
+  (import.meta.env.DEV ? "http://localhost:4000" : window.location.origin);
 
 // ── 1. Web Audio API Mountain Siren & Haptic Engine ──────────────────────────
 class EmergencyAlarmEngine {

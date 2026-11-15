@@ -119,6 +119,11 @@ const AUTH_API_URL =
   import.meta.env.VITE_AUTH_API_URL ||
   (import.meta.env.DEV ? "http://localhost:5050/api" : "/api");
 
+// Socket.IO/telemetry server: same origin in production, port 4000 in dev.
+const TRACKING_SERVER_URL =
+  import.meta.env.VITE_TRACKING_SERVER_URL ||
+  (import.meta.env.DEV ? "http://localhost:4000" : window.location.origin);
+
 /* ════════════════════════════════════════════════════════════════════════
    EXPEDITION SEED DATA & REAL-TIME DEFAULTS
 ════════════════════════════════════════════════════════════════════════ */
@@ -6529,7 +6534,7 @@ export default function AdminPanel() {
   const [refreshingTrekkers, setRefreshingTrekkers] = useState(false);
   const [offGridSimulation, setOffGridSimulation] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
-  const { liveUsers, sosEvents, connectionState, error } = useAdminTracking({ serverUrl: "http://localhost:4000" });
+  const { liveUsers, sosEvents, connectionState, error } = useAdminTracking({ serverUrl: TRACKING_SERVER_URL });
   const displayUsers = toDisplayUsers(liveUsers, firestoreUsers);
   const navigate = (p) => setPage(p);
 

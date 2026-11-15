@@ -60,7 +60,9 @@ export function useLocationTracking({
   userId,
   name,
   token,
-  serverUrl = "http://localhost:4000",
+  serverUrl =
+    import.meta.env.VITE_TRACKING_SERVER_URL ||
+    (import.meta.env.DEV ? "http://localhost:4000" : window.location.origin),
   onSOSAck,
   onAdminMessage,
   onTokenExpired,

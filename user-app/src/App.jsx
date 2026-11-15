@@ -3097,7 +3097,7 @@ const PageSOSNav = ({
     setAlertBusy(alert.id);
     onAcknowledgeAlert?.(alert);
     try {
-      await authFetch(`http://localhost:5050/api/sos/${alert.id}/acknowledge`, {
+      await authFetch(`${AUTH_API_URL}/sos/${alert.id}/acknowledge`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ note: "Acknowledged by trekker" }),
@@ -4632,7 +4632,7 @@ export default function UserDashboard() {
 
     const load = async () => {
       try {
-        const res = await fetch("http://localhost:5050/api/sos/alerts");
+        const res = await fetch(`${AUTH_API_URL}/sos/alerts`);
         if (!res.ok) return;
         const data = await res.json();
         if (cancelled) return;
@@ -4738,7 +4738,7 @@ export default function UserDashboard() {
 
     const sync = async () => {
       try {
-        const res = await fetch("http://localhost:5050/api/sos/events?limit=20");
+        const res = await fetch(`${AUTH_API_URL}/sos/events?limit=20`);
         if (!res.ok) return;
         const data = await res.json();
         const events = Array.isArray(data?.events) ? data.events : [];
@@ -4954,7 +4954,7 @@ export default function UserDashboard() {
     if (tripId && user?.id) {
       try {
         const token = localStorage.getItem(USER_TOKEN_KEY) || localStorage.getItem(LEGACY_USER_TOKEN_KEY);
-        await fetch(`http://localhost:5050/api/trips/${tripId}/leave`, {
+        await fetch(`${AUTH_API_URL}/trips/${tripId}/leave`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

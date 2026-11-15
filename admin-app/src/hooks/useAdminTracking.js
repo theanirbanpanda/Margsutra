@@ -15,7 +15,11 @@ import io from "socket.io-client";
  *   error: string | null,
  * }
  */
-export function useAdminTracking({ serverUrl = "http://localhost:4000" } = {}) {
+export function useAdminTracking({
+  serverUrl =
+    import.meta.env.VITE_TRACKING_SERVER_URL ||
+    (import.meta.env.DEV ? "http://localhost:4000" : window.location.origin),
+} = {}) {
   const [liveUsers, setLiveUsers] = useState(new Map());
   const [sosEvents, setSosEvents] = useState(new Map());
   const [connectionState, setConnectionState] = useState("disconnected");

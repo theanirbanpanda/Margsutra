@@ -9,6 +9,11 @@ const firebaseConfig = {
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
 };
 
+// Where the backend lives: env override, localhost in dev, same origin in prod.
+const API_BASE =
+  import.meta.env.VITE_AUTH_API_URL ||
+  (import.meta.env.DEV ? "http://localhost:5050/api" : "/api");
+
 const app = initializeApp(firebaseConfig);
 
 export const db = getFirestore(app);
@@ -88,7 +93,7 @@ export const subscribeToTrips = (callback) => {
 export const fetchUserActiveTrip = async (userId) => {
   if (!userId) return null;
   try {
-    const res = await fetch(`http://localhost:5050/api/users/${userId}/active-trip`);
+    const res = await fetch(`${API_BASE}/users/${userId}/active-trip`);
     if (!res.ok) return undefined; // transient failure — don't clear local state
     const data = await res.json();
     if (data && data.success) return data.activeTrip || null;
@@ -263,7 +268,7 @@ export const triggerSOSEvent = async (user, trip, location = {}) => {
 
   // 3. Post to backend API
   try {
-    await fetch("http://localhost:5050/api/sos/trigger", {
+    await fetch(`${API_BASE}/sos/trigger`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -321,7 +326,7 @@ export const cancelSOSEvent = async (userId, activeSosId = null, reason = "user_
 
   // 3. Post to backend API
   try {
-    await fetch("http://localhost:5050/api/sos/cancel", {
+    await fetch(`${API_BASE}/sos/cancel`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId, activeSosId, reason }),
