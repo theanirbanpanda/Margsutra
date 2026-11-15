@@ -115,7 +115,9 @@ const C = {
   teal: "#14b8a6", text: "#e2e8f0", muted: "rgba(180,210,245,0.5)", muted2: "rgba(180,210,245,0.28)",
 };
 
-const AUTH_API_URL = import.meta.env.VITE_AUTH_API_URL || "http://localhost:5050/api";
+const AUTH_API_URL =
+  import.meta.env.VITE_AUTH_API_URL ||
+  (import.meta.env.DEV ? "http://localhost:5050/api" : "/api");
 
 /* ════════════════════════════════════════════════════════════════════════
    EXPEDITION SEED DATA & REAL-TIME DEFAULTS
@@ -2820,13 +2822,36 @@ const PageTripRosters = ({
     };
   }, []);
 
-  useEffect(() => {
-    const unsub = subscribeToTrips((liveTrips) => {
-      // `null` means the read failed — keep whatever the API returned.
-      if (Array.isArray(liveTrips)) setTrips(liveTrips);
-    });
-    return () => unsub && unsub();
+  // The API is the source of truth for the expedition list. The Firestore
+  // listener is a fast-path refresh on top of it — it must never be the only
+  // way the list is populated, or a stalled/denied listener shows an empty
+  // console while the data is sitting right there in Firestore.
+  const reloadTrips = useCallback(async () => {
+    try {
+      const res = await fetch(`${AUTH_API_URL}/trips`, { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) setTrips(data);
+    } catch {
+      /* keep whatever is on screen */
+    }
   }, []);
+
+  useEffect(() => {
+    reloadTrips();
+
+    const unsub = subscribeToTrips((liveTrips) => {
+      if (Array.isArray(liveTrips)) {
+        if (liveTrips.length > 0) setTrips(liveTrips);
+        return;
+      }
+      console.warn("Live expedition feed unavailable — keeping the API snapshot.");
+    });
+
+    return () => {
+      if (unsub) unsub();
+    };
+  }, [reloadTrips]);
 
   const flash = (msg, kind = "success") => {
     setToastKind(kind);
@@ -3222,7 +3247,7 @@ const PageTripRosters = ({
         sub="Create expeditions, approve trekker requests, and keep every roster accounted for."
         right={
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <Btn variant="default" onClick={onRefresh} disabled={refreshing}>
+            <Btn variant="default" onClick={() => { reloadTrips(); if (onRefresh) onRefresh(); }} disabled={refreshing}>
               {refreshing ? "↻ Refreshing…" : "↻ Refresh"}
             </Btn>
             <Btn variant="primary" onClick={() => { setFormError(""); setCoverPhotoFile(null, "new"); setNewExpForm({ ...emptyForm(), adminInCharge: currentAdmin?.id || admins[0]?.id || "" }); setShowCreateModal(true); }}>

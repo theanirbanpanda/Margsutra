@@ -34,9 +34,11 @@ Only one stack can run at a time — the second one fails with
 
 How the emulator is selected:
 
-* `user-app/.env.development` and `admin-app/.env.development` set
-  `VITE_USE_FIRESTORE_EMULATOR=true` and `VITE_FIREBASE_PROJECT_ID=demo-margsutra`,
-  so both frontends talk to `127.0.0.1:8080`.
+* `npm run dev:local` passes `VITE_USE_FIRESTORE_EMULATOR=true` and
+  `VITE_FIREBASE_PROJECT_ID=demo-margsutra` to both frontends, so they talk to
+  `127.0.0.1:8080`. Those values are set on the command line only — never in an
+  `.env.development` file, because that would also redirect `npm run dev:all`
+  (cloud mode) at an emulator that is not running.
 * `backend/scripts/dev-local.js` waits for port 8080 and then starts the API with
   `FIRESTORE_EMULATOR_HOST=127.0.0.1:8080`, which makes the Admin SDK use the
   emulator instead of the service-account key.

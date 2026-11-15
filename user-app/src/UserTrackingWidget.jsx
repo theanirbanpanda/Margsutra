@@ -4,7 +4,9 @@ import { subscribeToFieldTelemetry } from "./services/firebase";
 import { calculateDistanceMeters, formatDistance } from "./services/expeditionTeam";
 import { getDemoTrackingData, isDemoTrackingAccount, toFreshPosition } from "./services/trackingDemoData";
 
-const API = import.meta.env.VITE_AUTH_API_URL || "http://localhost:5050/api";
+const API =
+  import.meta.env.VITE_AUTH_API_URL ||
+  (import.meta.env.DEV ? "http://localhost:5050/api" : "/api");
 const palette = { bg: "#080f1a", card: "rgba(255,255,255,.04)", line: "rgba(80,140,220,.16)", text: "#e2e8f0", muted: "#94a3b8", blue: "#60a5fa", green: "#34d399", amber: "#fbbf24" };
 
 function TrackingMap({ center, route, waypoints, people, focusId, tripName }) {

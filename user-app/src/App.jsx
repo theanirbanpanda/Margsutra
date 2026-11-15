@@ -135,7 +135,11 @@ const authFetch = (url, options = {}) => {
     headers: { ...(options.headers || {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
   });
 };
-const AUTH_API_URL = import.meta.env.VITE_AUTH_API_URL || "http://localhost:5050/api";
+// In production the API is reverse-proxied on the same origin, so a relative
+// path keeps working even if the server's IP or domain changes.
+const AUTH_API_URL =
+  import.meta.env.VITE_AUTH_API_URL ||
+  (import.meta.env.DEV ? "http://localhost:5050/api" : "/api");
 
 const decodeJwtPayload = (token) => {
   try {
@@ -188,7 +192,9 @@ const buildUserProfile = (form) => {
   };
 };
 
-const TRACKING_SERVER_URL = import.meta.env.VITE_TRACKING_SERVER_URL || "http://localhost:4000";
+const TRACKING_SERVER_URL =
+  import.meta.env.VITE_TRACKING_SERVER_URL ||
+  (import.meta.env.DEV ? "http://localhost:4000" : window.location.origin);
 
 const MY_DEVICES = [
   {id:"DEV001",name:"iPhone 15 Pro",      type:"phone",    battery:78,signal:"strong",gps:true, sos:true, connected:true, mac:"A4:C1:38:1F:22:B5",lat:18.52,lon:73.85},

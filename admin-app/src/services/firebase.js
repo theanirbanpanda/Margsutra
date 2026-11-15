@@ -65,7 +65,10 @@ export const uploadTripCoverPhoto = async (file) => {
   }
 };
 
-export const AUTH_API_URL = import.meta.env.VITE_AUTH_API_URL || "http://localhost:5050/api";
+// Same-origin in production: the API is served behind the site's own domain.
+export const AUTH_API_URL =
+  import.meta.env.VITE_AUTH_API_URL ||
+  (import.meta.env.DEV ? "http://localhost:5050/api" : "/api");
 
 // The two demo accounts. These are the only accounts that exist.
 export const DEMO_ADMIN_EMAIL = "demoadmin@gmail.com";
