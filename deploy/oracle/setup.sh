@@ -220,6 +220,11 @@ $SITE {
 	handle /socket.io/* {
 		reverse_proxy 127.0.0.1:4000
 	}
+	# The tracking server mints socket tokens at POST /auth/token. The apps call
+	# it on their own origin, so it must be proxied, not served as a static file.
+	handle /auth/* {
+		reverse_proxy 127.0.0.1:4000
+	}
 	handle /health {
 		reverse_proxy 127.0.0.1:5050
 	}
@@ -301,6 +306,10 @@ systemctl enable --now margsutra-keepalive.timer >/dev/null
 # ── 10. Report ───────────────────────────────────────────────────────────────
 sleep 3
 API_CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:5050/health || echo 000)"
+# No bearer token, so a healthy tracking server answers 401 — anything else
+# means the socket token endpoint would break live tracking in the browser.
+TOKEN_CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST http://127.0.0.1:4000/auth/token || echo 000)"
+[[ "$TOKEN_CODE" == "401" ]] || warn "Tracking token endpoint returned $TOKEN_CODE (expected 401). Live tracking may not start."
 
 cat <<EOF
 
@@ -310,6 +319,7 @@ cat <<EOF
    Trekker app   https://$SITE
    Admin console https://$SITE/admin
    API health    https://$SITE/health   (local status: $API_CODE)
+   Socket auth   https://$SITE/auth/token   (local status: $TOKEN_CODE, 401 = healthy)
    IP address    $PUBLIC_IP
 
    Logins        demouser@gmail.com  / 123456

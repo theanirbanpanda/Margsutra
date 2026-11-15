@@ -212,6 +212,7 @@ Checklist:
 
 - [ ] Trekker app loads over HTTPS with a valid padlock.
 - [ ] `https://<your-host>/health` returns `{"status":"ok","db":"firebase-connected"}`.
+- [ ] `https://<your-host>/auth/token` returns `401 AUTH_MISSING` in the browser (`POST` only — opening it in a tab shows a method error, that's fine).
 - [ ] `https://<your-host>/admin` loads the console (`/admin` redirects to `/admin/`).
 - [ ] Log in as `demouser@gmail.com` / `123456` — the trekker app accepts it.
 - [ ] Log in as `demoadmin@gmail.com` / `123456` — the console accepts it.
@@ -262,6 +263,7 @@ To change a secret: edit the file, then
 | Certificate never issues | Port 80 blocked, or DNS not resolving | `curl -I http://<host>` from outside; check VCN rule |
 | `502 Bad Gateway` | API crashed | `journalctl -u margsutra-api -n 80` |
 | API up but Firestore calls fail | Key missing/misplaced | `sudo ls -l /etc/margsutra/serviceAccountKey.json`, then re-run installer with the key in `~/` |
+| Admin shows **"Not authorised for the live tracking feed"** | `/auth/token` not proxied (or tracking service down) | `curl -X POST http://127.0.0.1:4000/auth/token` → expect 401; `journalctl -u margsutra-tracking -n 50` |
 | `auth/unauthorized-domain` | Part F not done | Add hostname in Firebase Auth |
 | Admin loads but has no data | API unreachable from the browser | DevTools → Network → look for failing `/api/*` |
 | SOS reaches console but no map pin | No GPS fix in the browser | Expected on desktop; grant location permission |
