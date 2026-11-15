@@ -1,6 +1,6 @@
 const path = require("path");
 const fs = require("fs");
-const { initializeApp, cert, getApps } = require("firebase-admin/app");
+const { initializeApp, cert, applicationDefault, getApps } = require("firebase-admin/app");
 const { getFirestore, Timestamp } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
 const { randomUUID } = require("crypto");
@@ -11,26 +11,53 @@ const { randomUUID } = require("crypto");
 const usingEmulator = !!(process.env.FIRESTORE_EMULATOR_HOST || "").trim();
 const emulatorProjectId = process.env.FIRESTORE_PROJECT_ID || "demo-margsutra";
 
+// Credentials, in priority order:
+//   1. FIREBASE_SERVICE_ACCOUNT_JSON  — raw key JSON in an env var (PaaS hosts)
+//   2. A serviceAccountKey.json file  — local development only
+//   3. Application Default Credentials — Cloud Run, App Engine, GCE, GKE and
+//      Workload Identity. No key file, nothing to leak or rotate by hand.
 let serviceAccount = null;
+let credentialSource = "application default credentials";
+const ambientProjectId =
+  process.env.GOOGLE_CLOUD_PROJECT ||
+  process.env.GCLOUD_PROJECT ||
+  process.env.FIREBASE_PROJECT_ID ||
+  "";
+
 if (!usingEmulator) {
-  // Locate service account key
+  const inlineJson = String(process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "").trim();
   const possiblePaths = [
+    process.env.FIREBASE_SERVICE_ACCOUNT_PATH && path.resolve(process.cwd(), process.env.FIREBASE_SERVICE_ACCOUNT_PATH),
     path.resolve(__dirname, "../../../serviceAccountKey.json"),
     path.resolve(__dirname, "../../serviceAccountKey.json"),
     path.resolve(process.cwd(), "serviceAccountKey.json"),
     path.resolve(process.cwd(), "../serviceAccountKey.json"),
-    process.env.FIREBASE_SERVICE_ACCOUNT_PATH && path.resolve(process.cwd(), process.env.FIREBASE_SERVICE_ACCOUNT_PATH),
   ].filter(Boolean);
 
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) {
-      serviceAccount = require(p);
-      break;
+  if (inlineJson) {
+    try {
+      serviceAccount = JSON.parse(inlineJson);
+      credentialSource = "FIREBASE_SERVICE_ACCOUNT_JSON";
+    } catch (error) {
+      throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON: " + error.message);
+    }
+  } else {
+    for (const p of possiblePaths) {
+      if (fs.existsSync(p)) {
+        serviceAccount = JSON.parse(fs.readFileSync(p, "utf8"));
+        credentialSource = p;
+        break;
+      }
     }
   }
 
   if (!serviceAccount) {
-    throw new Error("Could not find serviceAccountKey.json in any expected path: " + possiblePaths.join(", "));
+    console.log(
+      "🔐 No service account key found — falling back to Application Default Credentials. " +
+        "This is expected on Cloud Run, App Engine, GCE, GKE and Workload Identity."
+    );
+  } else {
+    console.log(`🔐 Firebase credentials loaded from ${credentialSource}`);
   }
 }
 
@@ -38,7 +65,12 @@ const firebaseApp = getApps().length === 0
   ? initializeApp(
       usingEmulator
         ? { projectId: emulatorProjectId }
-        : { credential: cert(serviceAccount) }
+        : serviceAccount
+          ? { credential: cert(serviceAccount) }
+          : {
+              credential: applicationDefault(),
+              ...(ambientProjectId ? { projectId: ambientProjectId } : {}),
+            }
     )
   : getApps()[0];
 
@@ -50,7 +82,8 @@ const storageBucketName =
   process.env.FIREBASE_STORAGE_BUCKET ||
   process.env.VITE_FIREBASE_STORAGE_BUCKET ||
   (usingEmulator ? `${emulatorProjectId}.firebasestorage.app` : "") ||
-  (serviceAccount?.project_id ? `${serviceAccount.project_id}.firebasestorage.app` : "");
+  (serviceAccount?.project_id ? `${serviceAccount.project_id}.firebasestorage.app` : "") ||
+  (ambientProjectId ? `${ambientProjectId}.firebasestorage.app` : "");
 
 if (usingEmulator) {
   console.log(`🔥 Firestore emulator mode → ${process.env.FIRESTORE_EMULATOR_HOST} (project ${emulatorProjectId})`);

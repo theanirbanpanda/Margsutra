@@ -1,6 +1,15 @@
 node_modules
 .DS_Store
 
+# Secrets — never commit. Committing a service-account key to a public repo
+# makes Google Cloud disable it automatically.
+serviceAccountKey.json
+*serviceAccount*.json
+backend/.env
+tracking/server/.env
+.env.local
+.env.*.local
+
 # Firebase emulator artefacts
 firebase-debug.log
 firestore-debug.log
