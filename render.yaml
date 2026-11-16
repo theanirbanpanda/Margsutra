@@ -1,0 +1,21 @@
+# Render blueprint — optional, turns the setup into a few clicks.
+#
+# In Render: New → Blueprint → pick this repository → Apply.
+# It creates the free Docker web service and asks for the one secret it cannot
+# know (the Firebase service account JSON).
+services:
+  - type: web
+    name: margsutra
+    runtime: docker
+    plan: free
+    dockerfilePath: ./deploy/docker/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: FIREBASE_STORAGE_BUCKET
+        value: coordage-416a1.firebasestorage.app

@@ -18,8 +18,19 @@ Only 80/443 are published. The two Node ports stay inside the container.
 - `JWT_SECRET` — passed as an environment variable
 - Nothing else from `/etc/margsutra`
 
-Both are required; the container refuses to start without `SITE` and
-`JWT_SECRET`.
+Both are required; the container refuses to start without `JWT_SECRET` and
+`SITE`.
+
+## Two modes
+
+| Mode | Trigger | TLS |
+| --- | --- | --- |
+| **Direct** | no `PORT` (a VM) | Caddy binds 80/443 and obtains a Let's Encrypt certificate for `SITE` |
+| **Proxy** | `PORT` is set (Render, Koyeb, Fly) | Caddy serves plain HTTP on `$PORT`; the platform terminates TLS |
+
+In proxy mode `SITE` is optional — `RENDER_EXTERNAL_URL` is used for CORS when
+present — and `auto_https` is switched off so Caddy never attempts an ACME
+challenge. See `deploy/render/README.md` for a free, no-card deployment.
 
 ## Build
 
