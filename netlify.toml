@@ -1,0 +1,16 @@
+# Netlify — deploy the case study as a static site.
+# Either drag prd/site into Netlify Drop, or connect the repo and let this
+# file pick the publish directory. No build step: the HTML and PDF are checked in.
+[build]
+  publish = "prd/site"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+[[headers]]
+  for = "/*.pdf"
+  [headers.values]
+    Cache-Control = "public, max-age=3600"

@@ -1,0 +1,801 @@
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Margsutra — Product case study · Anirban Panda</title>
+<meta name="description" content="A safety-first expedition platform for guided treks: live visibility, a three-transport SOS, and a SAR console that owns an incident from trigger to closure.">
+<meta property="og:title" content="Margsutra — Keeping trekkers visible when the signal disappears">
+<meta property="og:description" content="Product case study: 15+ trekker interviews to a shipped safety platform. Full PRD included.">
+<meta property="og:type" content="article">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230e1a15'/%3E%3Cpath d='M7 24V8h3l6 9 6-9h3v16h-3v-11l-6 9-6-9v11z' fill='%23f7f3ea'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --paper:#f7f4ec;
+    --paper-2:#f1ece0;
+    --ink:#121915;
+    --muted:#5f6a63;
+    --line:#dcd5c6;
+    --line-2:#c9c1b0;
+    --accent:#c2410c;
+    --accent-soft:#f3e3d8;
+    --deep:#0e1a15;
+    --cream:#f7f3ea;
+    --green:#2f6b4f;
+    --amber:#b45309;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    --serif:Georgia,"Times New Roman",Times,serif;
+    --wrap:1120px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;background:var(--paper);color:var(--ink);
+    font-family:var(--sans);font-size:17px;line-height:1.62;
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  }
+  a{color:inherit}
+  img,svg{display:block;max-width:100%}
+  ::selection{background:#f0c9ae;color:#241009}
+
+  .wrap{max-width:var(--wrap);margin:0 auto;padding:0 28px}
+  .mono{font-family:var(--mono)}
+  .serif{font-family:var(--serif);font-weight:400;letter-spacing:-.02em}
+
+  /* ── Top bar ───────────────────────────────────────────── */
+  .topbar{
+    position:sticky;top:0;z-index:50;
+    background:rgba(247,244,236,.88);
+    backdrop-filter:saturate(140%) blur(10px);
+    border-bottom:1px solid var(--line);
+  }
+  .topbar-in{
+    max-width:var(--wrap);margin:0 auto;padding:0 28px;
+    height:64px;display:flex;align-items:center;justify-content:space-between;gap:24px;
+  }
+  .brand{display:flex;align-items:center;gap:12px;text-decoration:none;min-width:0}
+  .brand-mark{
+    width:32px;height:32px;background:var(--deep);color:var(--cream);
+    display:grid;place-items:center;font-family:var(--mono);font-size:11px;
+    letter-spacing:.04em;flex:none;
+  }
+  .brand-name{font-size:13.5px;font-weight:600;letter-spacing:.01em;white-space:nowrap}
+  .brand-sub{font-size:11.5px;color:var(--muted);white-space:nowrap}
+  .nav{display:flex;align-items:center;gap:26px}
+  .nav a{
+    font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+    text-decoration:none;color:var(--muted);padding:4px 0;
+  }
+  .nav a:hover{color:var(--ink)}
+  .btn{
+    display:inline-flex;align-items:center;gap:9px;
+    font-size:12.5px;font-weight:600;letter-spacing:.02em;
+    padding:11px 16px;text-decoration:none;border:1px solid var(--ink);
+    background:var(--ink);color:var(--cream);transition:opacity .15s ease;
+    white-space:nowrap;
+  }
+  .btn:hover{opacity:.86}
+  .btn .arrow{font-family:var(--mono);font-size:13px;line-height:1}
+  .btn-ghost{background:transparent;color:var(--ink);border-color:var(--line-2)}
+  .btn-ghost:hover{border-color:var(--ink)}
+  .btn-cream{background:var(--cream);color:var(--deep);border-color:var(--cream)}
+  .topbar .btn{padding:9px 14px}
+
+  /* ── Hero ──────────────────────────────────────────────── */
+  .hero{padding:72px 0 60px;position:relative;overflow:hidden}
+  .hero:before{
+    content:"";position:absolute;inset:0;pointer-events:none;opacity:.45;
+    background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+    background-size:88px 88px;
+    mask-image:linear-gradient(to bottom,rgba(0,0,0,.5),transparent 78%);
+  }
+  .hero-in{
+    position:relative;display:grid;grid-template-columns:1.12fr .88fr;
+    grid-template-areas:"copy console" "meta meta";
+    gap:56px 56px;align-items:center;
+  }
+  .hero-copy{grid-area:copy;min-width:0}
+  .eyebrow{
+    font-family:var(--mono);font-size:11px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--accent);margin:0 0 22px;
+    display:flex;align-items:center;gap:10px;
+  }
+  .eyebrow:before{content:"";width:22px;height:1px;background:var(--accent)}
+  h1{
+    font-family:var(--serif);font-weight:400;letter-spacing:-.025em;
+    font-size:clamp(42px,5.4vw,72px);line-height:1.02;margin:0;
+    max-width:15ch;
+  }
+  .lede{
+    margin:26px 0 0;font-size:18.5px;line-height:1.6;color:#2f3a33;max-width:56ch;
+  }
+  .lede strong{font-weight:600;color:var(--ink)}
+  .hero-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:30px}
+  .meta{
+    grid-area:meta;display:grid;grid-template-columns:repeat(4,1fr);gap:18px;
+    margin:0;padding-top:20px;border-top:1px solid var(--line-2);
+  }
+  .meta dt{
+    font-family:var(--mono);font-size:9.5px;letter-spacing:.13em;
+    text-transform:uppercase;color:var(--muted);margin:0 0 5px;
+  }
+  .meta dd{margin:0;font-size:12.5px;line-height:1.45;font-weight:500}
+
+  /* ── Hero console illustration ─────────────────────────── */
+  .console{
+    grid-area:console;position:relative;background:var(--deep);color:var(--cream);
+    aspect-ratio:4/4.7;padding:22px;overflow:hidden;
+    border:1px solid #1d2c25;box-shadow:0 30px 60px -30px rgba(14,26,21,.55);
+  }
+  .console-top{
+    display:flex;justify-content:space-between;align-items:center;
+    font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;
+    color:#8fa197;padding-bottom:14px;border-bottom:1px solid rgba(247,243,234,.14);
+  }
+  .console-live{display:flex;align-items:center;gap:6px;color:#a9d3b8}
+  .dot-live{width:6px;height:6px;border-radius:50%;background:#5ec488;box-shadow:0 0 0 3px rgba(94,196,136,.14)}
+  .map{position:absolute;inset:56px 0 74px}
+  .map svg{width:100%;height:100%}
+  .console-foot{
+    position:absolute;left:22px;right:22px;bottom:18px;
+    display:flex;justify-content:space-between;align-items:flex-end;gap:12px;
+    font-family:var(--mono);font-size:9px;letter-spacing:.08em;color:#93a49a;
+  }
+  .console-foot b{display:block;color:var(--cream);font-size:11px;letter-spacing:.04em;font-weight:500;margin-bottom:3px}
+  .sos-chip{
+    border:1px solid rgba(194,65,12,.65);background:rgba(194,65,12,.16);
+    color:#f0b79a;padding:6px 9px;font-size:8.5px;letter-spacing:.12em;
+  }
+  .pin-label{
+    position:absolute;font-family:var(--mono);font-size:8.5px;letter-spacing:.06em;
+    color:#dce6df;background:rgba(14,26,21,.82);border:1px solid rgba(247,243,234,.16);
+    padding:4px 7px;white-space:nowrap;
+  }
+
+  /* ── Sections ──────────────────────────────────────────── */
+  .section{
+    max-width:var(--wrap);margin:0 auto;padding:78px 28px;
+    display:grid;grid-template-columns:180px 1fr;gap:56px;
+    border-top:1px solid var(--line);
+  }
+  .section-rail{position:relative}
+  .section-rail-inner{position:sticky;top:96px}
+  .sec-num{
+    font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--accent);
+    display:block;margin-bottom:8px;
+  }
+  .sec-label{
+    font-family:var(--mono);font-size:10px;letter-spacing:.15em;
+    text-transform:uppercase;color:var(--muted);
+  }
+  .section h2{
+    font-family:var(--serif);font-weight:400;letter-spacing:-.02em;
+    font-size:clamp(30px,3.8vw,44px);line-height:1.08;margin:0 0 22px;
+  }
+  .section h3{
+    font-size:17px;font-weight:650;letter-spacing:-.005em;margin:0 0 8px;
+  }
+  .section p{margin:0 0 16px;color:#334038}
+  .section p.muted{color:var(--muted)}
+  .section p:last-child{margin-bottom:0}
+  .big-line{
+    font-family:var(--serif);font-size:clamp(26px,3.1vw,36px);line-height:1.25;
+    letter-spacing:-.015em;margin:0 0 26px;max-width:24ch;
+  }
+  .big-line em{font-style:italic;color:var(--accent)}
+
+  .stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:34px;border-top:1px solid var(--line-2)}
+  .stat{padding:22px 22px 0 0;border-right:1px solid var(--line)}
+  .stat:last-child{border-right:0}
+  .stat b{display:block;font-family:var(--serif);font-weight:400;font-size:40px;line-height:1;letter-spacing:-.02em}
+  .stat span{display:block;margin-top:8px;font-size:12.5px;color:var(--muted);line-height:1.45;max-width:22ch}
+
+  .pull{
+    margin:34px 0 0;padding:24px 0 24px 26px;border-left:2px solid var(--accent);
+    font-family:var(--serif);font-size:21px;line-height:1.45;color:#26332c;max-width:60ch;
+  }
+  .pull cite{
+    display:block;margin-top:12px;font-family:var(--sans);font-style:normal;
+    font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+  }
+
+  /* ── Research table ────────────────────────────────────── */
+  .decision{width:100%;border-collapse:collapse;margin-top:8px}
+  .decision th{
+    text-align:left;font-family:var(--mono);font-size:9.5px;letter-spacing:.13em;
+    text-transform:uppercase;color:var(--muted);font-weight:400;
+    padding:0 20px 12px 0;border-bottom:1px solid var(--ink);
+  }
+  .decision td{
+    vertical-align:top;padding:20px 20px 20px 0;border-bottom:1px solid var(--line);
+    font-size:15.5px;line-height:1.55;color:#334038;
+  }
+  .decision td:first-child{width:27%;color:var(--muted)}
+  .decision td:last-child{font-weight:500;color:var(--ink);padding-right:0}
+  .decision tr:last-child td{border-bottom:0}
+  .tick{color:var(--accent);font-family:var(--mono);font-size:11px;letter-spacing:.08em;display:block;margin-bottom:6px}
+
+  /* ── Capability cards ──────────────────────────────────── */
+  .cards{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);margin-top:8px}
+  .card{background:var(--paper);padding:26px 26px 24px;min-height:230px;display:flex;flex-direction:column}
+  .card-num{font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--accent);margin-bottom:18px}
+  .card h3{margin-bottom:10px}
+  .card p{font-size:14.5px;line-height:1.58;color:#3d4a42;margin:0 0 18px}
+  .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto}
+  .tag{
+    font-family:var(--mono);font-size:9px;letter-spacing:.06em;text-transform:uppercase;
+    border:1px solid var(--line-2);color:var(--muted);padding:4px 7px;
+  }
+
+  /* ── Trade-off cards ───────────────────────────────────── */
+  .trades{display:grid;gap:0;margin-top:8px;border-top:1px solid var(--ink)}
+  .trade{
+    display:grid;grid-template-columns:150px 1fr;gap:26px;
+    padding:24px 0;border-bottom:1px solid var(--line);
+  }
+  .trade-label{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding-top:3px}
+  .trade-label b{display:block;font-family:var(--sans);font-size:14px;letter-spacing:0;text-transform:none;color:var(--ink);font-weight:650;margin-bottom:2px}
+  .trade p{margin:0;font-size:15.5px;color:#334038}
+  .trade p + p{margin-top:8px;color:var(--muted);font-size:14px}
+  .trade .trade-off{color:var(--amber);font-size:13px}
+
+  /* ── Architecture ──────────────────────────────────────── */
+  .arch{margin-top:10px;display:grid;gap:14px}
+  .lane{
+    border:1px solid var(--line);background:rgba(255,255,255,.38);
+    padding:18px 18px 16px;
+  }
+  .lane-label{
+    font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--muted);margin-bottom:12px;display:flex;justify-content:space-between;gap:12px;
+  }
+  .flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .node{
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.03em;
+    border:1px solid var(--line-2);background:var(--paper);padding:8px 10px;white-space:nowrap;
+  }
+  .node.dark{background:var(--deep);color:var(--cream);border-color:var(--deep)}
+  .node.accent{border-color:#d9a98c;background:var(--accent-soft);color:#7a2c0b}
+  .arrow{font-family:var(--mono);color:var(--muted);font-size:12px}
+  .arch-note{font-size:12.5px;color:var(--muted);margin-top:10px;line-height:1.55}
+
+  /* ── Metrics ───────────────────────────────────────────── */
+  .north{
+    background:var(--deep);color:var(--cream);padding:30px 30px 28px;
+    display:grid;grid-template-columns:1fr auto;gap:24px;align-items:end;
+  }
+  .north-label{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:#93a49a}
+  .north h3{font-family:var(--serif);font-weight:400;font-size:25px;line-height:1.25;margin:10px 0 0;color:var(--cream);letter-spacing:-.01em}
+  .north-big{font-family:var(--serif);font-size:64px;line-height:.9;letter-spacing:-.03em;white-space:nowrap}
+  .north-big small{font-size:15px;letter-spacing:0;display:block;text-align:right;color:#93a49a;margin-top:8px;font-family:var(--sans)}
+  .metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-top:0}
+  .metric{background:var(--paper);padding:18px 16px}
+  .metric b{display:block;font-family:var(--serif);font-size:24px;font-weight:400;letter-spacing:-.01em}
+  .metric span{display:block;margin-top:5px;font-size:11.5px;color:var(--muted);line-height:1.45}
+  .fineprint{margin-top:12px;font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;color:var(--muted)}
+
+  /* ── Status columns ────────────────────────────────────── */
+  .status{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;margin-top:8px}
+  .status-col h3{display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:14px}
+  .status-dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+  .status-col ul{margin:0;padding:0;list-style:none}
+  .status-col li{
+    font-size:14px;color:#3d4a42;padding:9px 0;border-top:1px solid var(--line);
+    display:flex;gap:9px;line-height:1.45;
+  }
+  .status-col li:before{content:"—";color:var(--line-2);flex:none}
+
+  /* ── CTA ───────────────────────────────────────────────── */
+  .cta{background:var(--deep);color:var(--cream);padding:70px 0}
+  .cta-in{display:grid;grid-template-columns:1.1fr .9fr;gap:56px;align-items:center}
+  .cta .eyebrow{color:#e9a07c}
+  .cta .eyebrow:before{background:#e9a07c}
+  .cta h2{
+    font-family:var(--serif);font-weight:400;font-size:clamp(34px,4.4vw,52px);
+    line-height:1.06;letter-spacing:-.02em;margin:0 0 18px;max-width:16ch;
+  }
+  .cta p{color:#b9c6bd;font-size:16px;max-width:48ch;margin:0 0 26px}
+  .demo{background:rgba(247,243,234,.06);border:1px solid rgba(247,243,234,.16);padding:22px}
+  .demo-title{font-family:var(--mono);font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:#93a49a;margin-bottom:14px}
+  .demo-row{display:flex;justify-content:space-between;gap:14px;padding:9px 0;border-top:1px solid rgba(247,243,234,.12);font-size:13px}
+  .demo-row:first-of-type{border-top:0}
+  .demo-row span{color:#93a49a}
+  .demo-row a{color:var(--cream);text-decoration:none;border-bottom:1px solid rgba(247,243,234,.3)}
+  .demo-row a:hover{border-bottom-color:var(--cream)}
+  .demo-note{font-size:11.5px;color:#8fa197;margin-top:14px;line-height:1.55}
+  .demo code{font-family:var(--mono);font-size:11.5px;color:#e6dfcf}
+
+  .foot{padding:28px 0;background:var(--deep);color:#8fa197;border-top:1px solid rgba(247,243,234,.12)}
+  .foot-in{display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;font-size:12px}
+  .foot a{color:#c9d3cc;text-decoration:none}
+  .foot a:hover{color:var(--cream)}
+
+  /* ── Reveal ────────────────────────────────────────────── */
+  @media (prefers-reduced-motion:reduce){
+    html{scroll-behavior:auto}
+    .reveal{opacity:1;transform:none;transition:none}
+  }
+
+  /* ── Responsive ────────────────────────────────────────── */
+  @media (max-width:960px){
+    .hero-in{grid-template-columns:1fr;grid-template-areas:"copy" "console" "meta";gap:34px}
+    .console{max-width:460px}
+    .section{grid-template-columns:1fr;gap:20px;padding:58px 20px}
+    .section-rail-inner{position:static;display:flex;align-items:baseline;gap:14px}
+    .sec-num{margin:0}
+    .cta-in{grid-template-columns:1fr;gap:38px}
+    .meta{grid-template-columns:repeat(2,1fr)}
+    .nav{display:none}
+  }
+  @media (max-width:700px){
+    body{font-size:16px}
+    .wrap,.topbar-in{padding:0 20px}
+    .hero{padding:40px 0 36px}
+    h1{font-size:clamp(34px,9.8vw,44px)}
+    .lede{font-size:16.5px;margin-top:20px}
+    .console{aspect-ratio:4/3.8}
+    .console-foot{font-size:8px}
+    .cards{grid-template-columns:1fr}
+    .trade{grid-template-columns:1fr;gap:8px}
+    .status{grid-template-columns:1fr;gap:22px}
+    .metric-grid{grid-template-columns:1fr 1fr}
+    .stat-row{grid-template-columns:1fr;gap:16px}
+    .stat{border-right:0;border-bottom:1px solid var(--line);padding:16px 0 0}
+    .stat:last-child{border-bottom:0}
+    .decision thead{display:none}
+    .decision tr{display:block;padding:16px 0;border-bottom:1px solid var(--line)}
+    .decision td{display:block;border:0;padding:0 0 6px}
+    .decision td:first-child{width:auto;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+    .north{grid-template-columns:1fr;align-items:start}
+    .north-big{font-size:52px}
+    .brand-sub{display:none}
+    .pull{font-size:18.5px}
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-in">
+    <a class="brand" href="#top">
+      <span class="brand-mark">AP</span>
+      <span>
+        <span class="brand-name">Anirban Panda</span><br>
+        <span class="brand-sub">Product case study</span>
+      </span>
+    </a>
+    <nav class="nav" aria-label="Sections">
+      <a href="#problem">Problem</a>
+      <a href="#research">Research</a>
+      <a href="#shipped">What shipped</a>
+      <a href="#decisions">Decisions</a>
+      <a href="#metrics">Metrics</a>
+    </nav>
+    <a class="btn" href="Anirban-Panda-Margsutra-PRD.pdf" download>
+      Download PRD <span class="arrow">↓</span>
+    </a>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ── Hero ─────────────────────────────────────────────── -->
+  <section class="hero">
+    <div class="wrap hero-in">
+      <div class="hero-copy">
+        <p class="eyebrow">Margsutra · Product case study · 2025</p>
+        <h1>Keeping trekkers visible when the signal disappears.</h1>
+        <p class="lede">
+          Margsutra is a safety-first expedition platform for guided treks. I ran
+          <strong>15+ trekker interviews</strong>, wrote the PRD and shipped the system: live tracking,
+          an SOS that leaves the device over <strong>three independent transports</strong>, and a SAR
+          console that owns an incident from trigger to closure.
+        </p>
+        <div class="hero-actions">
+          <a class="btn" href="Anirban-Panda-Margsutra-PRD.pdf" download>
+            Read the full PRD <span class="arrow">↓</span>
+          </a>
+          <a class="btn btn-ghost" href="https://margsutra.onrender.com/" target="_blank" rel="noopener">
+            Live demo <span class="arrow">↗</span>
+          </a>
+        </div>
+      </div>
+
+      <div class="console" aria-label="Illustration of the SAR console map">
+        <div class="console-top">
+          <span>SAR console / RAJM26</span>
+          <span class="console-live"><i class="dot-live"></i> live</span>
+        </div>
+        <div class="map" aria-hidden="true">
+          <svg viewBox="0 0 360 420" preserveAspectRatio="xMidYMid slice">
+            <defs>
+              <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#c2410c" stop-opacity=".18"/>
+                <stop offset="100%" stop-color="#c2410c" stop-opacity="0"/>
+              </radialGradient>
+            </defs>
+            <!-- contours -->
+            <g fill="none" stroke="#f7f3ea" stroke-opacity=".10" stroke-width="1">
+              <path d="M-20 96C48 70 92 118 150 92s96-62 158-30 84 6 110-12"/>
+              <path d="M-20 128C52 100 96 148 158 120s98-58 158-24 78 2 104-18"/>
+              <path d="M-20 160C56 132 100 180 164 150s102-54 160-18 72 0 96-22"/>
+              <path d="M-20 300C44 268 96 318 160 288s104-58 162-24 70 2 92-18"/>
+              <path d="M-20 332C48 300 100 350 166 320s106-56 162-22 66 0 86-20"/>
+              <path d="M-20 364C52 332 104 382 170 352s108-54 162-20 62-2 80-22"/>
+            </g>
+            <!-- perimeter -->
+            <circle cx="196" cy="210" r="104" fill="url(#glow)" stroke="#c2410c" stroke-opacity=".7"
+                    stroke-width="1.4" stroke-dasharray="6 6"/>
+            <circle cx="196" cy="210" r="3" fill="#f7f3ea" fill-opacity=".85"/>
+            <!-- track -->
+            <polyline points="86,332 118,300 142,306 168,268 190,276 214,232 244,238 268,198 292,206 312,168"
+                      fill="none" stroke="#f7f3ea" stroke-opacity=".45" stroke-width="1.6"
+                      stroke-dasharray="2 4"/>
+            <!-- trekkers -->
+            <g>
+              <circle cx="168" cy="268" r="5.5" fill="#5ec488" stroke="#0e1a15" stroke-width="2"/>
+              <circle cx="244" cy="238" r="5.5" fill="#5ec488" stroke="#0e1a15" stroke-width="2"/>
+              <circle cx="312" cy="168" r="6.5" fill="#e8a87c" stroke="#0e1a15" stroke-width="2"/>
+              <circle cx="312" cy="168" r="13" fill="none" stroke="#e8a87c" stroke-opacity=".45"/>
+            </g>
+          </svg>
+        </div>
+        <span class="pin-label" style="top:84px;left:16px;text-align:left;line-height:1.45">Outside perimeter · 2.9 km</span>
+        <div class="console-foot">
+          <div><b>3 trekkers live</b>2.5 km perimeter · Rajmachi</div>
+          <div class="sos-chip">SOS · 1 queued</div>
+        </div>
+      </div>
+
+      <dl class="meta">
+        <div><dt>Role</dt><dd>Product Manager<br>end to end</dd></div>
+        <div><dt>Users</dt><dd>Trekkers · leads<br>organisers · SAR</dd></div>
+        <div><dt>Surface</dt><dd>Web app +<br>ESP32 / LoRa</dd></div>
+        <div><dt>Status</dt><dd>Shipped<br>MVP v1.0</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <!-- ── Problem ──────────────────────────────────────────── -->
+  <section class="section" id="problem">
+    <div class="section-rail"><div class="section-rail-inner">
+      <span class="sec-num">01</span>
+      <span class="sec-label">Problem</span>
+    </div></div>
+    <div>
+      <h2>The map ends where the signal ends.</h2>
+      <p style="font-size:18px;color:#2f3a33;max-width:62ch">
+        A guided trek is 10–30 people, one to three leads, and a route that loses cellular coverage
+        for hours. The tools a lead actually has — WhatsApp, a paper roster, a phone call — all assume
+        a signal the terrain does not provide.
+      </p>
+      <p class="muted" style="max-width:62ch">
+        Safety becomes a headcount at a checkpoint. Medical data sits in a form nobody can open in
+        the field. When something goes wrong, five people call five other people, nobody owns the
+        response, and nothing is recorded afterwards.
+      </p>
+
+      <div class="stat-row">
+        <div class="stat"><b>15+</b><span>semi-structured interviews across trekkers, leads and organisers</span></div>
+        <div class="stat"><b>10–30</b><span>trekkers in a typical guided group, often one lead behind</span></div>
+        <div class="stat"><b>0 bars</b><span>where the product has to work: the dead zone past the trailhead</span></div>
+      </div>
+
+      <blockquote class="pull">
+        “The map ends where the signal ends. After that it’s my memory and a headcount.”
+        <cite>Trek lead · interview paraphrase</cite>
+      </blockquote>
+    </div>
+  </section>
+
+  <!-- ── Research ─────────────────────────────────────────── -->
+  <section class="section" id="research">
+    <div class="section-rail"><div class="section-rail-inner">
+      <span class="sec-num">02</span>
+      <span class="sec-label">Research</span>
+    </div></div>
+    <div>
+      <h2>What the interviews changed.</h2>
+      <p class="big-line" style="max-width:30ch">The job wasn’t digitising a booking form. It was <em>maintaining command</em> when the network disappears.</p>
+
+      <table class="decision">
+        <thead>
+          <tr><th>Assumption</th><th>What we heard</th><th>Decision</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Digitise bookings, add a weather dashboard.</td>
+            <td>Booking is already solved on WhatsApp. Nobody could tell me where the group was.</td>
+            <td>Safety and visibility became P0. Booking and weather became table stakes.</td>
+          </tr>
+          <tr>
+            <td>SOS should call emergency services.</td>
+            <td>Leads want to handle it internally first. Escalation is a phone call they make once they know where to send people.</td>
+            <td>Built a command console with ownership and a record, not a 112 integration.</td>
+          </tr>
+          <tr>
+            <td>Offline maps solve the dead zone.</td>
+            <td>A map doesn’t tell you who is missing, or since when.</td>
+            <td>Tracking, roster freshness and a multi-transport alarm — in that order.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── What shipped ─────────────────────────────────────── -->
+  <section class="section" id="shipped">
+    <div class="section-rail"><div class="section-rail-inner">
+      <span class="sec-num">03</span>
+      <span class="sec-label">What shipped</span>
+    </div></div>
+    <div>
+      <h2>Four systems, one loop.</h2>
+      <p class="muted" style="max-width:60ch;margin-bottom:26px">
+        See the person, hear the alarm, own the response, close the record.
+      </p>
+
+      <div class="cards">
+        <article class="card">
+          <div class="card-num">01 / Visibility</div>
+          <h3>Live expedition map</h3>
+          <p>
+            Socket.IO position telemetry on a Leaflet map, with explicit freshness, roster status,
+            group proximity and a per-trip safety perimeter. Stale data is never rendered as live.
+          </p>
+          <div class="tags"><span class="tag">Socket.IO</span><span class="tag">Leaflet</span><span class="tag">JWT</span></div>
+        </article>
+
+        <article class="card">
+          <div class="card-num">02 / SOS</div>
+          <h3>An alarm that survives</h3>
+          <p>
+            SOS fans out over WebSocket, REST and Firestore, with per-transport delivery state.
+            If all three fail, a localStorage outbox retries until one lands — and a stand-down can
+            never be resurrected by the retry loop.
+          </p>
+          <div class="tags"><span class="tag">3 transports</span><span class="tag">Offline outbox</span><span class="tag">Idempotent</span></div>
+        </article>
+
+        <article class="card">
+          <div class="card-num">03 / Command</div>
+          <h3>SAR incident lifecycle</h3>
+          <p>
+            An event-driven console with an incident feed, medical profile, one-tap dialing, and an
+            explicit acknowledge → resolve lifecycle. Acknowledgement records ownership; only a
+            resolve closes the incident, with resolver, time and notes.
+          </p>
+          <div class="tags"><span class="tag">Express</span><span class="tag">Firestore</span><span class="tag">State machine</span></div>
+        </article>
+
+        <article class="card">
+          <div class="card-num">04 / Off-grid</div>
+          <h3>LoRa field relay</h3>
+          <p>
+            ESP32 nodes send GPS, weather, air quality and SOS over SX1276 LoRa with a send-then-listen
+            ACK window. A gateway bridges LoRa into Firebase Realtime Database and polls downlink
+            commands such as a remote siren.
+          </p>
+          <div class="tags"><span class="tag">ESP32</span><span class="tag">SX1276</span><span class="tag">RTDB</span></div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Decisions ────────────────────────────────────────── -->
+  <section class="section" id="decisions">
+    <div class="section-rail"><div class="section-rail-inner">
+      <span class="sec-num">04</span>
+      <span class="sec-label">Decisions</span>
+    </div></div>
+    <div>
+      <h2>What I cut, and why.</h2>
+      <p class="muted" style="max-width:60ch;margin-bottom:26px">
+        Every cut below is a second system that would have delayed the loop that matters.
+      </p>
+
+      <div class="trades">
+        <div class="trade">
+          <div class="trade-label"><b>One deploy unit</b>over Cloud Functions</div>
+          <div>
+            <p>Firestore triggers were prototyped, then cut. The shipped event path is an Express service writing to Firestore and broadcasting over Socket.IO.</p>
+            <p class="trade-off">Trade-off: less elastic, but one container, one health check, local parity, and a free tier that stays up.</p>
+          </div>
+        </div>
+
+        <div class="trade">
+          <div class="trade-label"><b>Client-side perimeter</b>over server geofence</div>
+          <div>
+            <p>Breach detection runs on the device from the latest fix. It works with no signal and no round trip.</p>
+            <p class="trade-off">Trade-off: the console does not receive breach events yet. That is P1 and written down, not hidden.</p>
+          </div>
+        </div>
+
+        <div class="trade">
+          <div class="trade-label"><b>Honest “queued”</b>over optimistic “sent”</div>
+          <div>
+            <p>Delivery state is per transport: sent, queued or failed. “Sent” only appears when at least one transport confirms.</p>
+            <p class="trade-off">Trade-off: a scarier UI in the moment — and the only defensible one in an emergency.</p>
+          </div>
+        </div>
+
+        <div class="trade">
+          <div class="trade-label"><b>Hardware is additive</b>over hardware-first</div>
+          <div>
+            <p>The software path must be useful before an operator buys a node. LoRa extends range; it is not a prerequisite for the product to work.</p>
+            <p class="trade-off">Trade-off: slower hardware story, faster adoption and a smaller support surface.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Architecture ─────────────────────────────────────── -->
+  <section class="section" id="architecture">
+    <div class="section-rail"><div class="section-rail-inner">
+      <span class="sec-num">05</span>
+      <span class="sec-label">Architecture</span>
+    </div></div>
+    <div>
+      <h2>Two lanes, one console.</h2>
+
+      <div class="arch">
+        <div class="lane">
+          <div class="lane-label"><span>Connected lane</span><span>phone · HTTPS / WSS</span></div>
+          <div class="flow">
+            <span class="node">Trekker app</span><span class="arrow">→</span>
+            <span class="node">Caddy</span><span class="arrow">→</span>
+            <span class="node dark">Express API</span><span class="arrow">+</span>
+            <span class="node dark">Socket.IO</span><span class="arrow">→</span>
+            <span class="node">Firestore</span>
+          </div>
+          <p class="arch-note">Durable records in Firestore. The API is the identity authority; the tracking service mints short-lived socket tokens from the same JWT.</p>
+        </div>
+
+        <div class="lane">
+          <div class="lane-label"><span>Off-grid lane</span><span>no cellular required</span></div>
+          <div class="flow">
+            <span class="node">ESP32 node</span><span class="arrow">→</span>
+            <span class="node accent">SX1276 LoRa</span><span class="arrow">→</span>
+            <span class="node">Gateway</span><span class="arrow">→</span>
+            <span class="node">Realtime Database</span><span class="arrow">→</span>
+            <span class="node dark">SAR console</span>
+          </div>
+          <p class="arch-note">The node transmits a JSON payload with GPS, sensors and SOS, then listens for an ACK. The gateway persists telemetry and polls downlink commands.</p>
+        </div>
+
+        <div class="lane">
+          <div class="lane-label"><span>Resilience</span><span>when the network is not there</span></div>
+          <div class="flow">
+            <span class="node">Service worker</span><span class="arrow">→</span>
+            <span class="node">IndexedDB queue</span><span class="arrow">→</span>
+            <span class="node">Background Sync</span><span class="arrow">→</span>
+            <span class="node">/location-batch</span>
+          </div>
+          <p class="arch-note">Positions are batched and replayed, so an hour in a dead zone arrives as a complete track — not a gap followed by duplicates.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Metrics ──────────────────────────────────────────── -->
+  <section class="section" id="metrics">
+    <div class="section-rail"><div class="section-rail-inner">
+      <span class="sec-num">06</span>
+      <span class="sec-label">Metrics</span>
+    </div></div>
+    <div>
+      <h2>One number that matters.</h2>
+      <p class="muted" style="max-width:58ch;margin-bottom:24px">
+        Time from SOS trigger to first acknowledgement. It forces both the device path and the console
+        path to work.
+      </p>
+
+      <div class="north">
+        <div>
+          <div class="north-label">North star · pilot target</div>
+          <h3>SOS trigger → first acknowledgement</h3>
+        </div>
+        <div class="north-big">&lt;60<small>seconds, median</small></div>
+      </div>
+      <div class="metric-grid">
+        <div class="metric"><b>≥99%</b><span>alerts delivered on at least one transport</span></div>
+        <div class="metric"><b>≥90%</b><span>active minutes with a fix under 2 minutes old</span></div>
+        <div class="metric"><b>&lt;8%</b><span>battery per hour while tracking</span></div>
+        <div class="metric"><b>&lt;5%</b><span>false alarms cancelled inside 30 seconds</span></div>
+      </div>
+      <p class="fineprint">Pilot targets — not field-proven results.</p>
+    </div>
+  </section>
+
+  <!-- ── Status ───────────────────────────────────────────── -->
+  <section class="section" id="status">
+    <div class="section-rail"><div class="section-rail-inner">
+      <span class="sec-num">07</span>
+      <span class="sec-label">Status</span>
+    </div></div>
+    <div>
+      <h2>Shipped, prototype, next.</h2>
+      <p class="muted" style="max-width:60ch;margin-bottom:26px">
+        The line between a working demo and a field-ready product, stated plainly.
+      </p>
+
+      <div class="status">
+        <div class="status-col">
+          <h3><span class="status-dot" style="background:var(--green)"></span>Shipped</h3>
+          <ul>
+            <li>Live tracking and roster freshness</li>
+            <li>Per-trip perimeter and client-side breach state</li>
+            <li>Three-transport SOS with offline outbox</li>
+            <li>Acknowledge → resolve incident lifecycle</li>
+            <li>Booking, rosters and medical profiles</li>
+            <li>ESP32/LoRa firmware and RTDB relay</li>
+          </ul>
+        </div>
+        <div class="status-col">
+          <h3><span class="status-dot" style="background:var(--amber)"></span>Prototype</h3>
+          <ul>
+            <li>BLE wearable pairing — simulated vitals, not hardware-validated</li>
+            <li>LoRa link implemented, not field-validated</li>
+            <li>Single-operator deployment on a free tier</li>
+          </ul>
+        </div>
+        <div class="status-col">
+          <h3><span class="status-dot" style="background:var(--line-2)"></span>Next</h3>
+          <ul>
+            <li>Server-side breach events to the console</li>
+            <li>Dispatch assignment with owner and ETA</li>
+            <li>Immutable audit export per incident</li>
+            <li>Push notifications and SOS without a session</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── CTA ──────────────────────────────────────────────── -->
+  <section class="cta" id="download">
+    <div class="wrap cta-in">
+      <div>
+        <p class="eyebrow">The full document</p>
+        <h2>Read the PRD behind the build.</h2>
+        <p>
+          Problem, evidence, personas, scope, requirements, journeys, trade-offs, rollout and the
+          metrics that decide whether it worked. 14 pages, no deck theatre.
+        </p>
+        <a class="btn btn-cream" href="Anirban-Panda-Margsutra-PRD.pdf" download>
+          Download the PRD <span class="arrow">↓</span>
+        </a>
+      </div>
+
+      <div class="demo">
+        <div class="demo-title">Live demo</div>
+        <div class="demo-row"><span>Trekker</span><a href="https://margsutra.onrender.com/" target="_blank" rel="noopener">margsutra.onrender.com ↗</a></div>
+        <div class="demo-row"><span>Admin</span><a href="https://margsutra.onrender.com/admin/" target="_blank" rel="noopener">/admin ↗</a></div>
+        <div class="demo-row"><span>Trekker login</span><code>demouser@gmail.com / 123456</code></div>
+        <div class="demo-row"><span>Admin login</span><code>demoadmin@gmail.com / 123456</code></div>
+        <p class="demo-note">
+          Free-tier hosting: the first request may take up to a minute to wake the service.
+        </p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap foot-in">
+    <span>Anirban Panda · Product Manager · 2026</span>
+    <span>
+      <a href="mailto:anirbanpandaxyz@gmail.com">Email</a> ·
+      <a href="https://linkedin.com/in/theanirbanpanda" target="_blank" rel="noopener">LinkedIn</a> ·
+      <a href="https://github.com/theanirbanpanda/Margsutra" target="_blank" rel="noopener">GitHub</a>
+    </span>
+  </div>
+</footer>
+
+<script>document.documentElement.classList.remove("no-js");document.documentElement.classList.add("js");</script>
+
+</body>
+</html>

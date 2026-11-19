@@ -1,0 +1,15 @@
+{
+  "name": "margsutra-prd-build",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Build the Margsutra PRD PDF from Markdown",
+  "type": "commonjs",
+  "scripts": {
+    "build": "node build-pdf.js"
+  },
+  "dependencies": {
+    "marked": "^18.2.1",
+    "pdf-lib": "^1.17.1",
+    "puppeteer": "^25.18.1"
+  }
+}
